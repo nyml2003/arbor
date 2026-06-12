@@ -1,0 +1,44 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  font-family: var(--arbor-font-family);
+  font-size: var(--arbor-font-size-md);
+  line-height: 1.5;
+  color: var(--arbor-colors-text-primary);
+  background-color: var(--arbor-colors-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+}
+
+button {
+  font-size: var(--arbor-font-size-sm);
+  padding: var(--arbor-spacing-sm) var(--arbor-spacing-md);
+  border: 1px solid var(--arbor-colors-border);
+  border-radius: var(--arbor-radii-md);
+  background: var(--arbor-colors-surface);
+  color: var(--arbor-colors-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover {
+  background: var(--arbor-colors-surface-hover);
+}

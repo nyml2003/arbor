@@ -1,0 +1,28 @@
+node_modules/
+dist/
+out/
+.output/
+.electron-builder/
+target/
+
+# build artifacts
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+*.omx
+*.claude
+
+# debug
+npm-debug.log*
+pnpm-debug.log*

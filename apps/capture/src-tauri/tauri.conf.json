@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Capture",
+  "version": "0.1.0",
+  "identifier": "com.nyml.capture",
+  "build": {
+    "beforeDevCommand": {
+      "cwd": "..",
+      "script": "pnpm dev:web",
+      "wait": false
+    },
+    "beforeBuildCommand": {
+      "cwd": "..",
+      "script": "pnpm build:web"
+    },
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "settings",
+        "title": "Capture Settings",
+        "url": "settings.html",
+        "visible": false,
+        "width": 420,
+        "height": 520,
+        "resizable": false,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "Capture Overlay",
+        "url": "overlay.html",
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "fullscreen": true,
+        "focus": true
+      },
+      {
+        "label": "toast",
+        "title": "Capture Toast",
+        "url": "toast.html",
+        "visible": false,
+        "width": 360,
+        "height": 108,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

@@ -1,0 +1,88 @@
+.tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  padding: var(--arbor-spacing-lg);
+  font-size: var(--arbor-font-size-lg);
+  font-weight: 700;
+  color: var(--arbor-colors-accent);
+  border-bottom: 1px solid var(--arbor-colors-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switchBtn {
+  font-size: var(--arbor-font-size-sm);
+  padding: 2px 8px;
+  border-radius: var(--arbor-radii-sm);
+}
+
+.nodes {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--arbor-spacing-sm) 0;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px var(--arbor-spacing-lg);
+  border: none;
+  background: transparent;
+  color: var(--arbor-colors-text-primary);
+  cursor: pointer;
+  font-size: var(--arbor-font-size-sm);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node:hover {
+  background: var(--arbor-colors-surface-hover);
+}
+
+.nodeSelected {
+  background: var(--arbor-colors-surface-active);
+  color: var(--arbor-colors-accent);
+}
+
+.branchNode {
+  color: var(--arbor-colors-accent);
+  font-weight: 600;
+}
+
+.icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  width: 16px;
+  text-align: center;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.indent {
+  padding-left: 28px;
+}
+
+.empty {
+  padding: var(--arbor-spacing-xl) var(--arbor-spacing-lg);
+  color: var(--arbor-colors-text-muted);
+  font-size: var(--arbor-font-size-sm);
+  text-align: center;
+}

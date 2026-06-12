@@ -1,0 +1,44 @@
+:root {
+  --arbor-colors-background: #f5f5f7;
+  --arbor-colors-surface: #ffffff;
+  --arbor-colors-surface-hover: #eaeaed;
+  --arbor-colors-surface-active: #dcdce0;
+  --arbor-colors-border: #d1d1d6;
+  --arbor-colors-text-primary: #1d1d1f;
+  --arbor-colors-text-secondary: #515154;
+  --arbor-colors-text-muted: #86868b;
+  --arbor-colors-accent: #0071e3;
+  --arbor-colors-accent-hover: #0060c0;
+
+  --arbor-spacing-xs: 0.25rem;
+  --arbor-spacing-sm: 0.5rem;
+  --arbor-spacing-md: 0.75rem;
+  --arbor-spacing-lg: 1rem;
+  --arbor-spacing-xl: 1.5rem;
+  --arbor-spacing-2xl: 2rem;
+
+  --arbor-font-family: system-ui, -apple-system, sans-serif;
+  --arbor-font-size-sm: 0.875rem;
+  --arbor-font-size-md: 1rem;
+  --arbor-font-size-lg: 1.125rem;
+  --arbor-font-size-xl: 1.5rem;
+
+  --arbor-radii-sm: 0.25rem;
+  --arbor-radii-md: 0.5rem;
+  --arbor-radii-lg: 0.75rem;
+
+  --arbor-sidebar-width: 260px;
+}
+
+[data-theme="dark"] {
+  --arbor-colors-background: #1a1b2e;
+  --arbor-colors-surface: #2a2d4a;
+  --arbor-colors-surface-hover: #3a3d5c;
+  --arbor-colors-surface-active: #4a4d6c;
+  --arbor-colors-border: #3a3d5c;
+  --arbor-colors-text-primary: #e2e4f0;
+  --arbor-colors-text-secondary: #c8cbe0;
+  --arbor-colors-text-muted: #8b8fa3;
+  --arbor-colors-accent: #818cf8;
+  --arbor-colors-accent-hover: #6366f1;
+}

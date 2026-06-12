@@ -1,0 +1,51 @@
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--arbor-spacing-md);
+  color: var(--arbor-colors-text-muted);
+  user-select: none;
+}
+
+.logo {
+  font-size: 4rem;
+  margin-bottom: var(--arbor-spacing-lg);
+}
+
+.placeholder h2 {
+  font-size: var(--arbor-font-size-xl);
+  color: var(--arbor-colors-text-primary);
+  font-weight: 600;
+}
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.viewerHeader {
+  padding: var(--arbor-spacing-md) var(--arbor-spacing-xl);
+  font-size: var(--arbor-font-size-sm);
+  font-weight: 600;
+  color: var(--arbor-colors-text-secondary);
+  background: var(--arbor-colors-surface);
+  border-bottom: 1px solid var(--arbor-colors-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewerContent {
+  flex: 1;
+  overflow: auto;
+  padding: var(--arbor-spacing-xl);
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+  font-size: var(--arbor-font-size-sm);
+  line-height: 1.6;
+  color: var(--arbor-colors-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}

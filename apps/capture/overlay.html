@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Capture Overlay</title>
+    <script
+      type="module"
+      src="/src/overlay/main.ts"
+    ></script>
+  </head>
+  <body>
+    <div
+      id="overlay"
+      class="overlay"
+    >
+      <div class="scrim"></div>
+      <div
+        id="selection"
+        class="selection"
+        hidden
+      ></div>
+      <div
+        id="hint"
+        class="hint"
+      >
+        拖拽选择区域，Esc 取消。当前是空壳，还没有接入真实截图。
+      </div>
+    </div>
+  </body>
+</html>
