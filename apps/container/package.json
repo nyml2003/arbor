@@ -7,6 +7,14 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "typecheck": "tsc -b tsconfig.json",
+    "web:dev": "vite --config web.vite.config.ts --host 127.0.0.1 --port 5174",
+    "web:build": "vite build --config web.vite.config.ts",
+    "resume:dev": "pnpm web:dev",
+    "resume:build": "pnpm web:build",
+    "e2e:web": "playwright test --config playwright.config.ts --project=web",
+    "e2e:electron": "pnpm build && playwright test --config playwright.config.ts --project=electron",
+    "e2e": "pnpm build && playwright test --config playwright.config.ts",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -17,9 +25,12 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
+    "@playwright/test": "1.60.0",
+    "@types/node": "^25.9.2",
     "electron": "^35.7.5",
     "electron-builder": "^26.0.12",
     "electron-vite": "^3.1.0",
+    "typescript": "^5.9.3",
     "vite": "^6.3.0",
     "vite-plugin-solid": "^2.11.0"
   }

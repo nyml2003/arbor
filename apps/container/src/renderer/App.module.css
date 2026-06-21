@@ -14,6 +14,44 @@
   margin-bottom: var(--arbor-spacing-lg);
 }
 
+.home {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  max-width: 760px;
+  padding: var(--arbor-spacing-2xl);
+  gap: var(--arbor-spacing-lg);
+}
+
+.home h1 {
+  color: var(--arbor-colors-text-primary);
+  font-size: var(--arbor-font-size-2xl);
+  font-weight: 700;
+}
+
+.home p {
+  max-width: 620px;
+  color: var(--arbor-colors-text-secondary);
+  font-size: var(--arbor-font-size-md);
+  line-height: 1.8;
+}
+
+.capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--arbor-spacing-sm);
+}
+
+.capabilities span {
+  border: 1px solid var(--arbor-colors-border);
+  border-radius: var(--arbor-radius-sm);
+  padding: 0.4rem 0.65rem;
+  color: var(--arbor-colors-text-secondary);
+  background: var(--arbor-colors-surface);
+  font-size: var(--arbor-font-size-xs);
+}
+
 .placeholder h2 {
   font-size: var(--arbor-font-size-xl);
   color: var(--arbor-colors-text-primary);

@@ -1,0 +1,83 @@
+{
+  "profile": {
+    "name": "蒋钦禹",
+    "contacts": [
+      {
+        "label": "Phone",
+        "value": "(+86) 180-7253-7000"
+      },
+      {
+        "label": "Email",
+        "value": "2492181618@qq.com",
+        "href": "mailto:2492181618@qq.com"
+      },
+      {
+        "label": "GitHub",
+        "value": "nyml2003",
+        "href": "https://github.com/nyml2003"
+      },
+      {
+        "label": "Site",
+        "value": "Ventus",
+        "href": "https://ventusvocatflumen.cn"
+      }
+    ]
+  },
+  "education": [
+    {
+      "school": "电子科技大学",
+      "tags": ["985", "211", "双一流"],
+      "degree": "工学学士",
+      "major": "计算机科学与技术",
+      "range": ["2021.09", "2025.07"],
+      "highlights": [
+        "GPA: 3.9 / 4，Weighted Average: 88.68 / 100，多次获得优秀奖学金、标兵奖学金",
+        "第十五届蓝桥杯全国软件和信息技术专业人才大赛全国总决赛 Web 应用开发大学组三等奖"
+      ]
+    }
+  ],
+  "skills": [
+    "熟练使用 Git 进行版本控制和团队协作，有丰富的多人协作开发经验",
+    "了解 Webpack，熟练使用 TypeScript",
+    "了解并熟练使用 Vue2、Vue3、React、React Native 等前端框架，了解前端 H5 与容器的通信机制",
+    "了解 Less 等预处理器和 CSS 工程化实践"
+  ],
+  "experiences": [
+    {
+      "company": "汉海信息技术（上海）有限公司",
+      "role": "大前端工程师（实习生）",
+      "range": ["2024.06", "2024.08"],
+      "bullets": [
+        "参与 IM 系统多技术栈、多端、多平台的卡片样式修改，快速梳理需求相关的 6 个代码仓库和相应文档，熟悉代码逻辑和业务流程，定位问题并封装 Toast 组件，实现视觉定制化需求",
+        "编写 unlink 脚本，帮助在多个需求开发流程中切换",
+        "保证新老组件的平滑过渡",
+        "需求涉及 Vue2、React、React Native、Picasso 等多技术栈，快速学习并完成开发",
+        "上线过程合理控制灰度节奏，充分观测业务指标，梳理从开发到上线的全流程，形成四千字交接文档，并在周会上分享"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "zipfiles: 文件备份软件",
+      "tags": ["IPC", "webkit", "JSBridge", "linux", "React"],
+      "bullets": [
+        "搭建了一套类似 JSBridge 的 H5 页面和 WebKit 容器互操作框架",
+        "实现轻量级状态管理机制，通过特定函数集合与默认状态动态构建带类型约束的状态上下文与 Provider，支持跨组件共享与更新状态",
+        "在 antd Tree 组件基础上封装路径选择器，用于表单中选择文件路径，懒加载文件树并支持文件夹展开与收起",
+        "拦截 native 侧消息并显示在全局通知中心中，优化备份和还原两个耗时操作的用户体验",
+        "使用 mockjs 完整 mock 后端接口，并在 mock 中模拟简单文件树结构",
+        "通过 CSS、JavaScript 文件压缩、代码分割和 tree shaking 减少代码体积，通过懒加载加快首屏渲染"
+      ]
+    },
+    {
+      "title": "Ventus: 前后端分离的个人博客",
+      "tags": ["Vue3", "双 token", "markdown"],
+      "bullets": [
+        "实现双 token 无感刷新，支持用户登录注册、评论等功能",
+        "两套 UI 逻辑分别支持 PC 端和移动端网页浏览，部分组件支持响应式",
+        "RESTful 风格 API，基于 RBAC 的权限管理，路由守卫按照角色权限控制访问权限，并通过中间件统计资源请求情况",
+        "支持符合 Markdown 规范的文字和图片编辑预览"
+      ]
+    }
+  ]
+}

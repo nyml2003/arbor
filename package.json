@@ -8,9 +8,10 @@
     "capture:dev": "pnpm --filter @arbor/capture dev",
     "capture:build": "pnpm --filter @arbor/capture build",
     "capture:typecheck": "pnpm --filter @arbor/capture typecheck",
-    "typecheck": "tsc -b",
+    "typecheck": "pnpm -r --filter @arbor/container --filter @arbor/capture typecheck",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @arbor/container e2e"
   },
   "engines": {
     "node": ">=24.0.0",

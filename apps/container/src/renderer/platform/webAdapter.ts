@@ -1,0 +1,61 @@
+import resumeJson from "../../../../../workspace/show/resume/resume.json";
+import type { FileEntry } from "../types";
+import type { PlatformAdapter } from "./types";
+
+const staticEntries: FileEntry[] = [
+  { name: "show", path: "show", isDirectory: true },
+  { name: "resume", path: "show/resume", isDirectory: true },
+  { name: "resume.json", path: "show/resume/resume.json", isDirectory: false },
+];
+
+export function createWebAdapter(): PlatformAdapter {
+  return {
+    mode: "web",
+    capabilities: {
+      workspaceFiles: {
+        status: "unsupported",
+        reason: "浏览器版暂不读取本地 workspace，只展示静态注册页面。",
+      },
+      staticPages: { status: "supported" },
+    },
+    getInitialRoute() {
+      const path = window.location.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+      if (path === "resume/print" || path === "show/resume/print") return "show/resume/print";
+      if (path === "resume" || path === "show/resume") return "show/resume";
+      return "show/home";
+    },
+    async getDefaultWorkspace() {
+      return "web-static";
+    },
+    async listDirectory(path) {
+      if (path === "web-static" || path === "") {
+        return staticEntries.filter((entry) => !entry.path.includes("/"));
+      }
+      if (path === "show") {
+        return staticEntries.filter((entry) => entry.path === "show/resume");
+      }
+      if (path === "show/resume") {
+        return staticEntries.filter((entry) => entry.path === "show/resume/resume.json");
+      }
+      return [];
+    },
+    async readText(path) {
+      if (path === "show/resume/resume.json") {
+        return JSON.stringify(resumeJson, null, 2);
+      }
+      throw new Error(`Web adapter cannot read "${path}".`);
+    },
+    async selectDirectory() {
+      return null;
+    },
+    listStaticPages() {
+      return [
+        { id: "show/home", title: "Show", kind: "page" },
+        { id: "show/resume", title: "Resume", kind: "page" },
+      ];
+    },
+    async readResumeJson() {
+      return resumeJson;
+    },
+  };
+}

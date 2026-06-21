@@ -20,3 +20,22 @@
   min-width: 0;
   background: var(--arbor-colors-background);
 }
+
+@media print {
+  .layout {
+    display: block;
+    width: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    display: block;
+    overflow: visible;
+    background: #ffffff;
+  }
+}
