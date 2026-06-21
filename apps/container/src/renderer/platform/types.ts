@@ -7,6 +7,10 @@ export interface CapabilityState {
   reason?: string;
 }
 
+export type PlatformActionResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
 export interface StaticPageEntry {
   id: string;
   title: string;
@@ -18,6 +22,7 @@ export interface PlatformAdapter {
   capabilities: {
     workspaceFiles: CapabilityState;
     staticPages: CapabilityState;
+    resumeSave: CapabilityState;
   };
   getInitialRoute(): string;
   getDefaultWorkspace(): Promise<string | null>;
@@ -26,4 +31,5 @@ export interface PlatformAdapter {
   selectDirectory(): Promise<string | null>;
   listStaticPages(): StaticPageEntry[];
   readResumeJson(): Promise<unknown>;
+  saveResumeJson(value: unknown): Promise<PlatformActionResult>;
 }

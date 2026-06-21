@@ -15,6 +15,8 @@ const api = {
       ipcRenderer.invoke(IpcChannels.FS_LIST_DIRECTORY, { path }),
     readText: (path: string): Promise<string> =>
       ipcRenderer.invoke(IpcChannels.FS_READ_TEXT, { path }),
+    writeText: (path: string, text: string): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.FS_WRITE_TEXT, { path, text }),
   },
   dialog: {
     selectDirectory: (): Promise<string | null> =>

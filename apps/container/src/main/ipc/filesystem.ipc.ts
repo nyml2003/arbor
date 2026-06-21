@@ -1,5 +1,5 @@
 import { ipcMain, dialog } from "electron";
-import { readFile, readdir, stat } from "fs/promises";
+import { readFile, readdir, stat, writeFile } from "fs/promises";
 import { join, resolve as pathResolve, sep } from "path";
 import { z } from "zod";
 import type { IpcMainInvokeEvent } from "electron";
@@ -69,6 +69,15 @@ export function registerFileSystemHandlers(): void {
       const safe = resolveChecked(path);
       const buffer = await readFile(safe);
       return new TextDecoder("utf-8").decode(buffer);
+    }),
+  );
+
+  ipcMain.handle(
+    IpcChannels.FS_WRITE_TEXT,
+    createHandler(z.object({ path: FilePathSchema, text: z.string() }), async ({ path, text }) => {
+      const safe = resolveChecked(path);
+      await writeFile(safe, text, "utf-8");
+      return null;
     }),
   );
 

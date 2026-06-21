@@ -5,6 +5,7 @@ import type {
   ResumeExperience,
   ResumeProject,
 } from "./types";
+import { isResumeThemeId } from "./types";
 
 export type ResumeParseResult =
   | { ok: true; data: ResumeDocument }
@@ -129,6 +130,11 @@ export function parseResumeValue(raw: unknown): ResumeParseResult {
     return { ok: false, message: "resume.json 缺少 profile 对象。" };
   }
 
+  const theme = raw["theme"];
+  if (theme !== undefined && !isResumeThemeId(theme)) {
+    return { ok: false, message: "theme 必须是 classic、editorial 或 signal。" };
+  }
+
   const profileRecord = raw["profile"];
   const name = readString(profileRecord, "name");
   const contacts = parseArray(profileRecord["contacts"], parseContact, "profile.contacts");
@@ -152,6 +158,7 @@ export function parseResumeValue(raw: unknown): ResumeParseResult {
   return {
     ok: true,
     data: {
+      ...(theme ? { theme } : {}),
       profile: {
         name,
         contacts: contacts.data,
@@ -163,4 +170,12 @@ export function parseResumeValue(raw: unknown): ResumeParseResult {
       projects: projects.data,
     },
   };
+}
+
+export function cloneResumeDocument(resume: ResumeDocument): ResumeDocument {
+  return JSON.parse(JSON.stringify(resume)) as ResumeDocument;
+}
+
+export function serializeResumeDocument(resume: ResumeDocument): string {
+  return `${JSON.stringify(cloneResumeDocument(resume), null, 2)}\n`;
 }

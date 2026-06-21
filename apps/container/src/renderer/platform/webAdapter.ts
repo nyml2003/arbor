@@ -17,6 +17,10 @@ export function createWebAdapter(): PlatformAdapter {
         reason: "浏览器版暂不读取本地 workspace，只展示静态注册页面。",
       },
       staticPages: { status: "supported" },
+      resumeSave: {
+        status: "unsupported",
+        reason: "Web 版使用构建时打包的 resume.json，浏览器不能直接写回源码文件。",
+      },
     },
     getInitialRoute() {
       const path = window.location.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -56,6 +60,12 @@ export function createWebAdapter(): PlatformAdapter {
     },
     async readResumeJson() {
       return resumeJson;
+    },
+    async saveResumeJson() {
+      return {
+        ok: false,
+        reason: "Web 版不能直接保存到 workspace，请下载 JSON 后替换源文件并重新构建。",
+      };
     },
   };
 }

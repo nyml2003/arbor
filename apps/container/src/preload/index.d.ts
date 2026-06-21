@@ -13,6 +13,7 @@ declare global {
       fs: {
         listDirectory(path: string): Promise<FileEntry[]>;
         readText(path: string): Promise<string>;
+        writeText(path: string, text: string): Promise<void>;
       };
       dialog: {
         selectDirectory(): Promise<string | null>;

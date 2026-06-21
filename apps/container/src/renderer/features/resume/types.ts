@@ -1,3 +1,14 @@
+export const RESUME_THEME_IDS = ["classic", "editorial", "signal"] as const;
+
+export type ResumeThemeId = (typeof RESUME_THEME_IDS)[number];
+
+export function isResumeThemeId(value: unknown): value is ResumeThemeId {
+  return (
+    typeof value === "string" &&
+    RESUME_THEME_IDS.includes(value as ResumeThemeId)
+  );
+}
+
 export interface ResumeContact {
   label: string;
   value: string;
@@ -34,6 +45,7 @@ export interface ResumeProject {
 }
 
 export interface ResumeDocument {
+  theme?: ResumeThemeId;
   profile: ResumeProfile;
   education: ResumeEducation[];
   skills: string[];
