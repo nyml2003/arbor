@@ -2,12 +2,30 @@
 
 ## 总览
 
-| Phase | 目标 | 估算 |
-|-------|------|------|
-| 1 | 容器应用 | 文件树桌面壳 |
-| 2 | 管理工具 | 任务/项目管理 |
-| 3 | 沉淀工具 | 笔记/经验捕获 |
-| 4 | 引擎闭环 | 导出 + 四分支实内容 |
+Arbor 现在按两条线推进：
+
+- **主线**：把个人产出引擎跑起来。容器、经验沉淀、管理和展示都服务这条线。
+- **孵化线**：在 `apps/` 和 `packages/` 下孵化独立工具。成熟后再评估是否拆独立 git 仓库。
+
+| Phase | 目标 | 当前状态 |
+|-------|------|----------|
+| 1 | 容器应用 | 已有 Electron + SolidJS 容器和文件树体验，继续补 Markdown 预览和展示能力 |
+| 2 | 管理工具 | 仍处于文档和任务清单阶段 |
+| 3 | 沉淀工具 | 已有 `workspace/learn` 知识库和 pattern 索引，继续依赖 agent 维护 |
+| 4 | 引擎闭环 | 已有简历展示数据和 web 构建入口，静态站点导出未完成 |
+
+---
+
+## 仓库治理策略
+
+当前默认策略是孵化器 monorepo：
+
+- `apps/container`、`workspace/*` 是 Arbor 本体，长期留在本仓库。
+- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs` 是孵化项目，先留在本仓库。
+- `packages/arbor-ui-*`、`packages/skill-manager-core` 是可复用基础设施，先跟随使用方一起演化。
+- 只有当一个项目有独立用户、独立发布节奏、独立构建测试，并且不再依赖 Arbor 私有数据时，才拆独立 git 仓库。
+
+具体拆仓规则和项目状态记录在 `workspace/manage/repo-strategy.md`。
 
 ---
 
@@ -150,6 +168,7 @@
 **当前阶段**：
 - 已完成文档、目录骨架和空壳初始化
 - 还没有进入真实的截图、剪贴板、通知和缓存实现
+- 短期继续留在 Arbor；v1 主链路跑通后优先评估拆独立仓库
 
 **v1 不做**：
 - CLI
@@ -157,6 +176,61 @@
 - OCR
 - 录屏
 - 历史资料库
+
+---
+
+## Build 域技术储备：Rust Native GUI
+
+**目标**：把 KeyDock 中验证出的 `Rust DSL + 平台适配层` 沉淀为 Arbor 的第二套 GUI 储备线。
+
+**定位**：
+- 它是 GUI 技术储备，不是 Phase 1 容器路线的替代
+- 它适合系统工具、小窗口、常驻工具、原生输入和高性能交互
+- `apps/container/` 仍然使用 Electron + SolidJS
+
+**当前阶段**：
+- KeyDock 是第一份原型资产
+- KeyDock 和 ClipDock 已经共用 `packages/arbor-ui-core`、`packages/arbor-ui-windows`
+- 已验证安全 Rust app 层、组件 DSL、primitive tree、Win32/Direct2D 渲染、剪贴板和 `SendInput` 边界
+- 继续在本仓库沉淀模式，暂不把 `arbor-ui-*` 拆独立库
+
+**下一步触发条件**：
+- 两个以上 native GUI 工具持续依赖同一套稳定 API
+- KeyDock/ClipDock 的组件模型继续稳定
+- 平台适配层边界扫描持续通过
+
+---
+
+## Build 域技术实验：memvfs
+
+**目标**：验证 Rust in-memory VFS、daemon 和 CLI 的分层。
+
+**定位**：
+- 它是系统工具实验，不是 Arbor 主容器能力。
+- `memvfs-core` 负责纯内存模型。
+- `memvfsd` 负责保持一个 daemon 进程。
+- `memvfs-cli` 通过 localhost TCP JSON 协议访问 daemon。
+
+**当前阶段**：
+- 已有 core/daemon/cli workspace。
+- 已有基础 POSIX-like 语义：目录、文件、inode、block、读写、rename、unlink、stat。
+- 短期继续留在 Arbor；只有当它变成日常工具或可复用库时再拆仓。
+
+---
+
+## Build 域基础设施：Skill 管理器
+
+**目标**：设计 agent skill 的安装、校验和 lockfile 规范。
+
+**定位**：
+- 它管理的是 agent skill 工作流包，不是 npm、uv 或 Maven 语言包。
+- v1 模型是 `SourceSkill -> SkillPackage -> InstalledSkill`。
+- 目前先保留在 `packages/skill-manager-core/README.md` 中作为规范和未来实现入口。
+
+**当前阶段**：
+- 已写清 `arbor.skills.json`、`arbor.skills.lock.json`、`skill.package.json` 的职责。
+- 还没有实现 CLI 和 core 代码。
+- 不拆仓。等 core/cli 可运行并有真实安装场景后再评估。
 
 ---
 

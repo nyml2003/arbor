@@ -197,3 +197,65 @@ arbor/
 - settings 才使用 SolidJS，而且按需加载
 - 前端不承载图像处理和缓存管理
 - 先写文档和骨架，再进入实现
+
+---
+
+## 11. 保留 Rust Native GUI 作为第二套 GUI 储备线
+
+**决定**：Arbor 保留 `Rust DSL + 平台适配层` 作为第二套 GUI 技术路线。它和 `apps/container/` 的 Electron + SolidJS 主容器并列，但现阶段不替代主容器。
+
+**定位**：
+- Electron + SolidJS：承载 Arbor 主容器、复杂内容界面、快速迭代和 Web 生态能力
+- Rust Native GUI：承载轻量系统工具、常驻小窗口、高性能交互、强平台能力
+
+**理由**：
+- KeyDock 已经验证了一个可行形态：安全 Rust app 层生成组件树，平台层负责窗口、渲染、输入和 DPI
+- 这条路线可以把 Win32/unsafe 限制在 platform adapter，不让系统 API 泄漏到业务状态机
+- 对虚拟键盘、截图 overlay、悬浮工具、托盘小面板这类系统工具，原生窗口比完整 Web runtime 更合适
+- 这不是 Tauri 的替代品。Tauri 适合 Web UI + Rust 能力，Native GUI 适合完全不需要 WebView 的工具
+
+**当前约束**：
+- 不立即抽公共框架 crate
+- 不把 Arbor 主容器迁到 Native GUI
+- 不承诺跨平台一次到位
+- 先把 KeyDock 作为样本，继续沉淀 DSL、primitive tree、platform adapter 和 unsafe boundary
+
+**后续触发条件**：
+- 出现第二个需要原生小窗口的 Arbor 工具
+- KeyDock 的组件模型稳定到可以复用
+- Windows 适配层边界通过测试和静态扫描持续保持干净
+
+---
+
+## 12. Arbor 采用孵化器 monorepo，不为目录整洁提前拆仓
+
+**决定**：Arbor 继续作为个人工具孵化 monorepo。主容器、知识库、治理文档和未成熟工具留在本仓库。独立工具或库只有满足拆仓条件后，才迁出为独立 git 仓库。
+
+**理由**：
+- 当前仓库同时承担产品孵化、经验沉淀和项目治理职责，过早拆仓会切断经验提取和共用基础设施的演化路径。
+- `capture`、`keydock`、`clipdock`、`memvfs` 等项目还在验证边界，放在同一仓库里更容易共享文档、模式和测试约定。
+- `arbor-ui-core`、`arbor-ui-windows` 仍随 KeyDock/ClipDock 共同变化，单独拆库会让 API 过早固化。
+- `skill-manager-core` 目前主要是规范，不是可发布实现，拆仓没有收益。
+
+**拆仓条件**：
+- 项目有独立用户或独立发布目标。
+- 项目可以独立构建、测试和阅读 README。
+- 项目不依赖 Arbor 私有 `workspace/` 数据。
+- 未来数次迭代大概率不需要和 Arbor 主线一起修改。
+- 拆仓能带来发布、复用、权限隔离或历史清晰度收益。
+
+**当前分类**：
+- 长期留在 Arbor：`apps/container`、`workspace/learn`、`workspace/manage`、`workspace/show`。
+- 短期留在 Arbor，成熟后评估：`apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`。
+- 跟随使用方演化：`packages/arbor-ui-core`、`packages/arbor-ui-windows`。
+- 先作为规范沉淀：`packages/skill-manager-core`。
+
+**代价**：
+- 仓库会同时包含 TypeScript、Tauri、Rust native GUI 和 Rust daemon 项目。
+- 根脚本和文档必须持续维护，否则入口文档容易落后于真实结构。
+
+**执行规则**：
+- 不为“目录干净”拆仓。
+- 新增 app/package 时，必须说明它属于 Arbor 本体、孵化产品、技术样本、可复用库或纯经验沉淀。
+- 拆仓前先补齐 README、构建命令、测试命令和最小验收记录。
+- 具体状态表维护在 `workspace/manage/repo-strategy.md`。

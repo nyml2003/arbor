@@ -16,25 +16,38 @@
 
 ```
 arbor/
-├── packages/                # 可发布的 npm 包
-│   └── [domain]-[layer]/    # 如 manage-core、knowl-cli
-│       ├── src/
-│       │   ├── index.ts
-│       │   └── ...
-│       ├── package.json
-│       └── tsconfig.json
-├── apps/                    # 不可发布的应用程序
-│   └── container/           # Electron + SolidJS 容器
-│       ├── src/
-│       │   ├── main/        # Electron 主进程
-│       │   ├── renderer/    # SolidJS 渲染进程
-│       │   └── preload/     # 预加载脚本
-│       ├── package.json
-│       └── electron-builder.yml
+├── apps/                    # 可运行应用和孵化工具
+│   ├── container/           # Arbor 主容器，Electron + SolidJS
+│   ├── capture/             # 截图工具，Tauri + Rust
+│   ├── keydock/             # Rust 原生 GUI 工具
+│   ├── clipdock/            # Rust 原生 GUI 工具
+│   └── memvfs/              # Rust daemon/CLI 实验
+├── packages/                # 可复用基础设施和未来可发布包
+│   ├── arbor-ui-core/
+│   ├── arbor-ui-windows/
+│   └── [domain]-[layer]/    # 如 manage-core、skill-manager-core
+├── workspace/               # Arbor 的经验、治理和展示数据
+│   ├── learn/
+│   ├── manage/
+│   └── show/
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 └── package.json             # 根 package.json（workspace scripts）
 ```
+
+## 项目归属规则
+
+每个新 app 或 package 必须先标注归属：
+
+| 归属 | 含义 | 默认位置 |
+|------|------|----------|
+| Arbor 本体 | 支撑个人产出引擎本身 | `apps/container`、`workspace/*` |
+| 孵化产品 | 有独立用户场景，但尚未成熟 | `apps/*` |
+| 技术样本 | 验证架构、平台边界或性能路线 | `apps/*` 或 `workspace/learn/patterns` |
+| 可复用库 | 被两个以上项目依赖的基础设施 | `packages/*` |
+| 经验沉淀 | 只保留设计模式和复盘，不保留完整代码 | `workspace/learn/*` |
+
+默认先留在 Arbor。只有满足 `workspace/manage/repo-strategy.md` 的拆仓条件后，才迁出为独立 git 仓库。
 
 ## 包分层规则
 
@@ -75,6 +88,8 @@ arbor/
 - 每做一个技术决策，追加到 `DECISIONS.md`
 - 每当出现新的编码约定，更新 `CONVENTIONS.md`
 - `README.md` 保持简洁，只反映当前状态
+- 每新增一个 app/package，更新 `README.md` 或 `PLAN.md` 中的当前状态
+- 每改变项目归属或拆仓判断，更新 `workspace/manage/repo-strategy.md`
 
 ## 迭代日志格式
 
