@@ -1,0 +1,19 @@
+[package]
+name = "arbor-ui-windows"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+arbor-ui-core = { path = "../arbor-ui-core" }
+thiserror = "2"
+windows-numerics = "0.3.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct2D",
+  "Win32_Graphics_Direct2D_Common",
+  "Win32_Graphics_DirectWrite",
+  "Win32_Graphics_Dxgi_Common",
+] }

@@ -52,6 +52,37 @@
   font-size: var(--arbor-font-size-xs);
 }
 
+.staticNav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--arbor-spacing-xs);
+  border-bottom: 1px solid var(--arbor-colors-border);
+  padding: var(--arbor-spacing-md);
+}
+
+.staticNavItem {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--arbor-radii-sm);
+  padding: 0.45rem 0.55rem;
+  color: var(--arbor-colors-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--arbor-font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.staticNavItem:hover {
+  background: var(--arbor-colors-surface-hover);
+}
+
+.staticNavItem[data-active="true"] {
+  border-color: var(--arbor-colors-border);
+  color: var(--arbor-colors-accent);
+  background: var(--arbor-colors-surface-active);
+}
+
 .placeholder h2 {
   font-size: var(--arbor-font-size-xl);
   color: var(--arbor-colors-text-primary);

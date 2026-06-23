@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/memvfs-core",
+  "crates/memvfs-cli",
+  "crates/memvfsd",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+memvfs-core = { path = "crates/memvfs-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

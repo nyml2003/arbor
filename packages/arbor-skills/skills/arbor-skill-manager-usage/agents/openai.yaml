@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arbor 技能管理器用法"
+  short_description: "说明 Arbor 技能管理器用法"
+  default_prompt: "使用 $arbor-skill-manager-usage 规划一次 Arbor 技能安装。"

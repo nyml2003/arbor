@@ -1,9 +1,17 @@
-import { createSignal, Show, createResource, onMount } from "solid-js";
+import { createSignal, Show, createResource, onMount, For } from "solid-js";
 import { ArborLayout } from "./layouts/ArborLayout";
 import { FileTree } from "./components/FileTree";
+import { MemvfsDemo } from "./features/memvfs/MemvfsDemo";
+import { ResumeEditorPage } from "./features/resume/ResumeEditor";
 import { ResumePrintPage, ResumeView } from "./features/resume/ResumeView";
+import { ShamrockBattlePage } from "./features/shamrock/ShamrockBattlePage";
 import { createElectronAdapter } from "./platform/electronAdapter";
-import { isResumePrintRoute, routeFromEntry, routeToWebPath } from "./platform/shared";
+import {
+  isResumeEditRoute,
+  isResumePrintRoute,
+  routeFromEntry,
+  routeToWebPath,
+} from "./platform/shared";
 import type { PlatformAdapter } from "./platform/types";
 import type { FileEntry } from "./types";
 import styles from "./App.module.css";
@@ -30,8 +38,33 @@ function HomePage(props: { adapter: PlatformAdapter }) {
         <span>Runtime: {props.adapter.mode}</span>
         <span>Workspace files: {props.adapter.capabilities.workspaceFiles.status}</span>
         <span>Static pages: {props.adapter.capabilities.staticPages.status}</span>
+        <span>Resume save: {props.adapter.capabilities.resumeSave.status}</span>
+        <span>memvfs: {props.adapter.mode === "electron" ? "daemon" : "memory"}</span>
       </div>
     </div>
+  );
+}
+
+function StaticPageNav(props: {
+  adapter: PlatformAdapter;
+  route: string;
+  onNavigate: (route: string) => void;
+}) {
+  return (
+    <nav class={styles["staticNav"]} aria-label="Arbor pages">
+      <For each={props.adapter.listStaticPages()}>
+        {(page) => (
+          <button
+            type="button"
+            class={styles["staticNavItem"]}
+            data-active={props.route === page.id}
+            onClick={() => props.onNavigate(page.id)}
+          >
+            {page.title}
+          </button>
+        )}
+      </For>
+    </nav>
   );
 }
 
@@ -85,13 +118,20 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
       fallback={
         <ArborLayout
           sidebar={
-            <Show when={workspaceRoot()}>
-              <FileTree
+            <>
+              <StaticPageNav
                 adapter={props.adapter}
-                workspaceRoot={workspaceRoot() ?? ""}
-                onSelect={handleSelect}
+                route={route()}
+                onNavigate={navigateToRoute}
               />
-            </Show>
+              <Show when={workspaceRoot()}>
+                <FileTree
+                  adapter={props.adapter}
+                  workspaceRoot={workspaceRoot() ?? ""}
+                  onSelect={handleSelect}
+                />
+              </Show>
+            </>
           }
         >
           <Show
@@ -110,9 +150,23 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
             <Show when={route() === "show/resume"}>
               <ResumeView
                 adapter={props.adapter}
+                onEdit={() => navigateToRoute("show/resume/edit")}
                 onOpenPrint={() => navigateToRoute("show/resume/print")}
                 onPrint={() => navigateToRoute("show/resume/print", { autoPrint: true })}
               />
+            </Show>
+            <Show when={isResumeEditRoute(route())}>
+              <ResumeEditorPage
+                adapter={props.adapter}
+                onBack={() => navigateToRoute("show/resume")}
+                onOpenPrint={() => navigateToRoute("show/resume/print")}
+              />
+            </Show>
+            <Show when={route() === "show/memvfs"}>
+              <MemvfsDemo memvfs={props.adapter.memvfs} />
+            </Show>
+            <Show when={route() === "show/shamrock"}>
+              <ShamrockBattlePage />
             </Show>
             <Show when={filePathFromRoute(route())} keyed>
               {(path) => (
@@ -127,7 +181,16 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
                 </Show>
               )}
             </Show>
-            <Show when={route() !== "show/home" && route() !== "show/resume" && !filePathFromRoute(route())}>
+            <Show
+              when={
+                route() !== "show/home" &&
+                route() !== "show/resume" &&
+                route() !== "show/memvfs" &&
+                route() !== "show/shamrock" &&
+                !isResumeEditRoute(route()) &&
+                !filePathFromRoute(route())
+              }
+            >
               <UnsupportedFilePage adapter={props.adapter} path={route()} />
             </Show>
           </Show>

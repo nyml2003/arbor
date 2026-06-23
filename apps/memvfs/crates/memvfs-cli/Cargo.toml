@@ -1,0 +1,15 @@
+[package]
+name = "memvfs-cli"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "memvfs"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+memvfs-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

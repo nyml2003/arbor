@@ -1,4 +1,5 @@
 import type { FileEntry } from "../types";
+import type { MemvfsApi } from "../../shared/memvfs";
 
 export type CapabilityStatus = "supported" | "unsupported";
 
@@ -32,4 +33,5 @@ export interface PlatformAdapter {
   listStaticPages(): StaticPageEntry[];
   readResumeJson(): Promise<unknown>;
   saveResumeJson(value: unknown): Promise<PlatformActionResult>;
+  memvfs: MemvfsApi;
 }

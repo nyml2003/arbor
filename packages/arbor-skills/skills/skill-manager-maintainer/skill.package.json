@@ -1,0 +1,16 @@
+{
+  "schema": "arbor.skill-package/v1",
+  "id": "arbor/skill-manager-maintainer",
+  "name": "skill-manager-maintainer",
+  "version": "1.0.0",
+  "format": "agent-skill",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/core-cli-architecture.md",
+    "references/skill-package-structure.md",
+    "references/source-safety.md",
+    "references/validation-stories.md",
+    "skill.package.json"
+  ]
+}

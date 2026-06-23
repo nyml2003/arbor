@@ -21,7 +21,7 @@ Arbor 现在按两条线推进：
 当前默认策略是孵化器 monorepo：
 
 - `apps/container`、`workspace/*` 是 Arbor 本体，长期留在本仓库。
-- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs` 是孵化项目，先留在本仓库。
+- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock` 是孵化项目，先留在本仓库。
 - `packages/arbor-ui-*`、`packages/skill-manager-core` 是可复用基础设施，先跟随使用方一起演化。
 - 只有当一个项目有独立用户、独立发布节奏、独立构建测试，并且不再依赖 Arbor 私有数据时，才拆独立 git 仓库。
 
@@ -218,19 +218,53 @@ Arbor 现在按两条线推进：
 
 ---
 
+## Build 域实用工具：Aster
+
+**目标**：提供一个本地 agent CLI，先只调用 DeepSeek API 完成日常问答。
+
+**定位**：
+- 它是本地 AI CLI 孵化工具，不是 Arbor 主容器能力。
+- 当前版本负责把命令行 prompt 转成 DeepSeek chat completion 请求，并支持进程内连续对话。
+- 不读取本地文件，不执行命令，不保存会话。
+
+**当前阶段**：
+- 已有 TypeScript CLI、参数解析、DeepSeek HTTP 调用、流式输出、终端 Markdown 渲染、本地 skill 注入和包级测试。
+- 默认模型使用 `deepseek-v4-flash`。
+- 后续再评估是否增加持久化会话、多模型配置或本地工具能力。
+
+---
+
+## Build 域游戏引擎实验：Shamrock
+
+**目标**：孵化一个 Rust 宝可梦对战模拟引擎，先保留可测试、可回放、可扩展的 1v1 单打核心。
+
+**定位**：
+- 它是独立 Rust workspace 孵化项目，不是 Arbor 主容器内置页面。
+- `battle-core`、`battle-data`、`battle-format`、`battle-mechanics`、`battle-view`、`battle-replay`、`battle-cli` 保持单向依赖边界。
+- 后续如果接入 `apps/container`，优先通过 `battle-view` 的 view-model 和 replay JSON 边界接入，不让 UI 直接依赖 core 内部状态。
+
+**当前阶段**：
+- 已从 `work-context/repos/shamrock` 迁入 `apps/shamrock`。
+- 已保留 Gen1 demo 数据包、golden replay 和 CLI。
+- 本次迁移不修改 container，不新增 IPC。
+
+---
+
 ## Build 域基础设施：Skill 管理器
 
-**目标**：设计 agent skill 的安装、校验和 lockfile 规范。
+**目标**：实现 agent skill 的安装、校验和 lockfile 规范。
 
 **定位**：
 - 它管理的是 agent skill 工作流包，不是 npm、uv 或 Maven 语言包。
 - v1 模型是 `SourceSkill -> SkillPackage -> InstalledSkill`。
-- 目前先保留在 `packages/skill-manager-core/README.md` 中作为规范和未来实现入口。
+- `packages/skill-manager-core` 承载领域逻辑，`packages/skill-manager-cli` 承载 CLI 壳。
 
 **当前阶段**：
 - 已写清 `arbor.skills.json`、`arbor.skills.lock.json`、`skill.package.json` 的职责。
-- 还没有实现 CLI 和 core 代码。
-- 不拆仓。等 core/cli 可运行并有真实安装场景后再评估。
+- 已实现 TypeScript core/cli v1：path source、严格版本校验、非受管 Skill 元数据生成、copy 安装、content hash、lockfile、prune。
+- 已新增 `packages/arbor-skills` 作为 Arbor 自维护 Skill 集合，用它试运行本地 path source 安装。
+- Git、tarball、npm source 仍停留在规范和校验层，后续按同一 source port 接入。
+- 不拆仓。等真实安装场景稳定后再评估。
 
 ---
 

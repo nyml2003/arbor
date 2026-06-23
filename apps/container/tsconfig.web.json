@@ -13,7 +13,8 @@
     "src/renderer/**/*.d.ts",
     "src/web/**/*.ts",
     "src/web/**/*.tsx",
-    "src/preload/**/*.d.ts"
+    "src/preload/**/*.d.ts",
+    "src/shared/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

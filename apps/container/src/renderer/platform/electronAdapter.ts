@@ -31,6 +31,8 @@ export function createElectronAdapter(): PlatformAdapter {
       return [
         { id: "show/home", title: "Show", kind: "page" },
         { id: "show/resume", title: "Resume", kind: "page" },
+        { id: "show/memvfs", title: "memvfs", kind: "page" },
+        { id: "show/shamrock", title: "Shamrock", kind: "page" },
       ];
     },
     async readResumeJson() {
@@ -46,5 +48,6 @@ export function createElectronAdapter(): PlatformAdapter {
       );
       return { ok: true };
     },
+    memvfs: window.arborAPI.memvfs,
   };
 }

@@ -127,7 +127,7 @@
 | koa-backend | 🗑 可删 | Koa 后端 |
 | next-ventus-container | 🗑 可删 | pnpm monorepo |
 | others/MatrixSlow | 🗑 可删 | 跟书实现 ML 框架 |
-| resume | 🗑 可删 | TS/React 简历 |
+| resume | ✅ 已融入 Arbor | 简历生成工具，内容迁入 `workspace/show/resume/resume.json`，容器内渲染 |
 | tensorslow_release | 🗑 可删 | Python 解释器 |
 | vue-tsx-tailwind | 🗑 可删 | Vue3 模板 |
 
@@ -189,6 +189,6 @@ jue, Lumina, rust-web-demo, vscode-git-commit-plugin
 ai, common-event-bus, js, leetcode, my-mh, my-task, porygon, quickjs,
 rust-script, rustify_web, uemerald-memhack, zipfiles,
 blog_back, demo-nest, deneb, game, java, koa-backend,
-leetcode(project), next-ventus-container, resume, tensorslow_release,
+leetcode(project), next-ventus-container, tensorslow_release,
 vue-tsx-tailwind, others/MatrixSlow
 ```

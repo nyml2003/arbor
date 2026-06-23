@@ -27,6 +27,7 @@
 | `kaubo-language-engine.md` | kaubo | C++ | 自研语言引擎：手写 Lexer/Parser/ByteCode VM/Object 模型/GC |
 | `ipc-layer-pattern.md` | Arbor (Phase 1) | TS | Electron IPC 四层管线：zod schema → handler → bridge → API |
 | `solidjs-file-tree.md` | Arbor (Phase 1) | TS | createResource + Signal 递归文件树组件 |
+| `rust-native-gui-dsl.md` | KeyDock | Rust | 安全 Rust 组件 DSL、primitive tree、平台适配层、unsafe 边界 |
 
 ## 按主题
 
@@ -41,6 +42,7 @@
 | 构建/依赖管理 | `monorepo-dependency-graph.md` |
 | 响应式/VDOM | `minimal-reactivity-vdom.md` |
 | IPC 通信 | `ipc-layer-pattern.md` |
+| 原生 GUI | `rust-native-gui-dsl.md` |
 | 语言引擎 | `kaubo-language-engine.md` |
 | 校验/质量 | `skill-validation-pipeline.md` |
 

@@ -1,0 +1,9 @@
+[package]
+name = "battle-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+battle-data = { path = "../battle-data" }
+battle-mechanics = { path = "../battle-mechanics" }
+serde = { workspace = true }

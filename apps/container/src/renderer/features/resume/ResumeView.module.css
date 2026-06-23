@@ -3,20 +3,90 @@
   --resume-muted: #475569;
   --resume-soft: #64748b;
   --resume-accent: #2563eb;
+  --resume-accent-hover: #1d4ed8;
   --resume-accent-dark: #1e3a8a;
   --resume-accent-soft: #dbeafe;
   --resume-teal: #0f766e;
   --resume-teal-soft: #ccfbf1;
   --resume-border: #b7c4d5;
   --resume-rule: #8aa4c2;
+  --resume-rule-fade: #d7e3ef;
   --resume-page: #fffdf8;
   --resume-canvas: #e8edf3;
+  --resume-divider: #a9b8ca;
+  --resume-list: #243447;
+  --resume-toolbar-border: #c5d0dd;
+  --resume-toolbar-bg: #ffffff;
+  --resume-secondary-border: #b8c7d8;
+  --resume-secondary-bg: #f8fafc;
+  --resume-tag-primary-border: #9cc8d6;
+  --resume-tag-primary-bg: #ccfbf1;
+  --resume-tag-primary-ink: #0f4f4a;
+  --resume-tag-alt-border: #aac3ef;
+  --resume-tag-alt-bg: #dbeafe;
+  --resume-tag-alt-ink: #1e3a8a;
 
   min-height: 100%;
   overflow: auto;
   padding: 24px;
   background: var(--resume-canvas);
   color: var(--resume-ink);
+}
+
+.shell[data-resume-theme="editorial"] {
+  --resume-ink: #18181b;
+  --resume-muted: #52525b;
+  --resume-soft: #71717a;
+  --resume-accent: #be123c;
+  --resume-accent-hover: #9f1239;
+  --resume-accent-dark: #7f1d1d;
+  --resume-accent-soft: #ffe4e6;
+  --resume-teal: #9a3412;
+  --resume-teal-soft: #ffedd5;
+  --resume-border: #d6b5b5;
+  --resume-rule: #be123c;
+  --resume-rule-fade: #f5d0d4;
+  --resume-page: #fffafa;
+  --resume-canvas: #f0e7e7;
+  --resume-divider: #c4a1a1;
+  --resume-list: #27272a;
+  --resume-toolbar-border: #e2b7bf;
+  --resume-secondary-border: #e4b7bd;
+  --resume-secondary-bg: #fff1f2;
+  --resume-tag-primary-border: #fdba74;
+  --resume-tag-primary-bg: #ffedd5;
+  --resume-tag-primary-ink: #7c2d12;
+  --resume-tag-alt-border: #fda4af;
+  --resume-tag-alt-bg: #ffe4e6;
+  --resume-tag-alt-ink: #881337;
+}
+
+.shell[data-resume-theme="signal"] {
+  --resume-ink: #0f172a;
+  --resume-muted: #3f4f5f;
+  --resume-soft: #64748b;
+  --resume-accent: #047857;
+  --resume-accent-hover: #065f46;
+  --resume-accent-dark: #064e3b;
+  --resume-accent-soft: #d1fae5;
+  --resume-teal: #0369a1;
+  --resume-teal-soft: #e0f2fe;
+  --resume-border: #aec9c0;
+  --resume-rule: #0f766e;
+  --resume-rule-fade: #c7eadf;
+  --resume-page: #fbfffc;
+  --resume-canvas: #e4eeeb;
+  --resume-divider: #9bb4ad;
+  --resume-list: #1f2937;
+  --resume-toolbar-border: #b8d5cc;
+  --resume-secondary-border: #a7c9bd;
+  --resume-secondary-bg: #f0fdfa;
+  --resume-tag-primary-border: #67e8f9;
+  --resume-tag-primary-bg: #ecfeff;
+  --resume-tag-primary-ink: #155e75;
+  --resume-tag-alt-border: #86efac;
+  --resume-tag-alt-bg: #dcfce7;
+  --resume-tag-alt-ink: #166534;
 }
 
 .printShell {
@@ -33,9 +103,9 @@
   width: min(8.27in, 100%);
   margin: 0 auto 14px;
   padding: 10px 12px;
-  border: 1px solid #c5d0dd;
+  border: 1px solid var(--resume-toolbar-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--resume-toolbar-bg);
   color: var(--resume-ink);
   box-shadow: 0 12px 28px rgb(15 23 42 / 12%);
 }
@@ -72,12 +142,12 @@
 }
 
 .primaryAction:hover {
-  background: #1d4ed8;
+  background: var(--resume-accent-hover);
 }
 
 .secondaryAction {
-  border: 1px solid #b8c7d8;
-  background: #f8fafc;
+  border: 1px solid var(--resume-secondary-border);
+  background: var(--resume-secondary-bg);
   color: var(--resume-accent-dark);
 }
 
@@ -140,7 +210,7 @@
 .rowMain > span::before {
   content: "|";
   margin: 0 8px;
-  color: #a9b8ca;
+  color: var(--resume-divider);
 }
 
 .contactLabel {
@@ -179,7 +249,7 @@
   content: "";
   height: 1px;
   flex: 1;
-  background: linear-gradient(90deg, var(--resume-rule), #d7e3ef);
+  background: linear-gradient(90deg, var(--resume-rule), var(--resume-rule-fade));
 }
 
 .sectionBody {
@@ -244,9 +314,9 @@
   min-height: 16px;
   padding: 1px 6px;
   border-radius: 999px;
-  border: 1px solid #9cc8d6;
-  background: var(--resume-teal-soft);
-  color: #0f4f4a;
+  border: 1px solid var(--resume-tag-primary-border);
+  background: var(--resume-tag-primary-bg);
+  color: var(--resume-tag-primary-ink);
   font-size: 9.5px;
   font-weight: 700;
   line-height: 1.3;
@@ -254,16 +324,16 @@
 }
 
 .tag:nth-child(2n) {
-  border-color: #aac3ef;
-  background: var(--resume-accent-soft);
-  color: var(--resume-accent-dark);
+  border-color: var(--resume-tag-alt-border);
+  background: var(--resume-tag-alt-bg);
+  color: var(--resume-tag-alt-ink);
 }
 
 .bulletList,
 .compactList {
   margin: 3px 0 0 18px;
   padding: 0;
-  color: #243447;
+  color: var(--resume-list);
 }
 
 .compactList {

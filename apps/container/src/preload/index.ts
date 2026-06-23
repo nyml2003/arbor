@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IpcChannels } from "../shared/channels";
+import type { MemvfsApi } from "../shared/memvfs";
 
 export interface FileEntry {
   name: string;
@@ -22,6 +23,13 @@ const api = {
     selectDirectory: (): Promise<string | null> =>
       ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_DIRECTORY),
   },
+  memvfs: {
+    status: () => ipcRenderer.invoke(IpcChannels.MEMVFS_STATUS),
+    start: () => ipcRenderer.invoke(IpcChannels.MEMVFS_START),
+    stop: () => ipcRenderer.invoke(IpcChannels.MEMVFS_STOP),
+    reset: () => ipcRenderer.invoke(IpcChannels.MEMVFS_RESET),
+    request: (request) => ipcRenderer.invoke(IpcChannels.MEMVFS_REQUEST, request),
+  } satisfies MemvfsApi,
 };
 
 contextBridge.exposeInMainWorld("arborAPI", api);

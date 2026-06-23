@@ -74,7 +74,6 @@ Remove-Item -Recurse -Force C:\Users\nyml\code\untitled3
 # D 盘 — 全部删除
 Remove-Item -Recurse -Force D:\code\project\blog_back
 Remove-Item -Recurse -Force D:\code\project\next-ventus-container
-Remove-Item -Recurse -Force D:\code\project\resume
 Remove-Item -Recurse -Force D:\code\project\deneb
 Remove-Item -Recurse -Force D:\code\project\vue-tsx-tailwind
 Remove-Item -Recurse -Force D:\code\project\changfen

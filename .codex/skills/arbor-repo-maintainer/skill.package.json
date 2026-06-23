@@ -1,0 +1,16 @@
+{
+  "schema": "arbor.skill-package/v1",
+  "id": "arbor/arbor-repo-maintainer",
+  "name": "arbor-repo-maintainer",
+  "version": "1.0.0",
+  "format": "agent-skill",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/experience-capture.md",
+    "references/repository-governance.md",
+    "references/typescript-package-rules.md",
+    "references/validation-rules.md",
+    "skill.package.json"
+  ]
+}

@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  apps/aster:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   apps/capture:
     dependencies:
       '@tauri-apps/api':
@@ -38,6 +47,9 @@ importers:
       solid-js:
         specifier: ^1.9.5
         version: 1.9.13
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
       zod:
         specifier: ^3.24.0
         version: 3.25.76
@@ -72,6 +84,34 @@ importers:
       vite-plugin-solid:
         specifier: ^2.11.0
         version: 2.11.12(solid-js@1.9.13)(vite@6.4.3(@types/node@25.9.2)(jiti@2.7.0))
+
+  packages/arbor-skills:
+    devDependencies:
+      '@arbor/skill-manager-cli':
+        specifier: workspace:*
+        version: link:../skill-manager-cli
+
+  packages/skill-manager-cli:
+    dependencies:
+      '@arbor/skill-manager-core':
+        specifier: workspace:*
+        version: link:../skill-manager-core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/skill-manager-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 
@@ -1840,6 +1880,9 @@ packages:
   temp@0.9.4:
     resolution: {integrity: sha512-yYrrsWnrXMcdsnu/7YMYAofM1ktpL5By7vZhf15CrXijWWrEYZks5AXBudalfSWJLlnen/QUJUB5aoB0kqZUGA==}
     engines: {node: '>=6.0.0'}
+
+  three@0.184.0:
+    resolution: {integrity: sha512-wtTRjG92pM5eUg/KuUnHsqSAlPM296brTOcLgMRqEeylYTh/CdtvKUvCyyCQTzFuStieWxvZb8mVTMvdPyUpxg==}
 
   tiny-async-pool@1.3.0:
     resolution: {integrity: sha512-01EAw5EDrcVrdgyCLgoSPvqznC0sVxDSVeiOz09FUpjh71G79VCqneOr+xvt7T1r76CF6ZZfPjHorN2+d+3mqA==}
@@ -3929,6 +3972,8 @@ snapshots:
     dependencies:
       mkdirp: 0.5.6
       rimraf: 2.6.3
+
+  three@0.184.0: {}
 
   tiny-async-pool@1.3.0:
     dependencies:

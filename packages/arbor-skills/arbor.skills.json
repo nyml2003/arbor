@@ -1,0 +1,78 @@
+{
+  "schema": "arbor.skills/v1",
+  "targetDir": ".installed-skills",
+  "skills": [
+    {
+      "id": "arbor/plain-tech-writing-cn",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/plain-tech-writing-cn"
+      }
+    },
+    {
+      "id": "arbor/skill-manager-maintainer",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/skill-manager-maintainer"
+      }
+    },
+    {
+      "id": "arbor/arbor-repo-maintainer",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/arbor-repo-maintainer"
+      }
+    },
+    {
+      "id": "arbor/arbor-skill-manager-usage",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/arbor-skill-manager-usage"
+      }
+    },
+    {
+      "id": "arbor/domain-core-architect",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/domain-core-architect"
+      }
+    },
+    {
+      "id": "arbor/electron-solid-workbench",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/electron-solid-workbench"
+      }
+    },
+    {
+      "id": "arbor/rust-native-gui-tool",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/rust-native-gui-tool"
+      }
+    },
+    {
+      "id": "arbor/tauri-rust-system-tool",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/tauri-rust-system-tool"
+      }
+    },
+    {
+      "id": "arbor/knowledge-pattern-maintainer",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/knowledge-pattern-maintainer"
+      }
+    }
+  ]
+}

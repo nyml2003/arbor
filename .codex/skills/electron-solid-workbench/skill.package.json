@@ -1,0 +1,15 @@
+{
+  "schema": "arbor.skill-package/v1",
+  "id": "arbor/electron-solid-workbench",
+  "name": "electron-solid-workbench",
+  "version": "1.0.0",
+  "format": "agent-skill",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/ipc-contracts.md",
+    "references/solid-file-tree.md",
+    "references/workbench-validation.md",
+    "skill.package.json"
+  ]
+}

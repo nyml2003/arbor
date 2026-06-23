@@ -1,5 +1,7 @@
 export {};
 
+import type { MemvfsApi } from "../shared/memvfs";
+
 interface FileEntry {
   name: string;
   path: string;
@@ -18,6 +20,7 @@ declare global {
       dialog: {
         selectDirectory(): Promise<string | null>;
       };
+      memvfs: MemvfsApi;
     };
   }
 }

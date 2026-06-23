@@ -1,4 +1,5 @@
 import resumeJson from "../../../../../workspace/show/resume/resume.json";
+import { createMemoryMemvfsApi } from "../features/memvfs/memoryBackend";
 import type { FileEntry } from "../types";
 import type { PlatformAdapter } from "./types";
 
@@ -6,7 +7,11 @@ const staticEntries: FileEntry[] = [
   { name: "show", path: "show", isDirectory: true },
   { name: "resume", path: "show/resume", isDirectory: true },
   { name: "resume.json", path: "show/resume/resume.json", isDirectory: false },
+  { name: "memvfs", path: "show/memvfs", isDirectory: false },
+  { name: "shamrock", path: "show/shamrock", isDirectory: false },
 ];
+
+const webMemvfs = createMemoryMemvfsApi();
 
 export function createWebAdapter(): PlatformAdapter {
   return {
@@ -25,7 +30,10 @@ export function createWebAdapter(): PlatformAdapter {
     getInitialRoute() {
       const path = window.location.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
       if (path === "resume/print" || path === "show/resume/print") return "show/resume/print";
+      if (path === "resume/edit" || path === "show/resume/edit") return "show/resume/edit";
       if (path === "resume" || path === "show/resume") return "show/resume";
+      if (path === "memvfs" || path === "show/memvfs") return "show/memvfs";
+      if (path === "shamrock" || path === "show/shamrock") return "show/shamrock";
       return "show/home";
     },
     async getDefaultWorkspace() {
@@ -36,7 +44,12 @@ export function createWebAdapter(): PlatformAdapter {
         return staticEntries.filter((entry) => !entry.path.includes("/"));
       }
       if (path === "show") {
-        return staticEntries.filter((entry) => entry.path === "show/resume");
+        return staticEntries.filter(
+          (entry) =>
+            entry.path === "show/resume" ||
+            entry.path === "show/memvfs" ||
+            entry.path === "show/shamrock",
+        );
       }
       if (path === "show/resume") {
         return staticEntries.filter((entry) => entry.path === "show/resume/resume.json");
@@ -56,6 +69,8 @@ export function createWebAdapter(): PlatformAdapter {
       return [
         { id: "show/home", title: "Show", kind: "page" },
         { id: "show/resume", title: "Resume", kind: "page" },
+        { id: "show/memvfs", title: "memvfs", kind: "page" },
+        { id: "show/shamrock", title: "Shamrock", kind: "page" },
       ];
     },
     async readResumeJson() {
@@ -67,5 +82,6 @@ export function createWebAdapter(): PlatformAdapter {
         reason: "Web 版不能直接保存到 workspace，请下载 JSON 后替换源文件并重新构建。",
       };
     },
+    memvfs: webMemvfs,
   };
 }

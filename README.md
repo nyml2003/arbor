@@ -35,8 +35,11 @@ Arbor 已经进入多项目孵化阶段：
 - `apps/capture`：Windows 截图工具，Tauri 2 + Rust-first。
 - `apps/keydock`、`apps/clipdock`：Rust 原生 GUI 工具样本。
 - `apps/memvfs`：Rust in-memory VFS daemon/CLI 实验。
+- `apps/aster`：调用 DeepSeek API 的本地 agent CLI，支持流式输出、连续对话、终端 Markdown 渲染和本地 skill 注入。
+- `apps/shamrock`：Rust 宝可梦对战模拟引擎，保留 core/view/replay/CLI 边界，后续再评估接入容器。
 - `packages/arbor-ui-core`、`packages/arbor-ui-windows`：Rust 原生 GUI 基础层。
-- `packages/skill-manager-core`：agent skill 管理器设计。
+- `packages/skill-manager-core`、`packages/skill-manager-cli`：agent skill 管理器 v1，已支持 path source、显式版本校验、安装、lock 和 prune。
+- `packages/arbor-skills`：Arbor 自维护 Skill 集合，用于试运行 skill manager。
 - `workspace/learn`、`workspace/manage`、`workspace/show`：经验、治理和展示内容。
 
 ## 怎么开始

@@ -2,9 +2,14 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 import { is } from "@electron-toolkit/utils";
-import { registerAllIpcHandlers, setWorkspaceRoot } from "./ipc/index";
+import { disposeMemvfsDaemon, registerAllIpcHandlers, setWorkspaceRoot } from "./ipc/index";
 
 function resolveDefaultWorkspace(): string {
+  const configuredWorkspace = process.env["ARBOR_WORKSPACE_ROOT"];
+  if (configuredWorkspace && existsSync(configuredWorkspace)) {
+    return resolve(configuredWorkspace);
+  }
+
   // In dev mode, __dirname = apps/container/dist/main
   // Go up to project root: dist/main → dist → container → apps → arbor
   const candidates = [
@@ -85,4 +90,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  disposeMemvfsDaemon();
 });

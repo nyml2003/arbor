@@ -1,12 +1,14 @@
 import { For, Show, createEffect, createResource, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import { parseResumeValue } from "./resumeData";
+import { resolveResumeThemeId } from "./themes";
 import type { PlatformAdapter } from "../../platform/types";
 import type { ResumeDocument } from "./types";
 import styles from "./ResumeView.module.css";
 
 interface ResumeViewProps {
   adapter: PlatformAdapter;
+  onEdit?: () => void;
   onOpenPrint?: () => void;
   onPrint?: () => void;
 }
@@ -79,6 +81,7 @@ function BulletList(props: { items: string[]; compact?: boolean }) {
 function ResumeToolbar(props: {
   variant: "screen" | "print";
   onBack?: (() => void) | undefined;
+  onEdit?: (() => void) | undefined;
   onOpenPrint?: (() => void) | undefined;
   onPrint: () => void;
 }) {
@@ -92,6 +95,11 @@ function ResumeToolbar(props: {
         {props.onBack ? (
           <button type="button" class={styles["secondaryAction"]} onClick={props.onBack}>
             返回简历
+          </button>
+        ) : null}
+        {props.onEdit ? (
+          <button type="button" class={styles["secondaryAction"]} onClick={props.onEdit}>
+            创作
           </button>
         ) : null}
         {props.onOpenPrint ? (
@@ -112,8 +120,13 @@ export function ResumeDocumentView(props: {
   toolbar?: JSX.Element;
   printMode?: boolean;
 }) {
+  const theme = () => resolveResumeThemeId(props.resume.theme);
+
   return (
-    <main class={`${styles["shell"]} ${props.printMode ? styles["printShell"] : ""}`}>
+    <main
+      class={`${styles["shell"]} ${props.printMode ? styles["printShell"] : ""}`}
+      data-resume-theme={theme()}
+    >
       {props.toolbar}
       <article class={styles["page"]} data-testid="resume-page">
         <header class={styles["header"]}>
@@ -237,6 +250,7 @@ export function ResumeView(props: ResumeViewProps) {
             toolbar={
               <ResumeToolbar
                 variant="screen"
+                onEdit={props.onEdit}
                 onOpenPrint={props.onOpenPrint}
                 onPrint={print}
               />

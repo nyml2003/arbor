@@ -1,0 +1,16 @@
+{
+  "schema": "arbor.skill-package/v1",
+  "id": "arbor/tauri-rust-system-tool",
+  "name": "tauri-rust-system-tool",
+  "version": "1.0.0",
+  "format": "agent-skill",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/capture-validation.md",
+    "references/frontend-loading.md",
+    "references/product-boundary.md",
+    "references/rust-tauri-boundaries.md",
+    "skill.package.json"
+  ]
+}

@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "crates/battle-data",
+    "crates/battle-core",
+    "crates/battle-mechanics",
+    "crates/battle-format",
+    "crates/battle-view",
+    "crates/battle-replay",
+    "crates/battle-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

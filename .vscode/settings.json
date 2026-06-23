@@ -1,0 +1,7 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "apps/memvfs/Cargo.toml",
+    "apps/capture/src-tauri/Cargo.toml",
+    "apps/keydock/Cargo.toml"
+  ]
+}

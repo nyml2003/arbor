@@ -1,0 +1,37 @@
+{
+  "name": "@arbor/skill-manager-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Arbor agent skill manager CLI",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
+  "bin": {
+    "arbor": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "pnpm run build",
+    "build": "pnpm --filter @arbor/skill-manager-core build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @arbor/skill-manager-core build && tsc -p tsconfig.test.json --noEmit",
+    "test": "pnpm --filter @arbor/skill-manager-core build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "pack:check": "node scripts/pack-check.mjs",
+    "install:global:local": "node scripts/smoke-global-install.mjs"
+  },
+  "dependencies": {
+    "@arbor/skill-manager-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^5.9.3"
+  }
+}

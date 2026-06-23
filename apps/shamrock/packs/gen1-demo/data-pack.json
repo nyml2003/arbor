@@ -1,0 +1,25 @@
+{
+  "id": "gen1-demo",
+  "species": [
+    { "id": 0, "name": "Pikachu", "primary_type": "Electric", "secondary_type": null, "stats": { "hp": 1135, "attack": 55, "defense": 140, "speed": 90 } },
+    { "id": 1, "name": "Charmander", "primary_type": "Fire", "secondary_type": null, "stats": { "hp": 1139, "attack": 2, "defense": 143, "speed": 65 } },
+    { "id": 2, "name": "Squirtle", "primary_type": "Water", "secondary_type": null, "stats": { "hp": 1144, "attack": 8, "defense": 165, "speed": 43 } },
+    { "id": 3, "name": "Bulbasaur", "primary_type": "Grass", "secondary_type": null, "stats": { "hp": 1145, "attack": 9, "defense": 149, "speed": 45 } }
+  ],
+  "moves": [
+    { "id": 0, "name": "Tackle", "element_type": "Normal", "power": 40, "accuracy": 100, "priority": 0, "effect": "Damage" },
+    { "id": 1, "name": "Quick Attack", "element_type": "Normal", "power": 40, "accuracy": 100, "priority": 1, "effect": "Damage" },
+    { "id": 2, "name": "Thunder Shock", "element_type": "Electric", "power": 40, "accuracy": 100, "priority": 0, "effect": "Damage" },
+    { "id": 3, "name": "Ember", "element_type": "Fire", "power": 40, "accuracy": 100, "priority": 0, "effect": "Damage" },
+    { "id": 4, "name": "Water Gun", "element_type": "Water", "power": 40, "accuracy": 100, "priority": 0, "effect": "Damage" },
+    { "id": 5, "name": "Vine Whip", "element_type": "Grass", "power": 45, "accuracy": 100, "priority": 0, "effect": "Damage" },
+    { "id": 6, "name": "Growl", "element_type": "Normal", "power": 0, "accuracy": 100, "priority": 0, "effect": { "ModifyStat": { "target": "Opponent", "stat": "Attack", "stages": -1 } } },
+    { "id": 7, "name": "Thunder Wave", "element_type": "Electric", "power": 0, "accuracy": 100, "priority": 0, "effect": { "ApplyStatus": { "target": "Opponent", "status": "Paralyzed" } } },
+    { "id": 8, "name": "Poison Powder", "element_type": "Grass", "power": 0, "accuracy": 100, "priority": 0, "effect": { "ApplyStatus": { "target": "Opponent", "status": "Poisoned" } } },
+    { "id": 9, "name": "Recover", "element_type": "Normal", "power": 0, "accuracy": 100, "priority": 0, "effect": { "HealPercent": { "target": "User", "percent": 50 } } },
+    { "id": 10, "name": "Sunny Day", "element_type": "Fire", "power": 0, "accuracy": 100, "priority": 0, "effect": { "SetWeather": { "weather": "Sunny", "turns": 3 } } },
+    { "id": 11, "name": "Rain Dance", "element_type": "Water", "power": 0, "accuracy": 100, "priority": 0, "effect": { "SetWeather": { "weather": "Rainy", "turns": 3 } } },
+    { "id": 12, "name": "Roar", "element_type": "Normal", "power": 0, "accuracy": 100, "priority": 1, "effect": { "ForceSwitch": { "target": "Opponent" } } },
+    { "id": 13, "name": "Slam", "element_type": "Normal", "power": 55, "accuracy": 85, "priority": 0, "effect": "Damage" }
+  ]
+}

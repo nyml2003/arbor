@@ -47,7 +47,7 @@
 | WatchDesk | TS | (同上) | — | — |
 | project/blog_back | Python/JS | Django+Vue 博客 | 透出 | 归档 |
 | project/next-ventus-container | TS | pnpm 博客 monorepo | 透出 | 归档 |
-| project/resume | TS/React | 简历/展示站 | 透出 | 归档 |
+| project/resume | TS/React | 简历生成工具 | 透出 | 已融入 `workspace/show/resume`，旧项目仅作参考 |
 | project/deneb | TS/Vue | 微前端壳 | — | 归档 |
 | project/visual-kaubo | TS/Vue | 代码可视化 | 迭代 | 保留参考 |
 | project/vue-tsx-tailwind | TS/Vue | Vue3 模板 | — | 归档 |
@@ -78,7 +78,7 @@
 
 | Phase | 删除 | 归档（移走/标记） |
 |-------|------|------------------|
-| 1 | — | Aura、ventus(C:)、project/blog_back、project/next-ventus-container、project/resume、project/deneb、project/vue-tsx-tailwind |
+| 1 | — | Aura、ventus(C:)、project/blog_back、project/next-ventus-container、project/deneb、project/vue-tsx-tailwind |
 | 2 | workshop、work-context、work-context-2、tasks、my-task-1、skills | materials、repos |
 | 3 | knowledge-candidates | egui、jue、dll_csv_transformer、my-mh(C:)、toml_resume、hub、untitled~3、各种 D:\code 的非核心项目 |
 | 4 | WatchDesk、ventus- | — |
