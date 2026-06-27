@@ -30,6 +30,7 @@ export function createElectronAdapter(): PlatformAdapter {
     listStaticPages() {
       return [
         { id: "show/home", title: "Show", kind: "page" },
+        { id: "manage/tasks", title: "Manage", kind: "page" },
         { id: "show/resume", title: "Resume", kind: "page" },
         { id: "show/memvfs", title: "memvfs", kind: "page" },
         { id: "show/shamrock", title: "Shamrock", kind: "page" },
@@ -48,6 +49,7 @@ export function createElectronAdapter(): PlatformAdapter {
       );
       return { ok: true };
     },
+    manage: window.arborAPI.manage,
     memvfs: window.arborAPI.memvfs,
   };
 }

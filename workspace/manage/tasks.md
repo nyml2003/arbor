@@ -1,6 +1,6 @@
 # Arbor 任务清单
 
-最后更新：2026-06-07
+最后更新：2026-06-23
 
 ---
 
@@ -116,15 +116,18 @@ Remove-Item -Recurse -Force D:\code\leetcode
 
 ---
 
-## 第三优先级：Arbor 容器建设
+## 当前主线：Arbor 引擎闭环
 
-- [ ] **Markdown 渲染预览** — 点 `.md` 文件时渲染为 HTML 而非纯文本
-- [ ] 语法高亮（代码块）
-- [ ] **静态站点导出**（Phase 4 核心交付物）— 文件树 → 可浏览网页
+- [x] 修复根验证基线：`pnpm typecheck` 和 `pnpm test`
+- [x] 容器 Markdown 预览：点击 `.md` 文件显示结构化预览
+- [x] 管理域 v1：`@arbor/manage-core`、`@arbor/manage-cli`、容器 Manage 面板
+- [ ] 静态站点导出（Phase 4 核心交付物）：文件树 → 可浏览网页
+- [ ] 统一 CLI 入口：评估 `arbor` 如何同时承载 skill manager 和 manage 命令
+- [ ] Manage v2：删除任务、状态筛选、从 `tasks.md` 迁移仍有效的待办
 
 ---
 
-## 第四优先级：build/ 分支规划
+## 后续：build/ 分支规划
 
 - [ ] 决定 ObolosFS 是否移入 Arbor 的 `packages/`
 - [ ] 决定透出的最终形态（网站？桌面应用导出？）

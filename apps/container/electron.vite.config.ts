@@ -2,6 +2,8 @@ import { defineConfig } from "electron-vite";
 import solid from "vite-plugin-solid";
 import { resolve } from "path";
 
+const repoRoot = resolve(__dirname, "../..");
+
 export default defineConfig({
   main: {
     build: {
@@ -23,7 +25,7 @@ export default defineConfig({
     },
     server: {
       fs: {
-        allow: [".."],
+        allow: [repoRoot],
       },
     },
   },

@@ -1,0 +1,22 @@
+{
+  "name": "@arbor/manage-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Arbor manage CLI",
+  "private": true,
+  "bin": {
+    "arbor-manage": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "pnpm --dir ../manage-core build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --dir ../manage-core build && tsc -p tsconfig.test.json --noEmit",
+    "test": "pnpm --dir ../manage-core build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
+  },
+  "dependencies": {
+    "@arbor/manage-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,6 +1,7 @@
 export {};
 
 import type { MemvfsApi } from "../shared/memvfs";
+import type { ManageApi } from "../shared/manage";
 
 interface FileEntry {
   name: string;
@@ -20,6 +21,7 @@ declare global {
       dialog: {
         selectDirectory(): Promise<string | null>;
       };
+      manage: ManageApi;
       memvfs: MemvfsApi;
     };
   }

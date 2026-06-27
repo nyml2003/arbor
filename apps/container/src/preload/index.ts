@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IpcChannels } from "../shared/channels";
+import type { ManageApi } from "../shared/manage";
 import type { MemvfsApi } from "../shared/memvfs";
 
 export interface FileEntry {
@@ -23,6 +24,13 @@ const api = {
     selectDirectory: (): Promise<string | null> =>
       ipcRenderer.invoke(IpcChannels.DIALOG_SELECT_DIRECTORY),
   },
+  manage: {
+    list: () => ipcRenderer.invoke(IpcChannels.MANAGE_LIST),
+    create: (title) => ipcRenderer.invoke(IpcChannels.MANAGE_CREATE, { title }),
+    update: (id, title) => ipcRenderer.invoke(IpcChannels.MANAGE_UPDATE, { id, title }),
+    complete: (id) => ipcRenderer.invoke(IpcChannels.MANAGE_COMPLETE, { id }),
+    restore: (id) => ipcRenderer.invoke(IpcChannels.MANAGE_RESTORE, { id }),
+  } satisfies ManageApi,
   memvfs: {
     status: () => ipcRenderer.invoke(IpcChannels.MEMVFS_STATUS),
     start: () => ipcRenderer.invoke(IpcChannels.MEMVFS_START),

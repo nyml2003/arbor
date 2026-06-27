@@ -8,9 +8,9 @@
     "capture:dev": "pnpm --filter @arbor/capture dev",
     "capture:build": "pnpm --filter @arbor/capture build",
     "capture:typecheck": "pnpm --filter @arbor/capture typecheck",
-    "typecheck": "pnpm -r --filter @arbor/container --filter @arbor/capture --filter @arbor/skill-manager-core --filter @arbor/skill-manager-cli typecheck",
+    "typecheck": "pnpm -r --filter @arbor/container --filter @arbor/capture --filter @arbor/manage-core --filter @arbor/manage-cli --filter @arbor/skill-manager-core --filter @arbor/skill-manager-cli typecheck",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "pnpm -r --if-present --filter @arbor/aster --filter @arbor/manage-core --filter @arbor/manage-cli --filter @arbor/skill-manager-core --filter @arbor/skill-manager-cli test",
     "test:e2e": "pnpm --filter @arbor/container e2e",
     "release:skill-manager": "node scripts/release-skill-manager.mjs",
     "publish:skill-manager": "node scripts/release-skill-manager.mjs --publish"

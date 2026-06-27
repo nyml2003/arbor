@@ -1,6 +1,6 @@
 import { _electron as electron, expect, test } from "@playwright/test";
 import { join, resolve } from "node:path";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const electronPackageDir = resolve(process.cwd(), "node_modules/electron");
@@ -20,7 +20,9 @@ function createElectronEnv(workspaceRoot: string): Record<string, string> {
 function createTempWorkspace(): string {
   const root = mkdtempSync(join(tmpdir(), "arbor-resume-e2e-"));
   const resumeDir = join(root, "show", "resume");
+  const manageDir = join(root, "manage");
   mkdirSync(resumeDir, { recursive: true });
+  mkdirSync(manageDir, { recursive: true });
   copyFileSync(sourceResumeJson, join(resumeDir, "resume.json"));
   return root;
 }
@@ -78,6 +80,38 @@ test("electron resume editor saves changes back to the workspace json", async ()
     };
     expect(saved.theme).toBe("editorial");
     expect(saved.profile?.name).toBe("Electron 保存测试");
+  } finally {
+    await app.close();
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test("electron manage page saves tasks back to the workspace json", async () => {
+  const workspaceRoot = createTempWorkspace();
+  const tasksJsonPath = join(workspaceRoot, "manage", "tasks.json");
+  const app = await electron.launch({
+    executablePath: electronExecutablePath,
+    args: [resolve(process.cwd(), "dist/main/index.js")],
+    env: createElectronEnv(workspaceRoot),
+  });
+  const page = await app.firstWindow();
+
+  try {
+    await page.getByRole("button", { name: "Manage" }).click();
+    await expect(page.getByRole("heading", { name: "Manage" })).toBeVisible();
+
+    await page.getByLabel("New task title").fill("Electron manage writes JSON");
+    await page.getByRole("button", { name: "Create" }).click();
+    await expect(page.getByRole("heading", { name: "Electron manage writes JSON" })).toBeVisible();
+    await page.getByRole("button", { name: "Complete Electron manage writes JSON" }).click();
+    await expect(page.getByRole("button", { name: "Restore Electron manage writes JSON" })).toBeVisible();
+
+    expect(existsSync(tasksJsonPath)).toBe(true);
+    const saved = JSON.parse(readFileSync(tasksJsonPath, "utf-8")) as {
+      tasks?: Array<{ title?: string; status?: string }>;
+    };
+    expect(saved.tasks?.[0]?.title).toBe("Electron manage writes JSON");
+    expect(saved.tasks?.[0]?.status).toBe("done");
   } finally {
     await app.close();
     rmSync(workspaceRoot, { recursive: true, force: true });

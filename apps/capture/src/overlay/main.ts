@@ -24,13 +24,17 @@ type DragState = Readonly<{
   startY: number;
 }>;
 
-const overlay = document.querySelector<HTMLElement>("#overlay");
-const selection = document.querySelector<HTMLElement>("#selection");
-const hint = document.querySelector<HTMLElement>("#hint");
+const overlayElement = document.querySelector<HTMLElement>("#overlay");
+const selectionElement = document.querySelector<HTMLElement>("#selection");
+const hintElement = document.querySelector<HTMLElement>("#hint");
 
-if (!overlay || !selection || !hint) {
+if (!overlayElement || !selectionElement || !hintElement) {
   throw new Error("Overlay DOM is incomplete.");
 }
+
+const overlay = overlayElement;
+const selection = selectionElement;
+const hint = hintElement;
 
 let dragState: DragState | null = null;
 const defaultHint = "拖拽选择区域，Esc 取消。";

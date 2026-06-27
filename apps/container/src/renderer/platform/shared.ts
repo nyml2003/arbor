@@ -30,14 +30,24 @@ export function isMemvfsEntry(entry: FileEntry): boolean {
   return path === "show/memvfs" || path.endsWith("/show/memvfs");
 }
 
+export function isManageEntry(entry: FileEntry): boolean {
+  const path = normalizePath(entry.path);
+  return path === "manage" || path.endsWith("/manage");
+}
+
 export function isShamrockEntry(entry: FileEntry): boolean {
   const path = normalizePath(entry.path);
   return path === "show/shamrock" || path.endsWith("/show/shamrock");
 }
 
+export function isMarkdownPath(path: string): boolean {
+  return normalizePath(path).toLowerCase().endsWith(".md");
+}
+
 export function routeFromEntry(entry: FileEntry): string {
   const path = normalizePath(entry.path);
   if (isResumeEntry(entry)) return "show/resume";
+  if (isManageEntry(entry)) return "manage/tasks";
   if (isMemvfsEntry(entry)) return "show/memvfs";
   if (isShamrockEntry(entry)) return "show/shamrock";
   if (entry.isDirectory && (path === "show" || path.endsWith("/show"))) return "show/home";
@@ -49,6 +59,7 @@ export function routeToWebPath(route: string): string {
   if (route === "show/resume") return "/show/resume";
   if (route === "show/resume/edit") return "/show/resume/edit";
   if (route === "show/resume/print") return "/show/resume/print";
+  if (route === "manage/tasks") return "/manage/tasks";
   if (route === "show/memvfs") return "/show/memvfs";
   if (route === "show/shamrock") return "/show/shamrock";
   return "/";

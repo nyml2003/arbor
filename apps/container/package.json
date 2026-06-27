@@ -6,8 +6,8 @@
   "main": "./dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "typecheck": "tsc -b tsconfig.json",
+    "build": "pnpm --dir ../../packages/manage-core build && electron-vite build",
+    "typecheck": "pnpm --dir ../../packages/manage-core build && tsc -b tsconfig.json",
     "web:dev": "vite --config web.vite.config.ts --host 127.0.0.1 --port 5174",
     "web:build": "vite build --config web.vite.config.ts",
     "resume:dev": "pnpm web:dev",
@@ -19,6 +19,7 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@arbor/manage-core": "workspace:*",
     "solid-js": "^1.9.5",
     "three": "^0.184.0",
     "zod": "^3.24.0"

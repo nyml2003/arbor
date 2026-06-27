@@ -44,6 +44,9 @@ importers:
 
   apps/container:
     dependencies:
+      '@arbor/manage-core':
+        specifier: workspace:*
+        version: link:../../packages/manage-core
       solid-js:
         specifier: ^1.9.5
         version: 1.9.13
@@ -90,6 +93,28 @@ importers:
       '@arbor/skill-manager-cli':
         specifier: workspace:*
         version: link:../skill-manager-cli
+
+  packages/manage-cli:
+    dependencies:
+      '@arbor/manage-core':
+        specifier: workspace:*
+        version: link:../manage-core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/manage-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/skill-manager-cli:
     dependencies:

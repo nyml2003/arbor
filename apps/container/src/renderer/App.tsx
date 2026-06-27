@@ -1,6 +1,8 @@
 import { createSignal, Show, createResource, onMount, For } from "solid-js";
 import { ArborLayout } from "./layouts/ArborLayout";
 import { FileTree } from "./components/FileTree";
+import { MarkdownPreview } from "./components/MarkdownPreview";
+import { ManagePage } from "./features/manage/ManagePage";
 import { MemvfsDemo } from "./features/memvfs/MemvfsDemo";
 import { ResumeEditorPage } from "./features/resume/ResumeEditor";
 import { ResumePrintPage, ResumeView } from "./features/resume/ResumeView";
@@ -9,6 +11,7 @@ import { createElectronAdapter } from "./platform/electronAdapter";
 import {
   isResumeEditRoute,
   isResumePrintRoute,
+  isMarkdownPath,
   routeFromEntry,
   routeToWebPath,
 } from "./platform/shared";
@@ -162,6 +165,9 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
                 onOpenPrint={() => navigateToRoute("show/resume/print")}
               />
             </Show>
+            <Show when={route() === "manage/tasks"}>
+              <ManagePage adapter={props.adapter} />
+            </Show>
             <Show when={route() === "show/memvfs"}>
               <MemvfsDemo memvfs={props.adapter.memvfs} />
             </Show>
@@ -176,7 +182,12 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
                 >
                   <div class={styles["viewer"]}>
                     <div class={styles["viewerHeader"]}>{path}</div>
-                    <pre class={styles["viewerContent"]}>{fileContent()}</pre>
+                    <Show
+                      when={isMarkdownPath(path)}
+                      fallback={<pre class={styles["viewerContent"]}>{fileContent()}</pre>}
+                    >
+                      <MarkdownPreview text={fileContent() ?? ""} />
+                    </Show>
                   </div>
                 </Show>
               )}
@@ -184,6 +195,7 @@ export function ArborApp(props: { adapter: PlatformAdapter }) {
             <Show
               when={
                 route() !== "show/home" &&
+                route() !== "manage/tasks" &&
                 route() !== "show/resume" &&
                 route() !== "show/memvfs" &&
                 route() !== "show/shamrock" &&

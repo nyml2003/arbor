@@ -9,9 +9,9 @@ Arbor 现在按两条线推进：
 
 | Phase | 目标 | 当前状态 |
 |-------|------|----------|
-| 1 | 容器应用 | 已有 Electron + SolidJS 容器和文件树体验，继续补 Markdown 预览和展示能力 |
-| 2 | 管理工具 | 仍处于文档和任务清单阶段 |
-| 3 | 沉淀工具 | 已有 `workspace/learn` 知识库和 pattern 索引，继续依赖 agent 维护 |
+| 1 | 容器应用 | 已有 Electron + SolidJS 容器、文件树、Markdown 预览和多展示页 |
+| 2 | 管理工具 | 已有 `@arbor/manage-core`、`@arbor/manage-cli` 和容器 Manage 面板 v1 |
+| 3 | 沉淀工具 | 已有 `workspace/learn` 知识库、pattern 索引和容器 Markdown 浏览入口 |
 | 4 | 引擎闭环 | 已有简历展示数据和 web 构建入口，静态站点导出未完成 |
 
 ---
@@ -31,7 +31,7 @@ Arbor 现在按两条线推进：
 
 ## Phase 1：容器应用
 
-**目标**：一棵能看的文件树，四个空分支，在 Electron 桌面窗口里。
+**目标**：一棵能看的文件树，四个分支，在 Electron 桌面窗口里浏览 workspace 内容。
 
 **输入**：
 - 本目录下的所有文档（vision、plan、decisions、conventions）
@@ -43,6 +43,7 @@ Arbor 现在按两条线推进：
 - 文件树显示四个分支：`build/`、`learn/`、`manage/`、`show/`
 - 点击分支节点切换右侧内容
 - 文件树读取本地文件系统的一个工作区目录
+- `.md` 文件使用容器内 Markdown 预览渲染
 
 **不做**：
 - 复杂的插件系统、主题、设置面板
@@ -54,6 +55,7 @@ Arbor 现在按两条线推进：
 - 四个分支存在（哪怕是空文件夹）
 - 点击树节点，右侧内容区有反应
 - 可以 `pnpm install && pnpm dev` 跑起来
+- Web E2E 覆盖静态 workspace 下 Markdown 预览
 
 **技术路线**：
 - 直接迁移 WatchDesk 的 Electron + SolidJS 架构（复制代码，不做重搭）
@@ -78,8 +80,9 @@ Arbor 现在按两条线推进：
 
 **产出**：
 - `@arbor/manage-core`（TS 包）：Task 实体、状态机、存储接口、业务逻辑
-- `@arbor/manage-cli`（TS 包，npm bin 入口）：CLI 命令（create/list/update/complete/delete）
-- 容器内「管理」分支的 GUI 面板：任务列表、创建/编辑、状态切换
+- `@arbor/manage-cli`（TS 包，npm bin 入口）：`arbor-manage task create/list/update/complete/restore`
+- 容器内 Manage 面板：任务列表、创建、编辑标题、完成/恢复
+- 机器任务数据：`workspace/manage/tasks.json`
 
 **架构约束**：
 - core 包零 UI 依赖，只做数据和逻辑
@@ -88,10 +91,11 @@ Arbor 现在按两条线推进：
 - 存储层用文件系统（JSON/YAML），不引入数据库
 
 **验收标准**：
-- CLI 可以 `arbor task create "做一件事"` 
-- CLI 可以 `arbor task list` 看到任务列表
+- CLI 可以 `arbor-manage task create "做一件事"`
+- CLI 可以 `arbor-manage task list` 看到任务列表
 - 容器内管理面板能看到同样的任务
 - 任务数据在文件系统的 `manage/` 目录下持久化
+- core/CLI 包级测试通过，容器 Web/Electron E2E 覆盖 Manage 主路径
 
 **完成后清理**：
 - 删除 workshop（Rust workc，管理逻辑被接管）
@@ -275,6 +279,7 @@ Arbor 现在按两条线推进：
 | openclaw | AI 网关，体量太大，不动先 | 迭代域：自动化工具 |
 | edict | 依赖 openclaw 的智能体系统 | 迭代域：智能体编排 |
 | kaubo / kaubo-features | 自研语言引擎，活跃开发中 | 迭代域：语言工具 |
+| | 2026-06-28 VM 性能优化 Phase 1 完成 | Kaubo vs CPython 几何平均 2.0x |
 | GearBox | Rust 跨平台框架 | 迭代域：框架基础设施 |
 | ObolosFS | TS 文件系统抽象库 | 迭代域 / 框架 |
 | zipfiles | C++ 文件备份，归档参考 | 不纳入，参考用 |

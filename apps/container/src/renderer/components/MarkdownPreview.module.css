@@ -1,0 +1,69 @@
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--arbor-spacing-md);
+  max-width: 840px;
+  padding: var(--arbor-spacing-xl);
+  color: var(--arbor-colors-text-primary);
+  line-height: 1.7;
+}
+
+.heading1,
+.heading2,
+.heading3 {
+  color: var(--arbor-colors-text-primary);
+  line-height: 1.25;
+}
+
+.heading1 {
+  margin-bottom: var(--arbor-spacing-sm);
+  font-size: var(--arbor-font-size-xl);
+  font-weight: 700;
+}
+
+.heading2 {
+  margin-top: var(--arbor-spacing-sm);
+  font-size: var(--arbor-font-size-lg);
+  font-weight: 650;
+}
+
+.heading3 {
+  font-size: var(--arbor-font-size-md);
+  font-weight: 650;
+}
+
+.paragraph {
+  color: var(--arbor-colors-text-secondary);
+  font-size: var(--arbor-font-size-sm);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--arbor-spacing-xs);
+  padding-left: var(--arbor-spacing-xl);
+  color: var(--arbor-colors-text-secondary);
+  font-size: var(--arbor-font-size-sm);
+}
+
+.inlineCode,
+.codeBlock {
+  border: 1px solid var(--arbor-colors-border);
+  border-radius: var(--arbor-radii-sm);
+  background: var(--arbor-colors-surface);
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+}
+
+.inlineCode {
+  padding: 0.1rem 0.25rem;
+  color: var(--arbor-colors-accent);
+  font-size: 0.9em;
+}
+
+.codeBlock {
+  overflow: auto;
+  padding: var(--arbor-spacing-md);
+  color: var(--arbor-colors-text-primary);
+  font-size: var(--arbor-font-size-sm);
+  line-height: 1.6;
+}

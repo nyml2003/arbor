@@ -13,7 +13,7 @@ test("web shell renders the shared home page without Electron globals", async ({
 
   await expect(page.getByRole("heading", { name: "Arbor Show" })).toBeVisible();
   await expect(page.getByText("Runtime: web")).toBeVisible();
-  await expect(page.getByText("Workspace files: unsupported")).toBeVisible();
+  await expect(page.getByText("Workspace files: supported")).toBeVisible();
   await expect(page.getByText("Resume save: unsupported")).toBeVisible();
   expect(consoleErrors.join("\n")).not.toContain("getDefaultWorkspace");
   expect(consoleErrors.join("\n")).not.toContain("arborAPI");
@@ -40,6 +40,30 @@ test("web file tree routes resume data entries to the shared resume page", async
   await page.getByRole("button", { name: /resume\.json/ }).click();
   await expect(page.getByRole("heading", { name: "蒋钦禹" })).toBeVisible();
   await expect(page.getByText("当前运行时不支持读取此文件")).not.toBeVisible();
+});
+
+test("web file tree renders markdown preview from the static workspace", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /learn/ }).click();
+  await page.getByRole("button", { name: /overview\.md/ }).click();
+
+  await expect(page.getByTestId("markdown-preview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Arbor Web Preview" })).toBeVisible();
+  await expect(page.getByText("Markdown 文件走同一套预览组件")).toBeVisible();
+  await expect(page.getByText("build -> learn -> manage -> show")).toBeVisible();
+});
+
+test("web manage page creates and completes an in-memory task", async ({ page }) => {
+  await page.goto("/manage/tasks");
+
+  await expect(page.getByRole("heading", { name: "Manage" })).toBeVisible();
+  await page.getByLabel("New task title").fill("Plan web manage smoke");
+  await page.getByRole("button", { name: "Create" }).click();
+
+  await expect(page.getByRole("heading", { name: "Plan web manage smoke" })).toBeVisible();
+  await page.getByRole("button", { name: "Complete Plan web manage smoke" }).click();
+  await expect(page.getByRole("button", { name: "Restore Plan web manage smoke" })).toBeVisible();
 });
 
 test("web resume print route renders without the app navigation", async ({ page }) => {

@@ -1,7 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { ToastPayload } from "../shared/contracts";
+import type { CaptureResult } from "../shared/contracts";
 import "./style.css";
 
 const toast = document.querySelector<HTMLElement>("#toast");
@@ -69,7 +68,7 @@ window.addEventListener("keydown", (event) => {
   void hideToast();
 });
 
-void listen<ToastPayload>("capture-toast", (event) => {
+void listen<CaptureResult>("capture-toast", (event) => {
   const payload = event.payload;
   activePath = payload.file_path;
   toastMessage.textContent = `截图已完成：${payload.width} x ${payload.height}`;
