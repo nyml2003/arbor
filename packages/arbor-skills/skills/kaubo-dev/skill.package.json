@@ -1,0 +1,13 @@
+{
+  "schema": "arbor.skill-package/v1",
+  "id": "arbor/kaubo-dev",
+  "name": "kaubo-dev",
+  "version": "1.0.0",
+  "format": "agent-skill",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "skill.package.json",
+    "references/layer-constraints.md"
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kaubo 语言开发"
+  short_description: "开发 Kaubo 编程语言（Rust 编译器 + Web GUI + VSCode 扩展）"
+  default_prompt: "使用 $kaubo-dev 为 Kaubo 编程语言实现一个新特性。"

@@ -2,6 +2,7 @@
   "rust-analyzer.linkedProjects": [
     "apps/memvfs/Cargo.toml",
     "apps/capture/src-tauri/Cargo.toml",
-    "apps/keydock/Cargo.toml"
+    "apps/keydock/Cargo.toml",
+    "packages/kaubo-features/next_kaubo/Cargo.toml"
   ]
 }

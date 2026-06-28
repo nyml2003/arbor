@@ -1,6 +1,6 @@
 {
   "schema": "arbor.skills-lock/v1",
-  "generatedAt": "2026-06-22T17:23:07.356Z",
+  "generatedAt": "2026-06-28T09:08:58.376Z",
   "skills": {
     "arbor/plain-tech-writing-cn": {
       "name": "plain-tech-writing-cn",
@@ -143,6 +143,22 @@
       "install": {
         "targetDir": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\.installed-skills",
         "path": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\.installed-skills\\knowledge-pattern-maintainer",
+        "mode": "copy"
+      }
+    },
+    "arbor/kaubo-dev": {
+      "name": "kaubo-dev",
+      "version": "1.0.0",
+      "packageMetadataSource": "source",
+      "source": {
+        "type": "path",
+        "path": "skills/kaubo-dev",
+        "resolvedPath": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\skills\\kaubo-dev"
+      },
+      "contentHash": "sha256-2ed0d0225bded87b74ed5bee6a1b27f7f921baa5956fe41ebbd23fb4dbea983e",
+      "install": {
+        "targetDir": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\.installed-skills",
+        "path": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\.installed-skills\\kaubo-dev",
         "mode": "copy"
       }
     }

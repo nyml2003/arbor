@@ -73,6 +73,14 @@
         "type": "path",
         "path": "skills/knowledge-pattern-maintainer"
       }
+    },
+    {
+      "id": "arbor/kaubo-dev",
+      "version": "1.0.0",
+      "source": {
+        "type": "path",
+        "path": "skills/kaubo-dev"
+      }
     }
   ]
 }
