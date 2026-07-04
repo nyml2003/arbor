@@ -120,9 +120,15 @@ impl TerminalBackend for CrosstermBackend {
                 current_col = Some(region.start_col);
             }
 
-            // Write cells in this region
+            // Write cells in this region, skipping phantom (wide-char continuation) cells
             for col in region.start_col..region.end_col {
                 let cell = screen.cell_at(col, region.row);
+                if cell.phantom {
+                    // Phantom column of a wide char — skip emission to avoid
+                    // overwriting the second half of the CJK character.
+                    current_col = Some(col + 1);
+                    continue;
+                }
                 self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs);
             }
             current_col = Some(region.end_col);

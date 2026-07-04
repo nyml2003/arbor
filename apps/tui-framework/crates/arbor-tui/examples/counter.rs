@@ -80,10 +80,10 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 id: WidgetId(1),
                 props: LayoutProps { padding: RectOffset { bottom: 1, ..Default::default() }, ..Default::default() },
                 text: ReadSignal::constant("Arbor TUI — Counter".to_string()),
-                style: TextStyle {
+                style: ReadSignal::constant(TextStyle {
                     fg: theme.accent(), bg: theme.surface(),
                     attrs: Attrs { bold: true, ..Default::default() },
-                },
+                }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -92,7 +92,7 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 id: WidgetId(2),
                 props: LayoutProps { padding: RectOffset { left: 2, bottom: 1, ..Default::default() }, ..Default::default() },
                 text: ReadSignal::constant(format!("Count: {}", count)),
-                style: TextStyle::default(),
+                style: ReadSignal::constant(TextStyle::default()),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -101,10 +101,10 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 id: WidgetId(3),
                 props: LayoutProps { padding: RectOffset { bottom: 1, ..Default::default() }, ..Default::default() },
                 text: ReadSignal::constant(bar_text),
-                style: TextStyle {
+                style: ReadSignal::constant(TextStyle {
                     fg: theme.primary(), bg: theme.surface(),
                     attrs: Attrs::default(),
-                },
+                }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -118,7 +118,7 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 id: WidgetId(5),
                 props: LayoutProps::default(),
                 text: ReadSignal::constant("j/k: +/-  |  ^C/q: quit".to_string()),
-                style: TextStyle { fg: theme.text_dim(), bg: theme.surface(), attrs: Attrs::default() },
+                style: ReadSignal::constant(TextStyle { fg: theme.text_dim(), bg: theme.surface(), attrs: Attrs::default() }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),

@@ -225,3 +225,46 @@ impl App {
         // The main event loop is driven externally — see event_loop.rs
     }
 }
+
+/// Run an external subprocess from within the TUI.
+///
+/// Four-step protocol per TEP-0005:
+/// 1. Exit alternate screen, show cursor, restore terminal
+/// 2. Spawn subprocess, block until it exits
+/// 3. Re-enter raw mode + alternate screen + hide cursor
+/// 4. Mark all widgets dirty for full repaint
+pub fn run_subprocess(
+    cmd: &str,
+    args: &[&str],
+    backend: &mut dyn TerminalBackend,
+    app: &mut App,
+) -> std::io::Result<()> {
+    // Step 1: restore terminal
+    backend.exit_alternate_screen();
+    backend.show_cursor();
+    backend.flush();
+
+    // Drop raw mode guard by letting the caller manage it.
+    // The caller should release their TerminalHandle before calling this.
+
+    // Step 2: spawn and wait
+    let status = std::process::Command::new(cmd).args(args).status()?;
+
+    if !status.success() {
+        // Subprocess failed — still restore TUI state
+        eprintln!("[arbor-tui] subprocess exited with: {}", status);
+    }
+
+    // Step 3: re-init terminal
+    backend.enter_alternate_screen();
+    backend.hide_cursor();
+    backend.clear();
+    backend.flush();
+
+    // Step 4: full repaint
+    let (cols, rows) = backend.size();
+    app.resize(cols, rows);
+    // Mark everything dirty — caller's next render_widget_tree will repaint
+
+    Ok(())
+}

@@ -2,6 +2,7 @@
 
 use crate::cell::Cell;
 use crate::layout::Rect;
+use unicode_width::UnicodeWidthChar;
 
 /// A character grid of `cols × rows` cells, stored as a row-major flat vector.
 ///
@@ -48,21 +49,34 @@ impl VirtualScreen {
 
     /// Write a string at (col, row). Text is clipped to the available width.
     /// Characters that extend beyond the right edge are silently dropped.
+    /// CJK characters occupy 2 columns — the column after a wide char is skipped.
     /// Tab characters must be pre-expanded by the caller.
     pub fn write_str(&mut self, col: u16, row: u16, text: &str, fg: crate::cell::AnsiColor, bg: crate::cell::AnsiColor, attrs: crate::cell::Attrs) {
         if row >= self.rows {
             return;
         }
-        let max_col = self.cols.saturating_sub(col);
         let mut c = col;
-        for ch in text.chars().take(max_col as usize) {
+        for ch in text.chars() {
+            let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+            if c + cw > self.cols {
+                break; // would overflow right edge
+            }
             if let Some(cell) = self.cell_at_mut(c, row) {
                 cell.ch = ch;
                 cell.fg = fg;
                 cell.bg = bg;
                 cell.attrs = attrs;
+                cell.phantom = false;
             }
-            c += 1;
+            // Mark phantom columns for wide chars (CJK)
+            if cw > 1 {
+                for offset in 1..cw {
+                    if let Some(ghost) = self.cell_at_mut(c + offset, row) {
+                        ghost.phantom = true;
+                    }
+                }
+            }
+            c += cw;
         }
     }
 

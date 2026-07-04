@@ -139,6 +139,31 @@ impl<T: Clone + PartialEq> ReadSignal<T> {
     }
 }
 
+/// Convenience helper: from a `Signal<T>`, create a `(ReadSignal<T>, Box<dyn Fn(T)>)` pair.
+///
+/// The `ReadSignal` goes to the component. The write closure captures the signal's
+/// inner state and sets the value directly — the caller must still call
+/// `signal.set()` with a `DirtyTracker` to trigger re-render.
+///
+/// For full reactivity, use the returned `ReadSignal` in a widget and call
+/// `signal.set(new_value, &mut app.dirty_tracker)` in the write closure.
+pub fn bind_signal<T: Clone + PartialEq + 'static>(
+    sig: &Signal<T>,
+) -> (ReadSignal<T>, Box<dyn Fn(T)>) {
+    let read = sig.read_only();
+    let inner = Rc::clone(&sig.inner);
+    let write: Box<dyn Fn(T)> = Box::new(move |v| {
+        let mut data = inner.borrow_mut();
+        if v != data.value {
+            data.value = v;
+            data.generation += 1;
+            // Note: DirtyTracker notification happens via the generation bump.
+            // The caller should drain generations in the event loop.
+        }
+    });
+    (read, write)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

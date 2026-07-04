@@ -81,11 +81,11 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                     ..Default::default()
                 },
                 text: ReadSignal::constant("Arbor TUI — Layout Demo".to_string()),
-                style: TextStyle {
+                style: ReadSignal::constant(TextStyle {
                     fg: theme.accent(),
                     bg: theme.surface(),
                     attrs: Attrs { bold: true, ..Default::default() },
-                },
+                }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -97,11 +97,11 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                     ..Default::default()
                 },
                 text: ReadSignal::constant(format!("Count: {}", count)),
-                style: TextStyle {
+                style: ReadSignal::constant(TextStyle {
                     fg: theme.text(),
                     bg: theme.surface(),
                     attrs: Attrs::default(),
-                },
+                }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -113,8 +113,9 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                     width: Some(20),
                     ..Default::default()
                 },
-                label: "Increment (j)".to_string(),
+                label: ReadSignal::constant("Increment (j)".to_string()),
                 style: ButtonStyle::Primary,
+                on_click: None,
             }),
             // 帮助
             WidgetNode::Text(TextWidget {
@@ -124,11 +125,11 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                     ..Default::default()
                 },
                 text: ReadSignal::constant("j/k: +/-  |  ^C/q: quit".to_string()),
-                style: TextStyle {
+                style: ReadSignal::constant(TextStyle {
                     fg: theme.text_dim(),
                     bg: theme.surface(),
                     attrs: Attrs::default(),
-                },
+                }),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),

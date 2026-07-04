@@ -98,7 +98,8 @@ fn measure_button(w: &crate::widget::ButtonWidget, _available: Size) -> SizeCons
     if let (Some(w_val), Some(h_val)) = (w.props.width, w.props.height) {
         SizeConstraint::fixed(w_val, h_val)
     } else {
-        let label_w = text::measure_width(&w.label) + 4; // 2 padding each side
+        let label = w.label.get();
+        let label_w = text::measure_width(&label) + 4; // 2 padding each side
         let bw = w.props.width.unwrap_or(label_w).max(1);
         let bh = w.props.height.unwrap_or(1);
         SizeConstraint::fixed(bw, bh)
@@ -242,8 +243,8 @@ fn layout_node(
                 content_rect.w,
                 sat_sub(content_rect.h, 1),
             );
-            if w.active < w.tabs.len() {
-                layout_node(body_rect, &w.tabs[w.active].content, constraints, out);
+            if w.active.get() < w.tabs.len() {
+                layout_node(body_rect, &w.tabs[w.active.get()].content, constraints, out);
             }
             let _ = header_rect;
         }
@@ -437,7 +438,7 @@ mod tests {
             id: WidgetId(id),
             props: LayoutProps::default(),
             text: crate::signal::ReadSignal::constant(text.to_string()),
-            style: Default::default(),
+            style: crate::signal::ReadSignal::constant(crate::widget::TextStyle::default()),
             wrap: text::WrapStrategy::None,
             truncate: text::TruncateStrategy::End,
         })
@@ -497,7 +498,7 @@ mod tests {
             id: WidgetId(2),
             props: flex_props,
             text: crate::signal::ReadSignal::constant("flex".to_string()),
-            style: Default::default(),
+            style: crate::signal::ReadSignal::constant(crate::widget::TextStyle::default()),
             wrap: text::WrapStrategy::None,
             truncate: text::TruncateStrategy::End,
         });

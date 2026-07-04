@@ -213,6 +213,7 @@ mod tests {
             props: LayoutProps::default(),
             label: label.to_string(),
             style: ButtonStyle::Default,
+            on_click: None,
         })
     }
 

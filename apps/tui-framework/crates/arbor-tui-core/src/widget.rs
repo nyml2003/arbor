@@ -65,13 +65,13 @@ pub struct BoxWidget {
 pub struct TextWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
-    pub text: ReadSignal<String>, // 只读文本内容 — 通过 signal.read_only() 获取
-    pub style: TextStyle,
+    pub text: ReadSignal<String>,      // 只读文本内容
+    pub style: ReadSignal<TextStyle>,   // 只读样式
     pub wrap: crate::text::WrapStrategy,
     pub truncate: crate::text::TruncateStrategy,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct TextStyle {
     pub fg: crate::cell::AnsiColor,
     pub bg: crate::cell::AnsiColor,
@@ -104,8 +104,10 @@ pub struct InputWidget {
 pub struct ButtonWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
-    pub label: String,
+    pub label: ReadSignal<String>,
     pub style: ButtonStyle,
+    /// Called when the button is activated (Enter or click).
+    pub on_click: Option<Box<dyn Fn()>>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -114,20 +116,30 @@ pub enum ButtonStyle { Primary, Secondary, Danger, Default }
 pub struct ListWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
-    /// Pre-rendered items as strings. The signal system pushes updated strings.
+    /// Pre-rendered item strings. Used when `render_item` is None.
     pub items: Vec<String>,
     pub selected: Option<usize>,
     pub scroll_offset: usize,
+    pub on_select: Option<Box<dyn Fn(Option<usize>)>>,
+    pub on_scroll: Option<Box<dyn Fn(usize)>>,
+    /// Optional custom render: (index, selected) → display string.
+    /// When set, this is called per visible item instead of using `items`.
+    pub render_item: Option<Box<dyn Fn(usize, bool) -> String>>,
 }
 
 pub struct TableWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
     pub columns: Vec<ColumnDef>,
-    /// Pre-rendered cell strings, row-major: rows[0][col0], rows[0][col1], ...
+    /// Pre-rendered cell strings [row][col]. Used when `render_cell` is None.
     pub cells: Vec<Vec<String>>,
     pub selected: Option<usize>,
     pub scroll_offset: usize,
+    pub on_select: Option<Box<dyn Fn(Option<usize>)>>,
+    pub on_scroll: Option<Box<dyn Fn(usize)>>,
+    /// Optional custom render: (row, col) → display string.
+    /// When set, this is called per visible cell instead of using `cells`.
+    pub render_cell: Option<Box<dyn Fn(usize, usize) -> String>>,
 }
 
 pub struct ColumnDef {
@@ -145,7 +157,8 @@ pub struct TabsWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
     pub tabs: Vec<TabDef>,
-    pub active: usize,
+    pub active: ReadSignal<usize>,
+    pub on_switch: Option<Box<dyn Fn(usize)>>,
 }
 
 pub struct TabDef {
@@ -157,8 +170,9 @@ pub struct ScrollViewWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
     pub child: Box<WidgetNode>,
-    pub scroll_x: u16,
-    pub scroll_y: u16,
+    pub scroll_x: ReadSignal<u16>,
+    pub scroll_y: ReadSignal<u16>,
+    pub on_scroll: Option<Box<dyn Fn(u16, u16)>>,
 }
 
 // ── Widget trait impls for built-in types ────────────────────────
@@ -173,10 +187,6 @@ macro_rules! impl_widget_for {
 }
 
 impl_widget_for!(TextWidget, id);
-impl_widget_for!(ButtonWidget, id);
-impl_widget_for!(TabsWidget, id);
-impl_widget_for!(ListWidget, id);
-impl_widget_for!(TableWidget, id);
 
 impl Widget for BoxWidget {
     fn id(&self) -> WidgetId { self.id }
@@ -262,6 +272,121 @@ impl Widget for ScrollViewWidget {
     fn id(&self) -> WidgetId { self.id }
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn children(&self) -> &[WidgetNode] { std::slice::from_ref(&*self.child) }
+}
+
+// ── Drop 兜底 — 确保退出时退订 Signal ──────────────────────────
+
+impl Drop for TextWidget {
+    fn drop(&mut self) {
+        self.text.unsubscribe(self.id);
+        self.style.unsubscribe(self.id);
+    }
+}
+
+impl Drop for InputWidget {
+    fn drop(&mut self) {
+        // InputWidget buffer is owned, no signal subscriptions in v1
+    }
+}
+
+impl Drop for ButtonWidget {
+    fn drop(&mut self) {
+        self.label.unsubscribe(self.id);
+    }
+}
+
+// ── Button ───────────────────────────────────────────────────────
+
+impl Widget for ButtonWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
+
+    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+        match &event.key {
+            Key::Enter | Key::Char(' ') => {
+                if let Some(ref cb) = self.on_click { cb(); }
+                KeyHandleResult::Handled
+            }
+            _ => KeyHandleResult::Bubble,
+        }
+    }
+}
+
+impl Widget for ListWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn focusable(&self) -> bool { true }
+
+    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+        let old = self.selected;
+        match &event.key {
+            Key::ArrowDown | Key::Char('j') => {
+                let max = self.items.len().saturating_sub(1);
+                self.selected = Some(self.selected.map_or(0, |s| (s + 1).min(max)));
+            }
+            Key::ArrowUp | Key::Char('k') => {
+                if let Some(s) = self.selected {
+                    if s > 0 { self.selected = Some(s - 1); }
+                }
+            }
+            _ => return KeyHandleResult::Bubble,
+        }
+        if self.selected != old {
+            if let Some(ref cb) = self.on_select { cb(self.selected); }
+        }
+        KeyHandleResult::Handled
+    }
+}
+
+impl Widget for TableWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn focusable(&self) -> bool { true }
+
+    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+        let old = self.selected;
+        match &event.key {
+            Key::ArrowDown | Key::Char('j') => {
+                let max = self.cells.len().saturating_sub(1);
+                self.selected = Some(self.selected.map_or(0, |s| (s + 1).min(max)));
+            }
+            Key::ArrowUp | Key::Char('k') => {
+                if let Some(s) = self.selected {
+                    if s > 0 { self.selected = Some(s - 1); }
+                }
+            }
+            _ => return KeyHandleResult::Bubble,
+        }
+        if self.selected != old {
+            if let Some(ref cb) = self.on_select { cb(self.selected); }
+        }
+        KeyHandleResult::Handled
+    }
+}
+
+impl Widget for TabsWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn focusable(&self) -> bool { true }
+
+    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+        let old = self.active.get();
+        match &event.key {
+            Key::ArrowRight | Key::Char('l') => {
+                let next = (old + 1) % self.tabs.len().max(1);
+                self.active = ReadSignal::constant(next);
+            }
+            Key::ArrowLeft | Key::Char('h') => {
+                let prev = if old == 0 { self.tabs.len().saturating_sub(1) } else { old - 1 };
+                self.active = ReadSignal::constant(prev);
+            }
+            _ => return KeyHandleResult::Bubble,
+        }
+        if self.active.get() != old {
+            if let Some(ref cb) = self.on_switch { cb(self.active.get()); }
+        }
+        KeyHandleResult::Handled
+    }
 }
 
 #[cfg(test)]

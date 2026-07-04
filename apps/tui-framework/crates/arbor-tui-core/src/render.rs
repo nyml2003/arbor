@@ -64,7 +64,7 @@ fn render_text(w: &TextWidget, rect: Rect, _theme: &Theme) -> VirtualScreen {
             for (i, line) in expanded.lines().enumerate() {
                 if i as u16 >= rect.h { break; }
                 let display = text::truncate(line, rect.w, w.truncate);
-                screen.write_str(0, i as u16, &display, w.style.fg, w.style.bg, w.style.attrs);
+                screen.write_str(0, i as u16, &display, w.style.get().fg, w.style.get().bg, w.style.get().attrs);
             }
         }
         _ => {
@@ -75,7 +75,7 @@ fn render_text(w: &TextWidget, rect: Rect, _theme: &Theme) -> VirtualScreen {
                     break;
                 }
                 let display = text::truncate(line, rect.w, w.truncate);
-                screen.write_str(0, i as u16, &display, w.style.fg, w.style.bg, w.style.attrs);
+                screen.write_str(0, i as u16, &display, w.style.get().fg, w.style.get().bg, w.style.get().attrs);
             }
         }
     }
@@ -125,7 +125,7 @@ fn render_button(w: &crate::widget::ButtonWidget, rect: Rect, theme: &Theme) -> 
     let attrs = Attrs { bold: true, ..Default::default() };
 
     // "[ label ]" format
-    let display = format!(" {} ", w.label);
+    let display = format!(" {} ", w.label.get());
     let truncated = text::truncate(&display, rect.w, TruncateStrategy::End);
 
     // Center the label
@@ -173,9 +173,13 @@ fn render_list(w: &ListWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
             screen.fill_rect(Rect::new(0, row, rect.w, 1), &sel_cell);
         }
 
-        // Item text
-        let item_text = &w.items[item_idx];
-        let display = text::truncate(item_text, rect.w, TruncateStrategy::End);
+        // Item text — use custom render_item if provided, else use pre-rendered items
+        let item_text = if let Some(ref render) = w.render_item {
+            render(item_idx, is_selected)
+        } else {
+            w.items[item_idx].clone()
+        };
+        let display = text::truncate(&item_text, rect.w, TruncateStrategy::End);
         screen.write_str(1, row, &display, fg, row_bg, Attrs::default());
     }
 
@@ -241,14 +245,18 @@ fn render_table(w: &TableWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
         let row_fg = if is_selected { theme.surface() } else { text };
 
         let mut cx: u16 = 0;
-        let row_cells = &w.cells[row_idx];
-        for (ci, cell_text) in row_cells.iter().enumerate() {
-            if ci < w.columns.len() {
-                let col_w = resolve_col_width(w.columns[ci].width, rect.w, &w.columns, ci);
-                let display = text::truncate(cell_text, col_w, TruncateStrategy::End);
-                screen.write_str(cx, screen_row, &display, row_fg, row_bg, Attrs::default());
-                cx += col_w;
-            }
+        for ci in 0..w.columns.len() {
+            let col_w = resolve_col_width(w.columns[ci].width, rect.w, &w.columns, ci);
+            let cell_text = if let Some(ref render) = w.render_cell {
+                render(row_idx, ci)
+            } else if ci < w.cells.get(row_idx).map_or(0, |r| r.len()) {
+                w.cells[row_idx][ci].clone()
+            } else {
+                String::new()
+            };
+            let display = text::truncate(&cell_text, col_w, TruncateStrategy::End);
+            screen.write_str(cx, screen_row, &display, row_fg, row_bg, Attrs::default());
+            cx += col_w;
         }
     }
 
@@ -288,7 +296,7 @@ fn render_tabs(w: &TabsWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     for (i, tab) in w.tabs.iter().enumerate() {
         let label = format!(" {} ", tab.label);
         let label_w = text::measure_width(&label);
-        let is_active = i == w.active;
+        let is_active = i == w.active.get();
 
         let (fg, row_bg) = if is_active {
             (active_text, active_bg)
@@ -307,9 +315,9 @@ fn render_tabs(w: &TabsWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     screen.fill_rect(Rect::new(0, header_h, rect.w, 1), &sep_cell);
 
     // Active tab content
-    if w.active < w.tabs.len() {
+    if w.active.get() < w.tabs.len() {
         let body_rect = Rect::new(0, body_top, rect.w, rect.h.saturating_sub(body_top));
-        let content_screen = render_node(&w.tabs[w.active].content, body_rect, theme);
+        let content_screen = render_node(&w.tabs[w.active.get()].content, body_rect, theme);
         screen.blit(Rect::new(0, body_top, content_screen.cols(), content_screen.rows()), &content_screen);
     }
 
@@ -327,14 +335,14 @@ fn render_scrollview(w: &ScrollViewWidget, rect: Rect, theme: &Theme) -> Virtual
     let child_screen = render_node(&w.child, child_rect, theme);
 
     // Blit visible viewport
-    let _src_rect = Rect::new(w.scroll_x, w.scroll_y, rect.w, rect.h);
+    let _src_rect = Rect::new(w.scroll_x.get(), w.scroll_y.get(), rect.w, rect.h);
     // Clip to child_screen bounds
-    let copy_w = rect.w.min(child_screen.cols().saturating_sub(w.scroll_x));
-    let copy_h = rect.h.min(child_screen.rows().saturating_sub(w.scroll_y));
+    let copy_w = rect.w.min(child_screen.cols().saturating_sub(w.scroll_x.get()));
+    let copy_h = rect.h.min(child_screen.rows().saturating_sub(w.scroll_y.get()));
 
     for row in 0..copy_h {
         for col in 0..copy_w {
-            let src_cell = child_screen.cell_at(w.scroll_x + col, w.scroll_y + row);
+            let src_cell = child_screen.cell_at(w.scroll_x.get() + col, w.scroll_y.get() + row);
             if let Some(dest) = screen.cell_at_mut(col, row) {
                 *dest = src_cell;
             }
@@ -424,7 +432,7 @@ mod tests {
             id: WidgetId(1),
             props: LayoutProps::default(),
             text: text_signal("hello"),
-            style: TextStyle::default(),
+            style: crate::signal::ReadSignal::constant(TextStyle::default()),
             wrap: WrapStrategy::None,
             truncate: TruncateStrategy::End,
         };
@@ -440,7 +448,7 @@ mod tests {
             id: WidgetId(1),
             props: LayoutProps::default(),
             text: text_signal("abcd efgh ijkl"),
-            style: TextStyle::default(),
+            style: crate::signal::ReadSignal::constant(TextStyle::default()),
             wrap: WrapStrategy::Word,
             truncate: TruncateStrategy::End,
         };
@@ -465,7 +473,7 @@ mod tests {
                     id: WidgetId(1),
                     props: LayoutProps::default(),
                     text: text_signal("hello"),
-                    style: TextStyle::default(),
+                    style: crate::signal::ReadSignal::constant(TextStyle::default()),
                     wrap: WrapStrategy::None,
                     truncate: TruncateStrategy::End,
                 }),
@@ -473,7 +481,7 @@ mod tests {
                     id: WidgetId(2),
                     props: LayoutProps::default(),
                     text: text_signal("world"),
-                    style: TextStyle::default(),
+                    style: crate::signal::ReadSignal::constant(TextStyle::default()),
                     wrap: WrapStrategy::None,
                     truncate: TruncateStrategy::End,
                 }),
@@ -497,8 +505,9 @@ mod tests {
         let w = ButtonWidget {
             id: WidgetId(2),
             props: LayoutProps::default(),
-            label: "OK".to_string(),
+            label: crate::signal::ReadSignal::constant("OK".to_string()),
             style: ButtonStyle::Primary,
+            on_click: None,
         };
         let node = WidgetNode::Button(w);
         let screen = render_node(&node, Rect::new(0, 0, 20, 1), &make_theme());

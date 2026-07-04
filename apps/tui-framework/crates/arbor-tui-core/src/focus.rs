@@ -189,6 +189,11 @@ impl WidgetNode {
     pub fn on_key(&mut self, event: &crate::input::KeyEvent) -> crate::input::KeyHandleResult {
         match self {
             WidgetNode::Input(w) => w.on_key(event),
+            WidgetNode::Button(w) => w.on_key(event),
+            WidgetNode::List(w) => w.on_key(event),
+            WidgetNode::Table(w) => w.on_key(event),
+            WidgetNode::Tabs(w) => w.on_key(event),
+            WidgetNode::ScrollView(w) => w.on_key(event),
             _ => crate::input::KeyHandleResult::Bubble,
         }
     }
@@ -332,8 +337,9 @@ mod tests {
         WidgetNode::Button(ButtonWidget {
             id: WidgetId(id),
             props: LayoutProps::default(),
-            label: label.to_string(),
+            label: crate::signal::ReadSignal::constant(label.to_string()),
             style: ButtonStyle::Default,
+            on_click: None,
         })
     }
 

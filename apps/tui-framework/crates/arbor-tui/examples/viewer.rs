@@ -171,7 +171,7 @@ fn build_ui(
                 id: WidgetId(1),
                 props: LayoutProps::default(),
                 text: ReadSignal::constant(title),
-                style: header_style,
+                style: ReadSignal::constant(header_style),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
@@ -184,7 +184,7 @@ fn build_ui(
                     ..Default::default()
                 },
                 text: ReadSignal::constant(body_text),
-                style: TextStyle::default(),
+                style: ReadSignal::constant(TextStyle::default()),
                 wrap: WrapStrategy::None, // 行已预先 wrap 好
                 truncate: TruncateStrategy::End,
             }),
@@ -193,7 +193,7 @@ fn build_ui(
                 id: WidgetId(3),
                 props: LayoutProps::default(),
                 text: ReadSignal::constant(status),
-                style: footer_style,
+                style: ReadSignal::constant(footer_style),
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),

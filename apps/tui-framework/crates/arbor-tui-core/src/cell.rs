@@ -89,12 +89,27 @@ impl Default for Attrs {
 /// Derives `PartialEq` so the diff algorithm can directly compare cells.
 /// `true_color` is excluded from equality — only `palette` matters for
 /// determining whether a cell has changed.
-#[derive(Clone, PartialEq, Eq, Debug)]
+/// `phantom` is excluded from equality — it only affects backend emission.
+#[derive(Clone, Eq, Debug)]
 pub struct Cell {
     pub ch: char,
     pub fg: AnsiColor,
     pub bg: AnsiColor,
     pub attrs: Attrs,
+    /// When true, this cell is the second column of a wide (CJK) character
+    /// and should be skipped during backend emission.
+    pub phantom: bool,
+}
+
+// Manual PartialEq — phantom excluded so diff doesn't flag phantom cells as changed
+impl PartialEq for Cell {
+    fn eq(&self, other: &Self) -> bool {
+        self.ch == other.ch
+            && self.fg == other.fg
+            && self.bg == other.bg
+            && self.attrs == other.attrs
+        // phantom intentionally excluded
+    }
 }
 
 impl Default for Cell {
@@ -108,6 +123,7 @@ impl Default for Cell {
                 true_color: None,
             },
             attrs: Attrs::default(),
+            phantom: false,
         }
     }
 }
