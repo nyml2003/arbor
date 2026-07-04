@@ -3,6 +3,7 @@
 // All I/O errors are propagated via BackendResult, not silently ignored.
 
 use std::io::{stdout, Stdout, Write};
+use std::time::Instant;
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
@@ -19,6 +20,8 @@ pub struct CrosstermBackend {
     cursor_hidden: bool,
     alt_screen: bool,
     no_color: bool,
+    last_queue_us: u64,
+    last_flush_us: u64,
 }
 
 impl CrosstermBackend {
@@ -29,6 +32,8 @@ impl CrosstermBackend {
             cursor_hidden: false,
             alt_screen: false,
             no_color,
+            last_queue_us: 0,
+            last_flush_us: 0,
         }
     }
 
@@ -87,9 +92,14 @@ impl TerminalBackend for CrosstermBackend {
     }
 
     fn emit(&mut self, regions: &[DirtyRegion], screen: &VirtualScreen) -> BackendResult<()> {
+        self.last_queue_us = 0;
+        self.last_flush_us = 0;
+
         if regions.is_empty() {
             return Ok(());
         }
+
+        let t0 = Instant::now();
 
         let mut sorted: Vec<_> = regions.to_vec();
         sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
@@ -98,8 +108,9 @@ impl TerminalBackend for CrosstermBackend {
 
         let mut current_row: Option<u16> = None;
         let mut current_col: Option<u16> = None;
+        let region_count = merged.len();
 
-        for region in &merged {
+        for (i, region) in merged.iter().enumerate() {
             // Move cursor if row changed OR col is not contiguous
             if current_row != Some(region.row) || current_col != Some(region.start_col) {
                 queue!(self.stdout, MoveTo(region.start_col, region.row))?;
@@ -109,15 +120,28 @@ impl TerminalBackend for CrosstermBackend {
             for col in region.start_col..region.end_col {
                 let cell = screen.cell_at(col, region.row);
                 if cell.phantom {
-                    // Skip phantom columns of wide chars — cursor still advances
                     continue;
                 }
                 self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
             }
             current_col = Some(region.end_col);
+
+            // Clear to end of line after the LAST region on each row.
+            // Prevents stale content from persisting after resize or when
+            // new content is shorter than old content on the same row.
+            let is_last_on_row = i + 1 >= region_count
+                || merged[i + 1].row != region.row;
+            if is_last_on_row {
+                queue!(self.stdout, Clear(ClearType::UntilNewLine))?;
+            }
         }
 
+        self.last_queue_us = t0.elapsed().as_micros() as u64;
+
+        let t1 = Instant::now();
         self.stdout.flush()?;
+        self.last_flush_us = t1.elapsed().as_micros() as u64;
+
         Ok(())
     }
 
@@ -162,6 +186,9 @@ impl TerminalBackend for CrosstermBackend {
         self.stdout.flush()?;
         Ok(())
     }
+
+    fn last_emit_queue_us(&self) -> u64 { self.last_queue_us }
+    fn last_emit_flush_us(&self) -> u64 { self.last_flush_us }
 }
 
 /// Merge adjacent dirty regions on the same row.

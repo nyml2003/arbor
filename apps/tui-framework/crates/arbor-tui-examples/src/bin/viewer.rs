@@ -60,16 +60,29 @@ fn run() -> anyhow::Result<()> {
     let mut scroll: usize = 0;
 
     loop {
+        let mut body_rows = rows.saturating_sub(2);
+
+        // Debounced resize: only apply after terminal size has been stable for 50ms.
+        // When resize is applied, immediately render (skip input poll) to fill the
+        // blank canvas — avoids showing stale content between resize and next poll.
         let (new_cols, new_rows) = backend.size()?;
         if new_cols != cols || new_rows != rows {
-            cols = new_cols; rows = new_rows;
-            app.resize(cols, rows);
-            content_w = cols.saturating_sub(6);
-            all_lines = wrap_content(&raw_content, content_w);
-            max_scroll = all_lines.len();
-            scroll = scroll.min(max_scroll);
+            if app.check_resize(new_cols, new_rows, 50) {
+                cols = new_cols; rows = new_rows;
+                content_w = cols.saturating_sub(6);
+                all_lines = wrap_content(&raw_content, content_w);
+                max_scroll = all_lines.len();
+                scroll = scroll.min(max_scroll);
+                body_rows = rows.saturating_sub(2);
+                // Clear terminal first — app.apply_resize sets blank VirtualScreen
+                // but the terminal still has old content. Without clearing, diff
+                // only emits text cells and stale background cells remain visible.
+                backend.clear()?;
+                let root = build_ui(&theme, path, &all_lines, scroll, body_rows, cols, rows);
+                app.render_widget_tree(&root, &theme, &mut backend)?;
+                continue;
+            }
         }
-        let body_rows = rows.saturating_sub(2);
 
         let events = input.poll_timeout(Duration::from_millis(100));
         let mut should_quit = false;

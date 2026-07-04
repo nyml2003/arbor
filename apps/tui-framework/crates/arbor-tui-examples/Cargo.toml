@@ -17,6 +17,10 @@ path = "src/bin/counter.rs"
 name = "viewer"
 path = "src/bin/viewer.rs"
 
+[[bin]]
+name = "table_demo"
+path = "src/bin/table_demo.rs"
+
 [dependencies]
 arbor-tui = { path = "../arbor-tui" }
 arbor-tui-primitives = { path = "../arbor-tui-primitives" }

@@ -84,6 +84,11 @@ pub trait TerminalBackend {
 
     /// Flush buffered output to the terminal.
     fn flush(&mut self) -> BackendResult<()>;
+
+    /// Time spent queuing ANSI sequences (pure memory) in the last `emit()` call, in µs.
+    fn last_emit_queue_us(&self) -> u64 { 0 }
+    /// Time spent in the stdout `flush()` syscall in the last `emit()` call, in µs.
+    fn last_emit_flush_us(&self) -> u64 { 0 }
 }
 
 /// RAII guard for terminal raw mode.

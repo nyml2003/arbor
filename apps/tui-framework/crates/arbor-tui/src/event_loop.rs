@@ -95,10 +95,23 @@ pub fn run_event_loop(
     let mut first_frame = true;
     while app.is_running() {
         // SIGWINCH: detect terminal size change → force full relayout
-        if let Err(e) = check_resize(app, backend) {
-            eprintln!("[arbor-tui] resize check failed: {e}");
-            app.quit();
-            break;
+        // 50ms debounce — terminal resize storms during drag
+        match check_resize(app, backend, 50) {
+            Ok(true) => {
+                // Resize applied: blank screen + terminal cleared.
+                // Immediate full re-render to avoid stale background cells.
+                let _ = backend.clear();
+                if let Err(e) = app.render_widget_tree(root, theme, backend) {
+                    eprintln!("[arbor-tui] post-resize render failed: {e:?}");
+                }
+                continue;
+            }
+            Err(e) => {
+                eprintln!("[arbor-tui] resize check failed: {e}");
+                app.quit();
+                break;
+            }
+            _ => {}
         }
 
         let events = poll_events(input);
