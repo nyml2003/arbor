@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::dirty::DirtyTracker;
-use crate::widget::WidgetId;
+use arbor_tui_primitives::widget_id::WidgetId;
 
 /// Internal state shared between Signal and all its ReadSignal clones.
 struct SignalInner<T: Clone + PartialEq> {

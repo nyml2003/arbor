@@ -1,7 +1,11 @@
 [workspace]
 members = [
-    "crates/arbor-tui-core",
+    "crates/arbor-tui-primitives",
+    "crates/arbor-tui-reactive",
+    "crates/arbor-tui-render",
+    "crates/arbor-tui-widget",
     "crates/arbor-tui-backend",
+    "crates/arbor-tui-widgets",
     "crates/arbor-tui",
     "crates/arbor-tui-examples",
 ]

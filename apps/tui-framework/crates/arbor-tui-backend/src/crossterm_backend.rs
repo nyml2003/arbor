@@ -9,10 +9,10 @@ use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, queue};
 
-use arbor_tui_core::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};
-use arbor_tui_core::cell::{AnsiColor, Attrs};
-use arbor_tui_core::diff::DirtyRegion;
-use arbor_tui_core::screen::VirtualScreen;
+use arbor_tui_render::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};
+use arbor_tui_primitives::cell::{AnsiColor, Attrs};
+use arbor_tui_render::diff::DirtyRegion;
+use arbor_tui_render::screen::VirtualScreen;
 
 pub struct CrosstermBackend {
     stdout: Stdout,

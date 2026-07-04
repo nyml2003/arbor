@@ -1,7 +1,7 @@
 // SignalManager — unified OS signal handler.
 // Manages SIGINT (Ctrl+C), SIGTSTP (Ctrl+Z), and SIGWINCH (terminal resize).
 
-use arbor_tui_core::backend::{BackendError, TerminalBackend};
+use arbor_tui_render::backend::{BackendError, TerminalBackend};
 use crate::app::App;
 
 /// Callbacks for OS signals.

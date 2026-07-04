@@ -1,6 +1,6 @@
 // Theme system — global singleton mapping semantic colors to AnsiColor.
 
-use crate::cell::{AnsiColor, PaletteColor};
+use arbor_tui_primitives::cell::{AnsiColor, PaletteColor};
 
 /// Global theme singleton.
 ///

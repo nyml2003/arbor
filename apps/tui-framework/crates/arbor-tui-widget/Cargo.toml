@@ -1,5 +1,5 @@
 [package]
-name = "arbor-tui-backend"
+name = "arbor-tui-widget"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,11 +10,6 @@ workspace = true
 
 [dependencies]
 arbor-tui-primitives = { path = "../arbor-tui-primitives" }
+arbor-tui-reactive = { path = "../arbor-tui-reactive" }
 arbor-tui-render = { path = "../arbor-tui-render" }
-crossterm = { version = "0.28", optional = true }
 thiserror = "2"
-
-[features]
-default = ["crossterm"]
-crossterm = ["dep:crossterm"]
-simulated = []

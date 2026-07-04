@@ -1,0 +1,80 @@
+// ScrollViewWidget — scrollable viewport over a child.
+// The child is rendered at its full natural size; the scroll widget
+// copies only the visible portion. renders_children() = true so the
+// engine does NOT recurse into the child during render.
+
+use arbor_tui_primitives::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
+use arbor_tui_render::screen::VirtualScreen;
+use arbor_tui_reactive::signal::ReadSignal;
+use arbor_tui_render::theme::Theme;
+use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
+
+use std::collections::HashMap;
+
+pub struct ScrollViewWidget {
+    pub id: WidgetId,
+    pub props: LayoutProps,
+    pub child: Box<WidgetNode>,
+    pub scroll_x: ReadSignal<u16>,
+    pub scroll_y: ReadSignal<u16>,
+    pub on_scroll: Option<Box<dyn Fn(u16, u16)>>,
+}
+
+impl Widget for ScrollViewWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
+
+    fn children(&self) -> &[WidgetNode] { std::slice::from_ref(&*self.child) }
+    fn children_mut(&mut self) -> &mut [WidgetNode] { std::slice::from_mut(&mut *self.child) }
+
+    /// ScrollView renders its own child (for clipping).
+    fn renders_children(&self) -> bool { true }
+
+    fn on_mount(&mut self) {
+        self.scroll_x.subscribe(self.id);
+        self.scroll_y.subscribe(self.id);
+    }
+
+    fn on_unmount(&mut self) {
+        self.scroll_x.unsubscribe(self.id);
+        self.scroll_y.unsubscribe(self.id);
+    }
+
+    fn measure_subtree(
+        &self,
+        available: Size,
+        _child_constraints: &HashMap<WidgetId, SizeConstraint>,
+    ) -> SizeConstraint {
+        // ScrollView takes whatever space is available — child can be larger
+        SizeConstraint::bounded(available)
+    }
+
+    fn render(&self, rect: Rect, _theme: &Theme) -> VirtualScreen {
+        let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
+
+        // Render child at its full natural size (larger than viewport)
+        let child_rect = Rect::new(0, 0, rect.w.max(100), rect.h.max(100));
+        let child_screen = self.child.render(child_rect, _theme);
+
+        // Copy visible viewport
+        let copy_w = rect.w.min(child_screen.cols().saturating_sub(self.scroll_x.get()));
+        let copy_h = rect.h.min(child_screen.rows().saturating_sub(self.scroll_y.get()));
+
+        for row in 0..copy_h {
+            for col in 0..copy_w {
+                let src_cell = child_screen.cell_at(self.scroll_x.get() + col, self.scroll_y.get() + row);
+                if let Some(dest) = screen.cell_at_mut(col, row) {
+                    *dest = src_cell;
+                }
+            }
+        }
+        screen
+    }
+}
+
+impl Drop for ScrollViewWidget {
+    fn drop(&mut self) {
+        self.scroll_x.unsubscribe(self.id);
+        self.scroll_y.unsubscribe(self.id);
+    }
+}

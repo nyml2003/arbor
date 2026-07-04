@@ -4,11 +4,11 @@
 
 use std::time::Duration;
 
-use arbor_tui_core::backend::TerminalBackend;
-use arbor_tui_core::focus::mount_tree;
-use arbor_tui_core::input::{InputReader, Key, KeyEvent};
-use arbor_tui_core::theme::Theme;
-use arbor_tui_core::widget::{WidgetAction, WidgetNode};
+use arbor_tui_render::backend::TerminalBackend;
+use arbor_tui_widget::focus::mount_tree;
+use arbor_tui_primitives::input::{InputReader, Key, KeyEvent};
+use arbor_tui_render::theme::Theme;
+use arbor_tui_widget::widget::{WidgetAction, WidgetNode};
 
 use crate::app::App;
 use crate::signal_manager::check_resize;
@@ -32,7 +32,7 @@ pub fn merge_events(events: &[KeyEvent]) -> Vec<KeyEvent> {
 }
 
 fn can_merge(a: &KeyEvent, b: &KeyEvent) -> bool {
-    use arbor_tui_core::input::Key;
+    use arbor_tui_primitives::input::Key;
     if a.key != b.key || a.modifiers != b.modifiers { return false; }
     match &a.key {
         Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight
@@ -149,7 +149,7 @@ pub fn run_event_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_core::input::{Key, KeyEvent, Modifiers};
+    use arbor_tui_primitives::input::{Key, KeyEvent, Modifiers};
 
     #[test]
     fn merge_repeated_arrows() {

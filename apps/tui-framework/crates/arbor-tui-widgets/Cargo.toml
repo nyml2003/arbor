@@ -1,29 +1,15 @@
 [package]
-name = "arbor-tui-examples"
+name = "arbor-tui-widgets"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-publish = false
 
 [lints]
 workspace = true
 
-[[bin]]
-name = "counter"
-path = "src/bin/counter.rs"
-
-[[bin]]
-name = "viewer"
-path = "src/bin/viewer.rs"
-
 [dependencies]
-arbor-tui = { path = "../arbor-tui" }
 arbor-tui-primitives = { path = "../arbor-tui-primitives" }
 arbor-tui-reactive = { path = "../arbor-tui-reactive" }
 arbor-tui-render = { path = "../arbor-tui-render" }
 arbor-tui-widget = { path = "../arbor-tui-widget" }
-arbor-tui-backend = { path = "../arbor-tui-backend" }
-arbor-tui-widgets = { path = "../arbor-tui-widgets" }
-crossterm = "0.28"
-anyhow = "1"

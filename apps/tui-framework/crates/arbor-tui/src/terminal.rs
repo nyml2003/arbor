@@ -1,7 +1,7 @@
 // Terminal lifecycle management.
 // RAII guard for raw mode enter/exit, plus panic hook for emergency recovery.
 
-use arbor_tui_core::backend::{BackendError, TerminalBackend};
+use arbor_tui_render::backend::{BackendError, TerminalBackend};
 
 /// Install a panic hook that restores the terminal before printing the panic.
 ///
@@ -22,7 +22,7 @@ pub fn install_panic_hook() {
 
 /// Wraps a TerminalGuard to manage terminal state lifecycle.
 pub struct TerminalHandle {
-    guard: Option<Box<dyn arbor_tui_core::backend::TerminalGuard>>,
+    guard: Option<Box<dyn arbor_tui_render::backend::TerminalGuard>>,
 }
 
 impl TerminalHandle {

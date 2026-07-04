@@ -6,16 +6,16 @@ use std::time::Instant;
 
 use anyhow::Context;
 
-use arbor_tui_core::backend::TerminalBackend;
-use arbor_tui_core::diff::{diff, merge_regions};
-use arbor_tui_core::dirty::DirtyTracker;
-use arbor_tui_core::focus::{find_widget_mut, FocusManager};
-use arbor_tui_core::layout::{Rect, Size};
-use arbor_tui_core::layout_engine::{layout_tree, measure_tree};
-use arbor_tui_core::render::render_tree;
-use arbor_tui_core::screen::VirtualScreen;
-use arbor_tui_core::theme::Theme;
-use arbor_tui_core::widget::{WidgetAction, WidgetId, WidgetNode};
+use arbor_tui_render::backend::TerminalBackend;
+use arbor_tui_render::diff::{diff, merge_regions};
+use arbor_tui_reactive::dirty::DirtyTracker;
+use arbor_tui_widget::focus::{find_widget_mut, FocusManager};
+use arbor_tui_primitives::layout::{Rect, Size};
+use arbor_tui_widget::layout_engine::{layout_tree, measure_tree};
+use arbor_tui_widget::render::render_tree;
+use arbor_tui_render::screen::VirtualScreen;
+use arbor_tui_render::theme::Theme;
+use arbor_tui_widget::widget::{WidgetAction, WidgetId, WidgetNode};
 
 /// Frame rate cap — 60fps = ~16.67ms minimum interval.
 const MIN_FRAME_INTERVAL_MS: u64 = 16;
@@ -205,7 +205,7 @@ impl App {
         for widget_id in &chain {
             if let Some(widget) = find_widget_mut(root, *widget_id) {
                 let result = widget.perform(action);
-                if matches!(result, arbor_tui_core::input::KeyHandleResult::Handled) {
+                if matches!(result, arbor_tui_primitives::input::KeyHandleResult::Handled) {
                     self.dirty_tracker.mark_dirty(*widget_id);
                     return;
                 }

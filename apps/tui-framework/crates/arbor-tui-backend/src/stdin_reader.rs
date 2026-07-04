@@ -7,7 +7,7 @@ use std::thread::{self, JoinHandle};
 
 use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 
-use arbor_tui_core::input::{InputReader, Key, KeyEvent, Modifiers};
+use arbor_tui_primitives::input::{InputReader, Key, KeyEvent, Modifiers};
 
 /// Bounded channel capacity per TEP-0004: 256 batches max.
 const EVENT_CHANNEL_CAP: usize = 256;

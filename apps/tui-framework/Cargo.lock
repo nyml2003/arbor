@@ -14,7 +14,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arbor-tui-backend",
- "arbor-tui-core",
+ "arbor-tui-primitives",
+ "arbor-tui-reactive",
+ "arbor-tui-render",
+ "arbor-tui-widget",
+ "arbor-tui-widgets",
  "libc",
 ]
 
@@ -22,17 +26,10 @@ dependencies = [
 name = "arbor-tui-backend"
 version = "0.1.0"
 dependencies = [
- "arbor-tui-core",
+ "arbor-tui-primitives",
+ "arbor-tui-render",
  "crossterm",
  "thiserror",
-]
-
-[[package]]
-name = "arbor-tui-core"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "unicode-width",
 ]
 
 [[package]]
@@ -42,8 +39,55 @@ dependencies = [
  "anyhow",
  "arbor-tui",
  "arbor-tui-backend",
- "arbor-tui-core",
+ "arbor-tui-primitives",
+ "arbor-tui-reactive",
+ "arbor-tui-render",
+ "arbor-tui-widget",
+ "arbor-tui-widgets",
  "crossterm",
+]
+
+[[package]]
+name = "arbor-tui-primitives"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "unicode-width",
+]
+
+[[package]]
+name = "arbor-tui-reactive"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-primitives",
+]
+
+[[package]]
+name = "arbor-tui-render"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-primitives",
+ "unicode-width",
+]
+
+[[package]]
+name = "arbor-tui-widget"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-primitives",
+ "arbor-tui-reactive",
+ "arbor-tui-render",
+ "thiserror",
+]
+
+[[package]]
+name = "arbor-tui-widgets"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-primitives",
+ "arbor-tui-reactive",
+ "arbor-tui-render",
+ "arbor-tui-widget",
 ]
 
 [[package]]

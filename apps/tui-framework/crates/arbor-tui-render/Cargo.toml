@@ -1,5 +1,5 @@
 [package]
-name = "arbor-tui-core"
+name = "arbor-tui-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,9 +9,5 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+arbor-tui-primitives = { path = "../arbor-tui-primitives" }
 unicode-width = "0.2"
-thiserror = "2"
-
-[features]
-default = []
-profile = []

@@ -2,7 +2,7 @@
 // Owned by the App context, NOT a global static.
 
 use std::collections::HashSet;
-use crate::widget::WidgetId;
+use arbor_tui_primitives::widget_id::WidgetId;
 
 /// Accumulates dirty widget IDs during an event processing cycle.
 /// At the end of the cycle, `drain()` is called to get the set and clear it.

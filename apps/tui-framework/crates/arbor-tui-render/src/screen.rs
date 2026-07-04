@@ -1,7 +1,7 @@
 // VirtualScreen — the character grid buffer. Row-major flat array of Cell.
 
-use crate::cell::Cell;
-use crate::layout::Rect;
+use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_primitives::layout::Rect;
 
 /// A character grid of `cols × rows` cells, stored as a row-major flat vector.
 ///
@@ -50,7 +50,7 @@ impl VirtualScreen {
     /// Characters that extend beyond the right edge are silently dropped.
     /// CJK characters occupy 2 columns — the column after a wide char is skipped.
     /// Tab characters must be pre-expanded by the caller.
-    pub fn write_str(&mut self, col: u16, row: u16, text: &str, fg: crate::cell::AnsiColor, bg: crate::cell::AnsiColor, attrs: crate::cell::Attrs) {
+    pub fn write_str(&mut self, col: u16, row: u16, text: &str, fg: AnsiColor, bg: AnsiColor, attrs: Attrs) {
         if row >= self.rows {
             return;
         }

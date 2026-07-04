@@ -1,9 +1,9 @@
 // SimulatedBackend — in-memory terminal for testing.
 // Records all ANSI output and allows assertion on rendered content.
 
-use arbor_tui_core::backend::{BackendResult, TerminalBackend, TerminalGuard};
-use arbor_tui_core::diff::DirtyRegion;
-use arbor_tui_core::screen::VirtualScreen;
+use arbor_tui_render::backend::{BackendResult, TerminalBackend, TerminalGuard};
+use arbor_tui_render::diff::DirtyRegion;
+use arbor_tui_render::screen::VirtualScreen;
 
 /// An in-memory terminal backend for CI/testing.
 ///
@@ -119,7 +119,7 @@ impl TerminalBackend for SimulatedBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_core::diff::{diff, merge_regions};
+    use arbor_tui_render::diff::{diff, merge_regions};
 
     #[test]
     fn simulated_backend_records_output() {

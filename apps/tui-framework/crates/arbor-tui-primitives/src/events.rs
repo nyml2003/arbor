@@ -2,7 +2,7 @@
 // Compiles only when the "profile" feature is enabled.
 
 use crate::input::KeyEvent;
-use crate::widget::WidgetId;
+use crate::widget_id::WidgetId;
 
 /// Events emitted at key points in the framework lifecycle.
 #[derive(Clone, Debug)]
