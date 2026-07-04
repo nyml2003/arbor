@@ -197,7 +197,7 @@ fn measure_scrollview(
 ) -> SizeConstraint {
     // Pass viewport size as available to child — child can be larger
     let inner = SizeCalc::content_available(available, w.props.padding, RectOffset::default());
-    let _child_c = measure_node(&w.child, inner, out);
+    let _ = measure_node(&w.child, inner, out); // side effect: populates out
     // ScrollView takes whatever space is available
     SizeConstraint::bounded(available)
 }
@@ -223,7 +223,6 @@ fn layout_node(
 ) -> Result<(), LayoutError> {
     let props = node.layout_props();
     let content_rect = SizeCalc::content_rect(rect, props.padding);
-    let _constraint = constraints.get(&node.id()).copied();
 
     out.insert(node.id(), WidgetLayoutInfo {
         id: node.id(),
@@ -393,7 +392,6 @@ fn layout_flex_children(
     // Position each child
     for info in &infos {
         let child = &children[info.idx];
-        let _cp = child.layout_props();
 
         let cross_size = match props.align {
             Align::Stretch => sat_sub(cross_available, info.margin_cross_start + info.margin_cross_end).max(1),

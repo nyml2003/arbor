@@ -145,7 +145,6 @@ fn render_button(w: &crate::widget::ButtonWidget, rect: Rect, theme: &Theme) -> 
 fn render_list(w: &ListWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
     let bg = theme.surface();
-    let _text_dim = theme.text_dim();
     let accent = theme.accent();
     let text = theme.text();
 
@@ -282,7 +281,6 @@ fn resolve_col_width(col: ColumnWidth, total_w: u16, all_cols: &[crate::widget::
 
 fn render_tabs(w: &TabsWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
-    let _bg = theme.surface();
     let tab_bg = theme.surface_alt();
     let active_bg = theme.primary();
     let text = theme.text();
@@ -334,9 +332,7 @@ fn render_scrollview(w: &ScrollViewWidget, rect: Rect, theme: &Theme) -> Virtual
     let child_rect = Rect::new(0, 0, rect.w.max(100), rect.h.max(100));
     let child_screen = render_node(&w.child, child_rect, theme);
 
-    // Blit visible viewport
-    let _src_rect = Rect::new(w.scroll_x.get(), w.scroll_y.get(), rect.w, rect.h);
-    // Clip to child_screen bounds
+    // Blit visible viewport, clipped to child_screen bounds
     let copy_w = rect.w.min(child_screen.cols().saturating_sub(w.scroll_x.get()));
     let copy_h = rect.h.min(child_screen.rows().saturating_sub(w.scroll_y.get()));
 
@@ -395,7 +391,7 @@ fn render_subtree(
                 render_subtree(child, layout, theme, screen);
             }
         }
-        WidgetNode::ScrollView(_w) => {
+        WidgetNode::ScrollView(_) => {
             let child_screen = render_node(node, info.content_rect, theme);
             screen.blit(info.content_rect, &child_screen);
         }
