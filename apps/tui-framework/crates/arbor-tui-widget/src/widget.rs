@@ -3,18 +3,17 @@
 // requires NO changes to the core crate. Just impl the trait.
 
 use arbor_tui_primitives::input::KeyHandleResult;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
-use arbor_tui_primitives::layout_error::LayoutError;
+use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
 // Re-exports for downstream convenience
 pub use arbor_tui_primitives::cell;
+pub use arbor_tui_primitives::input;
 pub use arbor_tui_primitives::layout;
 pub use arbor_tui_primitives::text;
-pub use arbor_tui_primitives::input;
+pub use arbor_tui_primitives::widget_id::{WidgetAction, WidgetId, WidgetLayoutInfo};
 pub use arbor_tui_reactive::signal;
 pub use arbor_tui_render::screen;
-pub use arbor_tui_render::theme;
-pub use arbor_tui_primitives::widget_id::{WidgetAction, WidgetId, WidgetLayoutInfo};
 use arbor_tui_render::screen::VirtualScreen;
+pub use arbor_tui_render::theme;
 use arbor_tui_render::theme::Theme;
 
 use std::collections::HashMap;
@@ -25,10 +24,16 @@ pub trait Widget {
     fn id(&self) -> WidgetId;
     fn layout_props(&self) -> &LayoutProps;
 
-    fn children(&self) -> &[WidgetNode] { &[] }
-    fn children_mut(&mut self) -> &mut [WidgetNode] { &mut [] }
+    fn children(&self) -> &[WidgetNode] {
+        &[]
+    }
+    fn children_mut(&mut self) -> &mut [WidgetNode] {
+        &mut []
+    }
 
-    fn measure(&self, _available: Size) -> SizeConstraint { SizeConstraint::at_least_one() }
+    fn measure(&self, _available: Size) -> SizeConstraint {
+        SizeConstraint::at_least_one()
+    }
 
     fn measure_subtree(
         &self,
@@ -38,7 +43,9 @@ pub trait Widget {
         self.measure(available)
     }
 
-    fn children_rect(&self, content_rect: Rect) -> Rect { content_rect }
+    fn children_rect(&self, content_rect: Rect) -> Rect {
+        content_rect
+    }
 
     fn render(&self, _rect: Rect, _theme: &Theme) -> VirtualScreen {
         VirtualScreen::new(_rect.w, _rect.h)
@@ -50,12 +57,22 @@ pub trait Widget {
         self.render(rect, theme)
     }
 
-    fn is_transparent(&self) -> bool { false }
-    fn renders_children(&self) -> bool { false }
+    fn is_transparent(&self) -> bool {
+        false
+    }
+    fn renders_children(&self) -> bool {
+        false
+    }
 
-    fn focusable(&self) -> bool { false }
-    fn tab_index(&self) -> u16 { 0 }
-    fn perform(&mut self, _action: &WidgetAction) -> KeyHandleResult { KeyHandleResult::Bubble }
+    fn focusable(&self) -> bool {
+        false
+    }
+    fn tab_index(&self) -> u16 {
+        0
+    }
+    fn perform(&mut self, _action: &WidgetAction) -> KeyHandleResult {
+        KeyHandleResult::Bubble
+    }
 
     fn on_mount(&mut self) {}
     fn on_unmount(&mut self) {}
@@ -66,25 +83,51 @@ pub trait Widget {
 pub struct WidgetNode(Box<dyn Widget>);
 
 impl WidgetNode {
-    pub fn new(widget: impl Widget + 'static) -> Self { Self(Box::new(widget)) }
-    pub fn inner(&self) -> &dyn Widget { &*self.0 }
-    pub fn inner_mut(&mut self) -> &mut dyn Widget { &mut *self.0 }
+    pub fn new(widget: impl Widget + 'static) -> Self {
+        Self(Box::new(widget))
+    }
+    pub fn inner(&self) -> &dyn Widget {
+        &*self.0
+    }
+    pub fn inner_mut(&mut self) -> &mut dyn Widget {
+        &mut *self.0
+    }
 }
 
 impl WidgetNode {
-    pub fn id(&self) -> WidgetId               { self.0.id() }
-    pub fn layout_props(&self) -> &LayoutProps { self.0.layout_props() }
-    pub fn children(&self) -> &[WidgetNode]    { self.0.children() }
-    pub fn children_mut(&mut self) -> &mut [WidgetNode] { self.0.children_mut() }
-    pub fn focusable(&self) -> bool            { self.0.focusable() }
-    pub fn tab_index(&self) -> u16             { self.0.tab_index() }
-    pub fn is_transparent(&self) -> bool       { self.0.is_transparent() }
-    pub fn renders_children(&self) -> bool     { self.0.renders_children() }
+    pub fn id(&self) -> WidgetId {
+        self.0.id()
+    }
+    pub fn layout_props(&self) -> &LayoutProps {
+        self.0.layout_props()
+    }
+    pub fn children(&self) -> &[WidgetNode] {
+        self.0.children()
+    }
+    pub fn children_mut(&mut self) -> &mut [WidgetNode] {
+        self.0.children_mut()
+    }
+    pub fn focusable(&self) -> bool {
+        self.0.focusable()
+    }
+    pub fn tab_index(&self) -> u16 {
+        self.0.tab_index()
+    }
+    pub fn is_transparent(&self) -> bool {
+        self.0.is_transparent()
+    }
+    pub fn renders_children(&self) -> bool {
+        self.0.renders_children()
+    }
 
     pub fn measure(&self, available: Size) -> SizeConstraint {
         self.0.measure(available)
     }
-    pub fn measure_subtree(&self, available: Size, child_constraints: &HashMap<WidgetId, SizeConstraint>) -> SizeConstraint {
+    pub fn measure_subtree(
+        &self,
+        available: Size,
+        child_constraints: &HashMap<WidgetId, SizeConstraint>,
+    ) -> SizeConstraint {
         self.0.measure_subtree(available, child_constraints)
     }
     pub fn children_rect(&self, content_rect: Rect) -> Rect {
@@ -99,6 +142,10 @@ impl WidgetNode {
     pub fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         self.0.perform(action)
     }
-    pub fn on_mount(&mut self) { self.0.on_mount(); }
-    pub fn on_unmount(&mut self) { self.0.on_unmount(); }
+    pub fn on_mount(&mut self) {
+        self.0.on_mount();
+    }
+    pub fn on_unmount(&mut self) {
+        self.0.on_unmount();
+    }
 }

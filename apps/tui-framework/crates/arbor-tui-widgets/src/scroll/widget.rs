@@ -3,7 +3,8 @@
 // copies only the visible portion. renders_children() = true so the
 // engine does NOT recurse into the child during render.
 
-use arbor_tui_primitives::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
+use arbor_tui_primitives::cell::Cell;
+use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_reactive::signal::ReadSignal;
 use arbor_tui_render::theme::Theme;
@@ -17,6 +18,9 @@ pub struct ScrollViewWidget {
     pub child: Box<WidgetNode>,
     pub scroll_x: ReadSignal<u16>,
     pub scroll_y: ReadSignal<u16>,
+    /// Natural height of child content in rows. Used at render time to
+    /// allocate enough space for the child to render at full height.
+    pub content_h: u16,
     pub on_scroll: Option<Box<dyn Fn(u16, u16)>>,
 }
 
@@ -52,8 +56,13 @@ impl Widget for ScrollViewWidget {
     fn render(&self, rect: Rect, _theme: &Theme) -> VirtualScreen {
         let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
 
+        // 先用背景色填充整个视口，避免子组件比视口小时 Cell::default() 黑底覆盖父组件。
+        let fill = Cell { bg: _theme.surface(), ..Default::default() };
+        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
+
         // Render child at its full natural size (larger than viewport)
-        let child_rect = Rect::new(0, 0, rect.w.max(100), rect.h.max(100));
+        let child_h = self.content_h.max(rect.h).max(1);
+        let child_rect = Rect::new(0, 0, rect.w.max(1), child_h);
         let child_screen = self.child.render(child_rect, _theme);
 
         // Copy visible viewport

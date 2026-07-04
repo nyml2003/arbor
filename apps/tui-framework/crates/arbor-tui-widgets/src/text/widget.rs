@@ -1,12 +1,12 @@
 // TextWidget — styled text display with word wrapping and truncation.
 
-use arbor_tui_primitives::cell::{AnsiColor, Attrs};
-use arbor_tui_primitives::layout::{LayoutProps, Size, SizeConstraint};
+use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_reactive::signal::ReadSignal;
 use arbor_tui_primitives::text::{self, TruncateStrategy, WrapStrategy};
 use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
+use arbor_tui_widget::widget::{Widget, WidgetId};
 
 pub struct TextWidget {
     pub id: WidgetId,
@@ -76,11 +76,17 @@ impl Widget for TextWidget {
         }
     }
 
-    fn render(&self, rect: arbor_tui_primitives::layout::Rect, _theme: &Theme) -> VirtualScreen {
+    fn render(&self, rect: Rect, _theme: &Theme) -> VirtualScreen {
         let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
+        let style = self.style.get();
+
+        // 先用组件背景色填充整个区域，避免 Cell::default() (黑底) 在
+        // blit 时覆盖父组件的背景。
+        let fill = Cell { bg: style.bg, ..Default::default() };
+        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
+
         let text_content = self.text.get();
         let expanded = text::expand_tabs(&text_content);
-        let style = self.style.get();
 
         match self.wrap {
             WrapStrategy::None => {

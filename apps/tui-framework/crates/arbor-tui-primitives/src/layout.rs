@@ -194,7 +194,7 @@ impl SizeCalc {
 /// Saturated subtraction — returns 0 instead of underflowing.
 #[inline]
 pub fn sat_sub(a: u16, b: u16) -> u16 {
-    if a > b { a - b } else { 0 }
+    a.saturating_sub(b)
 }
 
 #[cfg(test)]

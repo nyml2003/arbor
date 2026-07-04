@@ -217,7 +217,7 @@ impl App {
     /// Move focus to the next focusable widget (Tab).
     pub fn focus_next(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.next()
+        let new = self.focus_manager.focus_next()
             .context("focus_next failed")?;
         if old != new {
             if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }
@@ -229,7 +229,7 @@ impl App {
     /// Move focus to the previous focusable widget (Shift+Tab).
     pub fn focus_prev(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.prev()
+        let new = self.focus_manager.focus_prev()
             .context("focus_prev failed")?;
         if old != new {
             if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }

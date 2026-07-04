@@ -24,6 +24,12 @@ pub struct CrosstermBackend {
     last_flush_us: u64,
 }
 
+impl Default for CrosstermBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CrosstermBackend {
     pub fn new() -> Self {
         let no_color = std::env::var("NO_COLOR").map(|v| v == "1").unwrap_or(false);

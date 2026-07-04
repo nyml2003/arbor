@@ -3,6 +3,7 @@
 
 pub mod error;
 pub mod simulated_backend;
+pub mod simulated_input;
 
 #[cfg(feature = "crossterm")]
 pub mod crossterm_backend;

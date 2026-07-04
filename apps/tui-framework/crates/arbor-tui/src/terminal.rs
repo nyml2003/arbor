@@ -16,7 +16,7 @@ pub fn install_panic_hook() {
         let _ = write!(stdout, "\x1b[?1049l"); // exit alternate screen
         let _ = write!(stdout, "\x1b[?25h");   // show cursor
         let _ = stdout.flush();
-        eprintln!("[arbor-tui] PANIC: {}", info);
+        eprintln!("[arbor-tui] PANIC: {info}");
     }));
 }
 

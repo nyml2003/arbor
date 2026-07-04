@@ -1,12 +1,12 @@
 // InputWidget — single-line text input with cursor.
 
-use arbor_tui_primitives::cell::Attrs;
+use arbor_tui_primitives::cell::{Attrs, Cell};
 use arbor_tui_primitives::input::KeyHandleResult;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
 use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
+use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
 pub struct InputWidget {
     pub id: WidgetId,
@@ -48,6 +48,10 @@ impl Widget for InputWidget {
         let bg = theme.surface_alt();
         let text_fg = theme.text();
 
+        // 先用背景色填充整个区域，避免 Cell::default() 黑底覆盖父组件。
+        let fill = Cell { bg, ..Default::default() };
+        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), 1), &fill);
+
         screen.write_str(0, 0, "> ", border_fg, bg, Attrs::default());
 
         let content_start: u16 = 2;
@@ -72,6 +76,10 @@ impl Widget for InputWidget {
         let bg = theme.surface_alt();
         let text_fg = theme.text();
         let cursor_bg = theme.primary();
+
+        // 先用背景色填充整个区域，避免 Cell::default() 黑底覆盖父组件。
+        let fill = Cell { bg, ..Default::default() };
+        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), 1), &fill);
 
         // "> " prompt with accent when focused
         screen.write_str(0, 0, "> ", border_fg, bg, Attrs::default());

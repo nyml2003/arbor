@@ -6,7 +6,7 @@ use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
 use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
+use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
 pub struct TableWidget {
     pub id: WidgetId,

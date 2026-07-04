@@ -7,12 +7,13 @@
 
 use std::collections::HashMap;
 
+use crate::widget::WidgetNode;
 use arbor_tui_primitives::layout::{
-    Align, AxisConstraint, Direction, Justify, LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint, sat_sub,
+    sat_sub, Align, Direction, Justify, LayoutProps, Rect, RectOffset, Size, SizeCalc,
+    SizeConstraint,
 };
 use arbor_tui_primitives::layout_error::LayoutError;
 use arbor_tui_primitives::widget_id::{WidgetId, WidgetLayoutInfo};
-use crate::widget::WidgetNode;
 
 /// Layout result type alias.
 pub type LayoutResult = HashMap<WidgetId, WidgetLayoutInfo>;
@@ -20,10 +21,7 @@ pub type LayoutResult = HashMap<WidgetId, WidgetLayoutInfo>;
 // ── Pass 1: Bottom-up measure ──────────────────────────────────────
 
 /// Measure the entire widget tree. Returns constraints keyed by WidgetId.
-pub fn measure_tree(
-    root: &WidgetNode,
-    available: Size,
-) -> HashMap<WidgetId, SizeConstraint> {
+pub fn measure_tree(root: &WidgetNode, available: Size) -> HashMap<WidgetId, SizeConstraint> {
     let mut constraints = HashMap::new();
     measure_node(root, available, &mut constraints);
     constraints
@@ -70,11 +68,14 @@ fn layout_node(
     let props = node.layout_props();
     let content_rect = SizeCalc::content_rect(rect, props.padding);
 
-    out.insert(node.id(), WidgetLayoutInfo {
-        id: node.id(),
-        outer_rect: rect,
-        content_rect,
-    });
+    out.insert(
+        node.id(),
+        WidgetLayoutInfo {
+            id: node.id(),
+            outer_rect: rect,
+            content_rect,
+        },
+    );
 
     let children = node.children();
     if !children.is_empty() {
@@ -114,25 +115,28 @@ fn layout_flex_children(
 
     for (i, child) in children.iter().enumerate() {
         let cp = child.layout_props();
-        let cc = constraints.get(&child.id()).copied()
+        let cc = constraints
+            .get(&child.id())
+            .copied()
             .ok_or(LayoutError::MissingConstraints(child.id()))?;
-        let (margin_main, margin_cross_start, margin_cross_end, cross_min, fixed_main) = if is_column {
-            (
-                cp.margin.vertical(),
-                cp.margin.left,
-                cp.margin.right,
-                cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
-                cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
-            )
-        } else {
-            (
-                cp.margin.horizontal(),
-                cp.margin.top,
-                cp.margin.bottom,
-                cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
-                cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
-            )
-        };
+        let (margin_main, margin_cross_start, margin_cross_end, cross_min, fixed_main) =
+            if is_column {
+                (
+                    cp.margin.vertical(),
+                    cp.margin.left,
+                    cp.margin.right,
+                    cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
+                    cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
+                )
+            } else {
+                (
+                    cp.margin.horizontal(),
+                    cp.margin.top,
+                    cp.margin.bottom,
+                    cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
+                    cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
+                )
+            };
 
         if cp.flex > 0.0 {
             flex_sum += cp.flex;
@@ -159,11 +163,21 @@ fn layout_flex_children(
             final_mains[info.idx] = (base + extra) as u16;
         } else if free_space < 0 && info.flex > 0.0 && flex_sum > 0.0 {
             let shrink = (free_space.abs() as f32 * info.flex / flex_sum) as i32;
-            let constraint = constraints.get(&children[info.idx].id()).copied()
+            let constraint = constraints
+                .get(&children[info.idx].id())
+                .copied()
                 .ok_or(LayoutError::MissingConstraints(children[info.idx].id()))?;
             let child_padding = children[info.idx].layout_props().padding;
-            let min_content = if is_column { constraint.min_h } else { constraint.min_w };
-            let min_pad = if is_column { child_padding.vertical() } else { child_padding.horizontal() };
+            let min_content = if is_column {
+                constraint.min_h
+            } else {
+                constraint.min_w
+            };
+            let min_pad = if is_column {
+                child_padding.vertical()
+            } else {
+                child_padding.horizontal()
+            };
             final_mains[info.idx] = (base - shrink).max((min_content + min_pad) as i32) as u16;
         } else {
             final_mains[info.idx] = base as u16;
@@ -174,12 +188,16 @@ fn layout_flex_children(
     if free_space >= 0 {
         let total_allocated: u16 = final_mains.iter().sum();
         let remainder = sat_sub(main_available, total_allocated);
-        let mut flex_indices: Vec<usize> = infos.iter()
+        let mut flex_indices: Vec<usize> = infos
+            .iter()
             .filter(|i| i.flex > 0.0)
             .map(|i| i.idx)
             .collect();
         flex_indices.sort_by(|a, b| {
-            children[*b].layout_props().flex.partial_cmp(&children[*a].layout_props().flex)
+            children[*b]
+                .layout_props()
+                .flex
+                .partial_cmp(&children[*a].layout_props().flex)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         for i in 0..remainder as usize {
@@ -207,18 +225,31 @@ fn layout_flex_children(
         let child = &children[info.idx];
 
         let cross_size = match props.align {
-            Align::Stretch => sat_sub(cross_available, info.margin_cross_start + info.margin_cross_end).max(1),
-            _ => info.cross_min.saturating_sub(info.margin_cross_start + info.margin_cross_end).max(1),
+            Align::Stretch => sat_sub(
+                cross_available,
+                info.margin_cross_start + info.margin_cross_end,
+            )
+            .max(1),
+            _ => info
+                .cross_min
+                .saturating_sub(info.margin_cross_start + info.margin_cross_end)
+                .max(1),
         };
 
         let cross_offset = match props.align {
             Align::Start => info.margin_cross_start,
             Align::Center => {
-                let slack = sat_sub(cross_available, cross_size + info.margin_cross_start + info.margin_cross_end);
+                let slack = sat_sub(
+                    cross_available,
+                    cross_size + info.margin_cross_start + info.margin_cross_end,
+                );
                 info.margin_cross_start + slack / 2
             }
             Align::End => {
-                let slack = sat_sub(cross_available, cross_size + info.margin_cross_start + info.margin_cross_end);
+                let slack = sat_sub(
+                    cross_available,
+                    cross_size + info.margin_cross_start + info.margin_cross_end,
+                );
                 info.margin_cross_start + slack
             }
             Align::Stretch => info.margin_cross_start,
@@ -252,39 +283,81 @@ fn layout_flex_children(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_primitives::layout::{AxisConstraint, Direction, LayoutProps, Size, SizeCalc, SizeConstraint, RectOffset};
-    use arbor_tui_primitives::widget_id::WidgetId;
-    use arbor_tui_primitives::text;
     use crate::widget::Widget;
+    use arbor_tui_primitives::layout::{
+        Direction, LayoutProps, RectOffset, Size, SizeCalc, SizeConstraint,
+    };
+    use arbor_tui_primitives::text;
+    use arbor_tui_primitives::widget_id::WidgetId;
 
     // Minimal test text widget
-    struct TestText { id: WidgetId, props: LayoutProps, text: String }
+    struct TestText {
+        id: WidgetId,
+        props: LayoutProps,
+        text: String,
+    }
     impl Widget for TestText {
-        fn id(&self) -> WidgetId { self.id }
-        fn layout_props(&self) -> &LayoutProps { &self.props }
+        fn id(&self) -> WidgetId {
+            self.id
+        }
+        fn layout_props(&self) -> &LayoutProps {
+            &self.props
+        }
         fn measure(&self, _available: Size) -> SizeConstraint {
             let w = text::measure_width(&self.text);
             SizeConstraint::fixed(w.max(1), 1)
         }
-        fn render(&self, _rect: Rect, _theme: &arbor_tui_render::theme::Theme) -> arbor_tui_render::screen::VirtualScreen {
-            let mut s = arbor_tui_render::screen::VirtualScreen::new(text::measure_width(&self.text).max(1), 1);
-            s.write_str(0, 0, &self.text, Default::default(), Default::default(), Default::default());
+        fn render(
+            &self,
+            _rect: Rect,
+            _theme: &arbor_tui_render::theme::Theme,
+        ) -> arbor_tui_render::screen::VirtualScreen {
+            let mut s = arbor_tui_render::screen::VirtualScreen::new(
+                text::measure_width(&self.text).max(1),
+                1,
+            );
+            s.write_str(
+                0,
+                0,
+                &self.text,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            );
             s
         }
     }
 
     fn make_text(id: u64, text: &str) -> WidgetNode {
-        WidgetNode::new(TestText { id: WidgetId(id), props: LayoutProps::default(), text: text.to_string() })
+        WidgetNode::new(TestText {
+            id: WidgetId(id),
+            props: LayoutProps::default(),
+            text: text.to_string(),
+        })
     }
 
     // Minimal box widget
-    struct TestBox { id: WidgetId, props: LayoutProps, children: Vec<WidgetNode> }
+    struct TestBox {
+        id: WidgetId,
+        props: LayoutProps,
+        children: Vec<WidgetNode>,
+    }
     impl Widget for TestBox {
-        fn id(&self) -> WidgetId { self.id }
-        fn layout_props(&self) -> &LayoutProps { &self.props }
-        fn children(&self) -> &[WidgetNode] { &self.children }
-        fn children_mut(&mut self) -> &mut [WidgetNode] { &mut self.children }
-        fn is_transparent(&self) -> bool { true }
+        fn id(&self) -> WidgetId {
+            self.id
+        }
+        fn layout_props(&self) -> &LayoutProps {
+            &self.props
+        }
+        fn children(&self) -> &[WidgetNode] {
+            &self.children
+        }
+        fn children_mut(&mut self) -> &mut [WidgetNode] {
+            &mut self.children
+        }
+        fn is_transparent(&self) -> bool {
+            true
+        }
         fn measure_subtree(
             &self,
             _available: Size,
@@ -293,20 +366,26 @@ mod tests {
             if self.children.is_empty() {
                 return SizeConstraint::fixed(0, 0);
             }
-            let inner = SizeCalc::content_available(_available, self.props.padding, RectOffset::default());
+            let _ =
+                SizeCalc::content_available(_available, self.props.padding, RectOffset::default());
             let mut total_main: u16 = 0;
             let mut max_cross: u16 = 0;
             for child in &self.children {
-                let cc = child_constraints.get(&child.id()).copied().unwrap_or(SizeConstraint::unbounded());
+                let cc = child_constraints
+                    .get(&child.id())
+                    .copied()
+                    .unwrap_or(SizeConstraint::unbounded());
                 let cp = child.layout_props();
                 match self.props.direction {
                     Direction::Column => {
                         total_main += cc.min_h + cp.margin.vertical() + cp.padding.vertical();
-                        max_cross = max_cross.max(cc.min_w + cp.margin.horizontal() + cp.padding.horizontal());
+                        max_cross = max_cross
+                            .max(cc.min_w + cp.margin.horizontal() + cp.padding.horizontal());
                     }
                     Direction::Row => {
                         total_main += cc.min_w + cp.margin.horizontal() + cp.padding.horizontal();
-                        max_cross = max_cross.max(cc.min_h + cp.margin.vertical() + cp.padding.vertical());
+                        max_cross =
+                            max_cross.max(cc.min_h + cp.margin.vertical() + cp.padding.vertical());
                     }
                 }
             }
@@ -314,7 +393,11 @@ mod tests {
                 Direction::Column => (max_cross, total_main),
                 Direction::Row => (total_main, max_cross),
             };
-            let outer = SizeCalc::outer_size(Size::new(min_w, min_h), self.props.padding, RectOffset::default());
+            let outer = SizeCalc::outer_size(
+                Size::new(min_w, min_h),
+                self.props.padding,
+                RectOffset::default(),
+            );
             SizeConstraint {
                 min_w: self.props.width.unwrap_or(outer.w).max(1),
                 min_h: self.props.height.unwrap_or(outer.h).max(1),
@@ -325,7 +408,14 @@ mod tests {
     }
 
     fn make_box(id: u64, direction: Direction, children: Vec<WidgetNode>) -> WidgetNode {
-        WidgetNode::new(TestBox { id: WidgetId(id), props: LayoutProps { direction, ..Default::default() }, children })
+        WidgetNode::new(TestBox {
+            id: WidgetId(id),
+            props: LayoutProps {
+                direction,
+                ..Default::default()
+            },
+            children,
+        })
     }
 
     #[test]
@@ -339,10 +429,11 @@ mod tests {
 
     #[test]
     fn measure_column_box() {
-        let box_w = make_box(10, Direction::Column, vec![
-            make_text(1, "hello"),
-            make_text(2, "world"),
-        ]);
+        let box_w = make_box(
+            10,
+            Direction::Column,
+            vec![make_text(1, "hello"), make_text(2, "world")],
+        );
         let c = measure_tree(&box_w, Size::new(80, 24));
         let bc = c[&WidgetId(10)];
         assert!(bc.min_h >= 2);
@@ -351,10 +442,11 @@ mod tests {
 
     #[test]
     fn layout_column_positions_children() {
-        let box_w = make_box(10, Direction::Column, vec![
-            make_text(1, "hello"),
-            make_text(2, "world"),
-        ]);
+        let box_w = make_box(
+            10,
+            Direction::Column,
+            vec![make_text(1, "hello"), make_text(2, "world")],
+        );
         let c = measure_tree(&box_w, Size::new(80, 24));
         let result = layout_tree(Rect::new(0, 0, 80, 24), &box_w, &c).unwrap();
         let t1 = &result[&WidgetId(1)];
@@ -366,12 +458,18 @@ mod tests {
     fn flex_child_gets_extra_space() {
         let flex_text = WidgetNode::new(TestText {
             id: WidgetId(2),
-            props: LayoutProps { flex: 1.0, ..Default::default() },
+            props: LayoutProps {
+                flex: 1.0,
+                ..Default::default()
+            },
             text: "flex".to_string(),
         });
         let box_w = WidgetNode::new(TestBox {
             id: WidgetId(10),
-            props: LayoutProps { direction: Direction::Column, ..Default::default() },
+            props: LayoutProps {
+                direction: Direction::Column,
+                ..Default::default()
+            },
             children: vec![make_text(1, "fixed"), flex_text],
         });
         let c = measure_tree(&box_w, Size::new(80, 24));

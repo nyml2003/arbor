@@ -13,6 +13,12 @@ pub struct DirtyTracker {
     force: bool,
 }
 
+impl Default for DirtyTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DirtyTracker {
     pub fn new() -> Self {
         Self {

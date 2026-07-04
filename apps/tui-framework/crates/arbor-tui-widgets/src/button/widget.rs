@@ -7,7 +7,7 @@ use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_reactive::signal::ReadSignal;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
 use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
+use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ButtonStyle { Primary, Secondary, Danger, Default }

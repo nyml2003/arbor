@@ -74,7 +74,7 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
             let ellipsis = "…";
             let ellipsis_w = measure_width(ellipsis);
             if max_width <= ellipsis_w {
-                return ellipsis.repeat(1);
+                return ellipsis.to_string();
             }
             let avail = max_width - ellipsis_w;
             let mut result = String::with_capacity(max_width as usize);
@@ -94,7 +94,7 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
             let ellipsis = "…";
             let ellipsis_w = measure_width(ellipsis);
             if max_width <= ellipsis_w {
-                return ellipsis.repeat(1);
+                return ellipsis.to_string();
             }
             let avail = max_width - ellipsis_w;
             let left_w = avail / 2;

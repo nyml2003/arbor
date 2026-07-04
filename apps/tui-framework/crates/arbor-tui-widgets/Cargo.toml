@@ -13,3 +13,6 @@ arbor-tui-primitives = { path = "../arbor-tui-primitives" }
 arbor-tui-reactive = { path = "../arbor-tui-reactive" }
 arbor-tui-render = { path = "../arbor-tui-render" }
 arbor-tui-widget = { path = "../arbor-tui-widget" }
+
+[dev-dependencies]
+arbor-tui-backend = { path = "../arbor-tui-backend" }

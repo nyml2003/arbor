@@ -20,6 +20,7 @@ impl PaletteColor {
 /// silently dropped and only the palette index is emitted. The framework does
 /// NOT perform RGB→256 mapping — that responsibility belongs to the theme layer.
 #[derive(Copy, Clone, Debug)]
+#[derive(Default)]
 pub struct AnsiColor {
     pub palette: PaletteColor,
     pub true_color: Option<Rgb>,
@@ -33,14 +34,6 @@ impl PartialEq for AnsiColor {
 
 impl Eq for AnsiColor {}
 
-impl Default for AnsiColor {
-    fn default() -> Self {
-        Self {
-            palette: PaletteColor::default(),
-            true_color: None,
-        }
-    }
-}
 
 impl AnsiColor {
     pub const fn from_palette(index: u8) -> Self {
@@ -64,6 +57,7 @@ pub struct Rgb(pub u8, pub u8, pub u8);
 
 /// Character attributes stored as bitflags-compatible booleans.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Default)]
 pub struct Attrs {
     pub bold: bool,
     pub dim: bool,
@@ -72,17 +66,6 @@ pub struct Attrs {
     pub reverse: bool,
 }
 
-impl Default for Attrs {
-    fn default() -> Self {
-        Self {
-            bold: false,
-            dim: false,
-            italic: false,
-            underline: false,
-            reverse: false,
-        }
-    }
-}
 
 /// A single character cell on the terminal grid.
 ///

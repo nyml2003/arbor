@@ -1,8 +1,8 @@
 // BorderWidget — wraps a child with a Unicode-box border.
 // Supports rounded/sharp corners and optional title.
 
-use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell};
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
+use arbor_tui_primitives::cell::{AnsiColor, Cell};
+use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
@@ -20,13 +20,27 @@ pub(crate) struct BorderWidget {
 }
 
 impl Widget for BorderWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
-    fn children(&self) -> &[WidgetNode] { std::slice::from_ref(&*self.child) }
-    fn children_mut(&mut self) -> &mut [WidgetNode] { std::slice::from_mut(&mut *self.child) }
-    fn is_transparent(&self) -> bool { false }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
+    fn children(&self) -> &[WidgetNode] {
+        std::slice::from_ref(&*self.child)
+    }
+    fn children_mut(&mut self) -> &mut [WidgetNode] {
+        std::slice::from_mut(&mut *self.child)
+    }
+    fn is_transparent(&self) -> bool {
+        false
+    }
 
-    fn measure_subtree(&self, available: Size, child_constraints: &HashMap<WidgetId, SizeConstraint>) -> SizeConstraint {
+    fn measure_subtree(
+        &self,
+        available: Size,
+        child_constraints: &HashMap<WidgetId, SizeConstraint>,
+    ) -> SizeConstraint {
         // Border is 1 cell thick on each side. child was measured with (available - padding).
         // The padding includes border space by convention.
         if let Some(cc) = child_constraints.get(&self.child.id()) {
@@ -60,7 +74,10 @@ impl Widget for BorderWidget {
         let h = rect.h;
 
         // Fill entire area with border bg so interior has consistent color
-        let fill = Cell { bg: self.bg, ..Default::default() };
+        let fill = Cell {
+            bg: self.bg,
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, w, h), &fill);
 
         // Corners
@@ -73,23 +90,63 @@ impl Widget for BorderWidget {
         let v_line = '\u{2502}'; // │
 
         // Top border
-        screen.cell_at_mut(0, 0).map(|c| { *c = Cell { ch: tl, fg: self.fg, bg: self.bg, ..Default::default() }; });
-        screen.cell_at_mut(w - 1, 0).map(|c| { *c = Cell { ch: tr, fg: self.fg, bg: self.bg, ..Default::default() }; });
+        if let Some(c) = screen.cell_at_mut(0, 0) { *c = Cell {
+                ch: tl,
+                fg: self.fg,
+                bg: self.bg,
+                ..Default::default()
+            }; }
+        if let Some(c) = screen.cell_at_mut(w - 1, 0) { *c = Cell {
+                ch: tr,
+                fg: self.fg,
+                bg: self.bg,
+                ..Default::default()
+            }; }
         for x in 1..w - 1 {
-            screen.cell_at_mut(x, 0).map(|c| { *c = Cell { ch: h_line, fg: self.fg, bg: self.bg, ..Default::default() }; });
+            if let Some(c) = screen.cell_at_mut(x, 0) { *c = Cell {
+                    ch: h_line,
+                    fg: self.fg,
+                    bg: self.bg,
+                    ..Default::default()
+                }; }
         }
 
         // Bottom border
-        screen.cell_at_mut(0, h - 1).map(|c| { *c = Cell { ch: bl, fg: self.fg, bg: self.bg, ..Default::default() }; });
-        screen.cell_at_mut(w - 1, h - 1).map(|c| { *c = Cell { ch: br, fg: self.fg, bg: self.bg, ..Default::default() }; });
+        if let Some(c) = screen.cell_at_mut(0, h - 1) { *c = Cell {
+                ch: bl,
+                fg: self.fg,
+                bg: self.bg,
+                ..Default::default()
+            }; }
+        if let Some(c) = screen.cell_at_mut(w - 1, h - 1) { *c = Cell {
+                ch: br,
+                fg: self.fg,
+                bg: self.bg,
+                ..Default::default()
+            }; }
         for x in 1..w - 1 {
-            screen.cell_at_mut(x, h - 1).map(|c| { *c = Cell { ch: h_line, fg: self.fg, bg: self.bg, ..Default::default() }; });
+            if let Some(c) = screen.cell_at_mut(x, h - 1) { *c = Cell {
+                    ch: h_line,
+                    fg: self.fg,
+                    bg: self.bg,
+                    ..Default::default()
+                }; }
         }
 
         // Side borders
         for y in 1..h - 1 {
-            screen.cell_at_mut(0, y).map(|c| { *c = Cell { ch: v_line, fg: self.fg, bg: self.bg, ..Default::default() }; });
-            screen.cell_at_mut(w - 1, y).map(|c| { *c = Cell { ch: v_line, fg: self.fg, bg: self.bg, ..Default::default() }; });
+            if let Some(c) = screen.cell_at_mut(0, y) { *c = Cell {
+                    ch: v_line,
+                    fg: self.fg,
+                    bg: self.bg,
+                    ..Default::default()
+                }; }
+            if let Some(c) = screen.cell_at_mut(w - 1, y) { *c = Cell {
+                    ch: v_line,
+                    fg: self.fg,
+                    bg: self.bg,
+                    ..Default::default()
+                }; }
         }
 
         // Title in top border
@@ -99,7 +156,11 @@ impl Widget for BorderWidget {
             for (i, ch) in display.chars().enumerate() {
                 let col = 2 + i as u16;
                 if col < w - 1 {
-                    screen.cell_at_mut(col, 0).map(|c| { c.ch = ch; c.fg = self.fg; c.bg = self.bg; });
+                    if let Some(c) = screen.cell_at_mut(col, 0) {
+                        c.ch = ch;
+                        c.fg = self.fg;
+                        c.bg = self.bg;
+                    }
                 }
             }
         }

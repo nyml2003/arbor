@@ -10,20 +10,8 @@ publish = false
 workspace = true
 
 [[bin]]
-name = "counter"
-path = "src/bin/counter.rs"
-
-[[bin]]
-name = "viewer"
-path = "src/bin/viewer.rs"
-
-[[bin]]
-name = "table_demo"
-path = "src/bin/table_demo.rs"
-
-[[bin]]
-name = "showcase"
-path = "src/bin/showcase.rs"
+name = "layout_demo2"
+path = "src/bin/layout_demo2.rs"
 
 [dependencies]
 arbor-tui = { path = "../arbor-tui" }

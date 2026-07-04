@@ -9,6 +9,12 @@ pub struct List {
     flex: f32,
 }
 
+impl Default for List {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl List {
     pub fn new() -> Self { Self { items: vec![], padding: RectOffset::default(), flex: 0.0 } }
     pub fn items(mut self, items: Vec<String>) -> Self { self.items = items; self }

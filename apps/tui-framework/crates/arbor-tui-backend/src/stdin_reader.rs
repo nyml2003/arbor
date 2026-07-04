@@ -18,6 +18,12 @@ pub struct StdinReader {
     handle: Option<JoinHandle<()>>,
 }
 
+impl Default for StdinReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StdinReader {
     /// Create a new StdinReader with a dedicated polling thread.
     ///

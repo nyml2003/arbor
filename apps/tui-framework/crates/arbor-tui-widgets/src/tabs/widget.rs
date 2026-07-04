@@ -59,7 +59,7 @@ impl Widget for TabsWidget {
         available: Size,
         child_constraints: &HashMap<WidgetId, SizeConstraint>,
     ) -> SizeConstraint {
-        let inner = SizeCalc::content_available(available, self.props.padding, RectOffset::default());
+        let _ = SizeCalc::content_available(available, self.props.padding, RectOffset::default());
         let header_h: u16 = 2; // header row + separator
         let mut max_w: u16 = 0;
         let mut max_h: u16 = 0;
@@ -86,6 +86,10 @@ impl Widget for TabsWidget {
         let active_bg = theme.primary();
         let text = theme.text();
         let active_text = theme.surface();
+
+        // 先用背景色填充整个区域（含子组件区域），避免 Cell::default() 黑底覆盖父组件。
+        let fill = Cell { bg: theme.surface(), ..Default::default() };
+        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
 
         // Tab headers
         let mut cx: u16 = 0;

@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
-use arbor_tui_primitives::widget_id::{WidgetAction, WidgetId};
 use crate::widget::WidgetNode;
+use arbor_tui_primitives::widget_id::WidgetId;
 
 /// Errors from the focus system.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +23,12 @@ pub struct FocusManager {
     parent_map: HashMap<WidgetId, WidgetId>,
 }
 
+impl Default for FocusManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FocusManager {
     pub fn new() -> Self {
         Self {
@@ -35,7 +41,7 @@ impl FocusManager {
     /// Rebuild the tab-order list and parent map by traversing the widget tree.
     pub fn rebuild(&mut self, root: &WidgetNode) {
         let mut pairs: Vec<(u16, WidgetId)> = Vec::new();
-        self.collect_focusable(root, &mut pairs);
+        Self::collect_focusable(root, &mut pairs);
         pairs.sort_by_key(|(tab_idx, _)| *tab_idx);
         self.tab_order = pairs.into_iter().map(|(_, id)| id).collect();
 
@@ -59,22 +65,25 @@ impl FocusManager {
         }
     }
 
-    fn collect_focusable(&self, node: &WidgetNode, out: &mut Vec<(u16, WidgetId)>) {
+    fn collect_focusable(node: &WidgetNode, out: &mut Vec<(u16, WidgetId)>) {
         if node.focusable() {
             out.push((node.tab_index(), node.id()));
         }
         for child in node.children() {
-            self.collect_focusable(child, out);
+            Self::collect_focusable(child, out);
         }
     }
 
-    pub fn next(&mut self) -> Result<Option<WidgetId>, FocusError> {
+    pub fn focus_next(&mut self) -> Result<Option<WidgetId>, FocusError> {
         if self.tab_order.is_empty() {
             return Ok(None);
         }
         let next_idx = match self.currently_focused {
             Some(id) => {
-                let pos = self.tab_order.iter().position(|x| *x == id)
+                let pos = self
+                    .tab_order
+                    .iter()
+                    .position(|x| *x == id)
                     .ok_or(FocusError::NotInTabOrder(id))?;
                 (pos + 1) % self.tab_order.len()
             }
@@ -84,15 +93,22 @@ impl FocusManager {
         Ok(self.currently_focused)
     }
 
-    pub fn prev(&mut self) -> Result<Option<WidgetId>, FocusError> {
+    pub fn focus_prev(&mut self) -> Result<Option<WidgetId>, FocusError> {
         if self.tab_order.is_empty() {
             return Ok(None);
         }
         let prev_idx = match self.currently_focused {
             Some(id) => {
-                let pos = self.tab_order.iter().position(|x| *x == id)
+                let pos = self
+                    .tab_order
+                    .iter()
+                    .position(|x| *x == id)
                     .ok_or(FocusError::NotInTabOrder(id))?;
-                if pos == 0 { self.tab_order.len() - 1 } else { pos - 1 }
+                if pos == 0 {
+                    self.tab_order.len() - 1
+                } else {
+                    pos - 1
+                }
             }
             None => self.tab_order.len() - 1,
         };
@@ -113,10 +129,18 @@ impl FocusManager {
         self.currently_focused = None;
     }
 
-    pub fn current(&self) -> Option<WidgetId> { self.currently_focused }
-    pub fn is_focused(&self, id: WidgetId) -> bool { self.currently_focused == Some(id) }
-    pub fn len(&self) -> usize { self.tab_order.len() }
-    pub fn is_empty(&self) -> bool { self.tab_order.is_empty() }
+    pub fn current(&self) -> Option<WidgetId> {
+        self.currently_focused
+    }
+    pub fn is_focused(&self, id: WidgetId) -> bool {
+        self.currently_focused == Some(id)
+    }
+    pub fn len(&self) -> usize {
+        self.tab_order.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.tab_order.is_empty()
+    }
 
     pub fn parent_of(&self, id: WidgetId) -> Option<WidgetId> {
         self.parent_map.get(&id).copied()
@@ -177,9 +201,15 @@ mod tests {
     }
 
     impl crate::widget::Widget for TestWidget {
-        fn id(&self) -> WidgetId { self.id }
-        fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps { &self.props }
-        fn focusable(&self) -> bool { true }
+        fn id(&self) -> WidgetId {
+            self.id
+        }
+        fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps {
+            &self.props
+        }
+        fn focusable(&self) -> bool {
+            true
+        }
     }
 
     fn make_focusable(id: u64) -> WidgetNode {
@@ -191,19 +221,31 @@ mod tests {
 
     #[test]
     fn empty_tree_no_focusable() {
-        struct NonFocusable { id: WidgetId, props: arbor_tui_primitives::layout::LayoutProps }
-        impl crate::widget::Widget for NonFocusable {
-            fn id(&self) -> WidgetId { self.id }
-            fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps { &self.props }
-            fn focusable(&self) -> bool { false }
+        struct NonFocusable {
+            id: WidgetId,
+            props: arbor_tui_primitives::layout::LayoutProps,
         }
-        let root = WidgetNode::new(NonFocusable { id: WidgetId(0), props: Default::default() });
+        impl crate::widget::Widget for NonFocusable {
+            fn id(&self) -> WidgetId {
+                self.id
+            }
+            fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps {
+                &self.props
+            }
+            fn focusable(&self) -> bool {
+                false
+            }
+        }
+        let root = WidgetNode::new(NonFocusable {
+            id: WidgetId(0),
+            props: Default::default(),
+        });
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
         assert!(fm.tab_order.is_empty());
         assert_eq!(fm.current(), None);
-        assert_eq!(fm.next().unwrap(), None);
-        assert_eq!(fm.prev().unwrap(), None);
+        assert_eq!(fm.focus_next().unwrap(), None);
+        assert_eq!(fm.focus_prev().unwrap(), None);
     }
 
     #[test]
@@ -218,40 +260,51 @@ mod tests {
     fn next_cycles_through_focusable() {
         let mut fm = FocusManager::new();
         fm.rebuild(&make_focusable(1));
-        assert_eq!(fm.next().unwrap(), Some(WidgetId(1)));
-        assert_eq!(fm.next().unwrap(), Some(WidgetId(1)));
+        assert_eq!(fm.focus_next().unwrap(), Some(WidgetId(1)));
+        assert_eq!(fm.focus_next().unwrap(), Some(WidgetId(1)));
     }
 
     #[test]
     fn prev_wraps_around_to_last() {
         let mut fm = FocusManager::new();
         fm.rebuild(&make_focusable(1));
-        assert_eq!(fm.prev().unwrap(), Some(WidgetId(1)));
+        assert_eq!(fm.focus_prev().unwrap(), Some(WidgetId(1)));
     }
 
     #[test]
     fn blur_clears_focus() {
         let mut fm = FocusManager::new();
         fm.rebuild(&make_focusable(1));
-        let _ = fm.next();
+        let _ = fm.focus_next();
         fm.blur();
         assert_eq!(fm.current(), None);
     }
 
     #[test]
     fn mount_tree_calls_on_mount() {
-        use std::rc::Rc;
         use std::cell::Cell;
+        use std::rc::Rc;
         let called = Rc::new(Cell::new(false));
         let c = called.clone();
-        struct MountWidget { id: WidgetId, props: arbor_tui_primitives::layout::LayoutProps, on_mount_cb: Box<dyn Fn()> }
+        struct MountWidget {
+            id: WidgetId,
+            props: arbor_tui_primitives::layout::LayoutProps,
+            on_mount_cb: Box<dyn Fn()>,
+        }
         impl crate::widget::Widget for MountWidget {
-            fn id(&self) -> WidgetId { self.id }
-            fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps { &self.props }
-            fn on_mount(&mut self) { (self.on_mount_cb)(); }
+            fn id(&self) -> WidgetId {
+                self.id
+            }
+            fn layout_props(&self) -> &arbor_tui_primitives::layout::LayoutProps {
+                &self.props
+            }
+            fn on_mount(&mut self) {
+                (self.on_mount_cb)();
+            }
         }
         let mut root = WidgetNode::new(MountWidget {
-            id: WidgetId(0), props: Default::default(),
+            id: WidgetId(0),
+            props: Default::default(),
             on_mount_cb: Box::new(move || c.set(true)),
         });
         mount_tree(&mut root);

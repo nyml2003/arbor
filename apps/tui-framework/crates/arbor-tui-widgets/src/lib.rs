@@ -10,6 +10,7 @@ pub mod rich_text;
 pub mod scroll;
 pub mod table;
 pub mod tabs;
+pub mod testing;
 pub mod text;
 pub mod widget_manager;
 
