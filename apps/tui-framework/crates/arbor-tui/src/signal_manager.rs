@@ -46,11 +46,13 @@ pub fn handle_sigtstp(_app: &mut App, backend: &mut dyn TerminalBackend) {
 }
 
 /// Check for terminal resize and update app state.
+/// Returns true if a resize was detected. Forces a full relayout on the next frame.
 pub fn check_resize(app: &mut App, backend: &dyn TerminalBackend) -> bool {
     let (cols, rows) = backend.size();
     let (cur_cols, cur_rows) = app.screen_size();
     if cols != cur_cols || rows != cur_rows {
         app.resize(cols, rows);
+        app.dirty_tracker.force_render();
         true
     } else {
         false

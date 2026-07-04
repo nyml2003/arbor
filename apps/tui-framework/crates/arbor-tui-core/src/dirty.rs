@@ -8,12 +8,16 @@ use crate::widget::WidgetId;
 /// At the end of the cycle, `drain()` is called to get the set and clear it.
 pub struct DirtyTracker {
     dirty_widgets: HashSet<WidgetId>,
+    /// When true, forces the next render regardless of dirty set.
+    /// Set by SIGWINCH / SIGTSTP resume to ensure full relayout.
+    force: bool,
 }
 
 impl DirtyTracker {
     pub fn new() -> Self {
         Self {
             dirty_widgets: HashSet::new(),
+            force: false,
         }
     }
 
@@ -29,6 +33,7 @@ impl DirtyTracker {
 
     /// Take all dirty widget IDs and reset the tracker.
     pub fn drain(&mut self) -> HashSet<WidgetId> {
+        self.force = false;
         std::mem::take(&mut self.dirty_widgets)
     }
 
@@ -39,8 +44,14 @@ impl DirtyTracker {
         }
     }
 
+    /// Force the next render to proceed even if no individual widgets are dirty.
+    /// Used for full relayout after terminal resize or SIGTSTP resume.
+    pub fn force_render(&mut self) {
+        self.force = true;
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.dirty_widgets.is_empty()
+        self.dirty_widgets.is_empty() && !self.force
     }
 }
 
@@ -58,5 +69,16 @@ mod tests {
         let drained = dt.drain();
         assert_eq!(drained.len(), 2);
         assert!(dt.is_empty());
+    }
+
+    #[test]
+    fn force_render_bypasses_empty_check() {
+        let mut dt = DirtyTracker::new();
+        assert!(dt.is_empty());
+        dt.force_render();
+        assert!(!dt.is_empty(), "force should make is_empty() return false");
+        let drained = dt.drain();
+        assert!(drained.is_empty(), "drain with force should return empty set");
+        assert!(dt.is_empty(), "after drain, force should be cleared");
     }
 }

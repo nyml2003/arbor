@@ -8,4 +8,3 @@ authors.workspace = true
 [dependencies]
 arbor-tui-core = { path = "../arbor-tui-core" }
 arbor-tui-backend = { path = "../arbor-tui-backend" }
-crossterm = "0.28"

@@ -10,6 +10,7 @@ use arbor_tui_core::theme::Theme;
 use arbor_tui_core::widget::WidgetNode;
 
 use crate::app::App;
+use crate::signal_manager::check_resize;
 
 /// Merge consecutive duplicate events per the rules in TEP-0004.
 pub fn merge_events(events: &[KeyEvent]) -> Vec<KeyEvent> {
@@ -63,7 +64,12 @@ pub fn run_event_loop(
     app.run(backend);
     // Initialize widget lifecycle — subscriptions, internal state
     mount_tree(root);
+
+    let mut first_frame = true;
     while app.is_running() {
+        // SIGWINCH: detect terminal size change → force full relayout
+        check_resize(app, backend);
+
         let events = poll_events(input);
         if !events.is_empty() {
             let merged = merge_events(&events);
@@ -82,7 +88,11 @@ pub fn run_event_loop(
                 }
             }
         }
-        app.render_widget_tree(root, theme, backend);
+        // Only render if something changed or this is the initial frame
+        if first_frame || !app.dirty_tracker.is_empty() {
+            app.render_widget_tree(root, theme, backend);
+        }
+        first_frame = false;
     }
 }
 

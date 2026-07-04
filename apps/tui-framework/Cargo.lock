@@ -8,7 +8,6 @@ version = "0.1.0"
 dependencies = [
  "arbor-tui-backend",
  "arbor-tui-core",
- "crossterm",
 ]
 
 [[package]]
@@ -24,6 +23,16 @@ name = "arbor-tui-core"
 version = "0.1.0"
 dependencies = [
  "unicode-width",
+]
+
+[[package]]
+name = "arbor-tui-examples"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui",
+ "arbor-tui-backend",
+ "arbor-tui-core",
+ "crossterm",
 ]
 
 [[package]]

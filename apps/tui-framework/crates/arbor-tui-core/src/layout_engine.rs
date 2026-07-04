@@ -243,8 +243,8 @@ fn layout_node(
                 content_rect.w,
                 sat_sub(content_rect.h, 1),
             );
-            if w.active.get() < w.tabs.len() {
-                layout_node(body_rect, &w.tabs[w.active.get()].content, constraints, out);
+            if w.active < w.tabs.len() {
+                layout_node(body_rect, &w.tabs[w.active].content, constraints, out);
             }
             let _ = header_rect;
         }

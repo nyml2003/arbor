@@ -17,17 +17,29 @@ use arbor_tui_core::widget::{WidgetId, WidgetNode};
 /// Frame rate cap — 60fps = ~16.67ms minimum interval.
 const MIN_FRAME_INTERVAL_MS: u64 = 16;
 
+/// Per-frame performance measurements.
+/// Microsecond-level timing for layout, render, diff, and emit phases.
+#[derive(Clone, Debug, Default)]
+pub struct FrameStats {
+    pub frame_seq: u64,
+    pub layout_us: u64,
+    pub render_us: u64,
+    pub diff_us: u64,
+    pub emit_us: u64,
+    pub total_us: u64,
+    pub dirty_widgets: usize,
+    pub dirty_regions: usize,
+}
+
 /// Application configuration.
 pub struct AppConfig {
     pub theme: Theme,
-    pub fps_cap: u64, // 30, 60, or 120
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             theme: Theme::dark(),
-            fps_cap: 60,
         }
     }
 }
@@ -37,6 +49,8 @@ pub struct App {
     pub config: AppConfig,
     pub dirty_tracker: DirtyTracker,
     pub focus_manager: FocusManager,
+    /// Timing stats from the most recent frame.
+    pub last_frame_stats: FrameStats,
     screen: VirtualScreen,
     last_frame_time: Instant,
     frame_seq: u64,
@@ -51,6 +65,7 @@ impl App {
             screen: VirtualScreen::new(cols, rows),
             dirty_tracker: DirtyTracker::new(),
             focus_manager: FocusManager::new(),
+            last_frame_stats: FrameStats::default(),
             config,
             last_frame_time: Instant::now(),
             frame_seq: 0,
@@ -66,16 +81,6 @@ impl App {
         id
     }
 
-    /// Mark all widgets dirty — used after SIGTSTP resume or SIGWINCH.
-    pub fn mark_all_dirty(&mut self, widget_ids: &[WidgetId]) {
-        self.dirty_tracker.mark_all(widget_ids);
-    }
-
-    /// Mark a single widget dirty.
-    pub fn mark_dirty(&mut self, id: WidgetId) {
-        self.dirty_tracker.mark_dirty(id);
-    }
-
     /// Get the current screen dimensions.
     pub fn screen_size(&self) -> (u16, u16) {
         (self.screen.cols(), self.screen.rows())
@@ -84,33 +89,6 @@ impl App {
     /// Resize the screen (called on SIGWINCH).
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.screen.resize(cols, rows);
-    }
-
-    /// Render dirty widgets to the terminal. Returns true if anything was rendered.
-    pub fn render(&mut self, backend: &mut dyn TerminalBackend) -> bool {
-        // Frame rate throttle
-        let elapsed = self.last_frame_time.elapsed();
-        if elapsed.as_millis() < MIN_FRAME_INTERVAL_MS as u128 {
-            return false;
-        }
-
-        let dirty = self.dirty_tracker.drain();
-        if dirty.is_empty() {
-            return false;
-        }
-
-        self.frame_seq += 1;
-
-        // TODO: For each dirty widget, re-layout its subtree and re-render.
-        // Currently a placeholder: marks full screen as dirty via resize.
-        let old_screen = self.screen.clone();
-        // (Widget rendering goes here — fills self.screen with updated cells)
-
-        let regions = diff(&old_screen, &self.screen);
-        backend.emit(&regions, &self.screen);
-
-        self.last_frame_time = Instant::now();
-        true
     }
 
     /// Run the full render pipeline on a widget tree.
@@ -125,30 +103,60 @@ impl App {
     ) -> bool {
         // Rebuild focus tab order before layout
         self.focus_manager.rebuild(root);
+
         // Frame rate throttle
         let elapsed = self.last_frame_time.elapsed();
         if elapsed.as_millis() < MIN_FRAME_INTERVAL_MS as u128 {
             return false;
         }
 
+        // Drain dirty markers — we're doing a full-frame render.
+        // Callers that don't use Signals (e.g. examples) simply drain an empty set.
+        let dirty_count = self.dirty_tracker.drain().len();
+        let frame_start = Instant::now();
+
         let (cols, rows) = self.screen_size();
         let screen_size = Size { w: cols, h: rows };
 
+        let t0 = Instant::now();
         let constraints = measure_tree(root, screen_size);
         let layout = layout_tree(Rect::new(0, 0, cols, rows), root, &constraints);
-        let new_screen = render_tree((cols, rows), root, &layout, theme);
+        let layout_us = t0.elapsed().as_micros() as u64;
 
+        let t1 = Instant::now();
+        let new_screen = render_tree((cols, rows), root, &layout, theme);
+        let render_us = t1.elapsed().as_micros() as u64;
+
+        let t2 = Instant::now();
         let mut regions = diff(&self.screen, &new_screen);
         merge_regions(&mut regions);
+        let diff_us = t2.elapsed().as_micros() as u64;
 
-        if regions.is_empty() && self.frame_seq > 0 {
+        let region_count = regions.len();
+
+        if regions.is_empty() {
             return false;
         }
 
+        let t3 = Instant::now();
         backend.emit(&regions, &new_screen);
+        let emit_us = t3.elapsed().as_micros() as u64;
+
         self.screen = new_screen;
         self.frame_seq += 1;
         self.last_frame_time = Instant::now();
+
+        self.last_frame_stats = FrameStats {
+            frame_seq: self.frame_seq,
+            layout_us,
+            render_us,
+            diff_us,
+            emit_us,
+            total_us: frame_start.elapsed().as_micros() as u64,
+            dirty_widgets: dirty_count,
+            dirty_regions: region_count,
+        };
+
         true
     }
 
@@ -224,47 +232,4 @@ impl App {
         self.running = true;
         // The main event loop is driven externally — see event_loop.rs
     }
-}
-
-/// Run an external subprocess from within the TUI.
-///
-/// Four-step protocol per TEP-0005:
-/// 1. Exit alternate screen, show cursor, restore terminal
-/// 2. Spawn subprocess, block until it exits
-/// 3. Re-enter raw mode + alternate screen + hide cursor
-/// 4. Mark all widgets dirty for full repaint
-pub fn run_subprocess(
-    cmd: &str,
-    args: &[&str],
-    backend: &mut dyn TerminalBackend,
-    app: &mut App,
-) -> std::io::Result<()> {
-    // Step 1: restore terminal
-    backend.exit_alternate_screen();
-    backend.show_cursor();
-    backend.flush();
-
-    // Drop raw mode guard by letting the caller manage it.
-    // The caller should release their TerminalHandle before calling this.
-
-    // Step 2: spawn and wait
-    let status = std::process::Command::new(cmd).args(args).status()?;
-
-    if !status.success() {
-        // Subprocess failed — still restore TUI state
-        eprintln!("[arbor-tui] subprocess exited with: {}", status);
-    }
-
-    // Step 3: re-init terminal
-    backend.enter_alternate_screen();
-    backend.hide_cursor();
-    backend.clear();
-    backend.flush();
-
-    // Step 4: full repaint
-    let (cols, rows) = backend.size();
-    app.resize(cols, rows);
-    // Mark everything dirty — caller's next render_widget_tree will repaint
-
-    Ok(())
 }

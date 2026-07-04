@@ -2,10 +2,12 @@
 // Uses SimulatedBackend, no real terminal needed.
 
 use arbor_tui_core::diff::{diff, merge_regions};
+use arbor_tui_core::dirty::DirtyTracker;
+use arbor_tui_core::focus::mount_tree;
 use arbor_tui_core::layout::{Direction, LayoutProps, Rect, RectOffset, Size};
 use arbor_tui_core::layout_engine::{layout_tree, measure_tree};
 use arbor_tui_core::render::render_tree;
-use arbor_tui_core::signal::ReadSignal;
+use arbor_tui_core::signal::{ReadSignal, Signal};
 use arbor_tui_core::text::{TruncateStrategy, WrapStrategy};
 use arbor_tui_core::theme::Theme;
 use arbor_tui_core::widget::{
@@ -134,4 +136,103 @@ fn backend_emits_changes() {
 
     // After emit, internal screen should have the content
     assert_eq!(backend.screen().cell_at(0, 0).ch, 'h');
+}
+
+// ── Signal-subscription E2E tests ────────────────────────────────
+
+#[test]
+fn signal_set_marks_subscriber_dirty_and_renders_new_value() {
+    // 1. Create a reactive signal
+    let text_signal = Signal::new("before".to_string());
+    let read_signal = text_signal.read_only();
+
+    // 2. Build widget tree with the signal
+    let widget_id = WidgetId(1);
+    let mut root = WidgetNode::Text(TextWidget {
+        id: widget_id,
+        props: LayoutProps::default(),
+        text: read_signal,
+        style: ReadSignal::constant(TextStyle::default()),
+        wrap: WrapStrategy::None,
+        truncate: TruncateStrategy::End,
+    });
+
+    // 3. Mount — triggers on_mount → subscribe
+    mount_tree(&mut root);
+
+    // 4. Verify subscription: set signal → widget marked dirty
+    let mut dirty = DirtyTracker::new();
+    text_signal.set("after".to_string(), &mut dirty);
+    assert!(dirty.is_dirty(widget_id), "widget should be dirty after signal change");
+
+    // 5. Render and verify new value appears
+    let theme = Theme::dark();
+    let constraints = measure_tree(&root, Size::new(80, 24));
+    let layout = layout_tree(Rect::new(0, 0, 80, 24), &root, &constraints);
+    let screen = render_tree((80, 24), &root, &layout, &theme);
+
+    assert_eq!(screen.cell_at(0, 0).ch, 'a'); // 'after'
+    assert_eq!(screen.cell_at(1, 0).ch, 'f');
+}
+
+#[test]
+fn signal_same_value_does_not_mark_dirty() {
+    let text_signal = Signal::new("unchanged".to_string());
+    let read_signal = text_signal.read_only();
+    let widget_id = WidgetId(1);
+
+    let mut root = WidgetNode::Text(TextWidget {
+        id: widget_id,
+        props: LayoutProps::default(),
+        text: read_signal,
+        style: ReadSignal::constant(TextStyle::default()),
+        wrap: WrapStrategy::None,
+        truncate: TruncateStrategy::End,
+    });
+
+    mount_tree(&mut root);
+
+    // Set to same value — should NOT mark dirty
+    let mut dirty = DirtyTracker::new();
+    text_signal.set("unchanged".to_string(), &mut dirty);
+    assert!(!dirty.is_dirty(widget_id), "same value should not mark widget dirty");
+}
+
+#[test]
+fn multiple_subscribers_all_marked_dirty() {
+    let text_signal = Signal::new("shared".to_string());
+    let r1 = text_signal.read_only();
+    let r2 = text_signal.read_only();
+    let id1 = WidgetId(10);
+    let id2 = WidgetId(20);
+
+    let mut root = WidgetNode::Box(BoxWidget {
+        id: WidgetId(0),
+        props: LayoutProps::default(),
+        children: vec![
+            WidgetNode::Text(TextWidget {
+                id: id1,
+                props: LayoutProps::default(),
+                text: r1,
+                style: ReadSignal::constant(TextStyle::default()),
+                wrap: WrapStrategy::None,
+                truncate: TruncateStrategy::End,
+            }),
+            WidgetNode::Text(TextWidget {
+                id: id2,
+                props: LayoutProps::default(),
+                text: r2,
+                style: ReadSignal::constant(TextStyle::default()),
+                wrap: WrapStrategy::None,
+                truncate: TruncateStrategy::End,
+            }),
+        ],
+    });
+
+    mount_tree(&mut root);
+
+    let mut dirty = DirtyTracker::new();
+    text_signal.set("updated".to_string(), &mut dirty);
+    assert!(dirty.is_dirty(id1), "subscriber 1 should be dirty");
+    assert!(dirty.is_dirty(id2), "subscriber 2 should be dirty");
 }

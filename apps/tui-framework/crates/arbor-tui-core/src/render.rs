@@ -296,7 +296,7 @@ fn render_tabs(w: &TabsWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     for (i, tab) in w.tabs.iter().enumerate() {
         let label = format!(" {} ", tab.label);
         let label_w = text::measure_width(&label);
-        let is_active = i == w.active.get();
+        let is_active = i == w.active;
 
         let (fg, row_bg) = if is_active {
             (active_text, active_bg)
@@ -315,9 +315,9 @@ fn render_tabs(w: &TabsWidget, rect: Rect, theme: &Theme) -> VirtualScreen {
     screen.fill_rect(Rect::new(0, header_h, rect.w, 1), &sep_cell);
 
     // Active tab content
-    if w.active.get() < w.tabs.len() {
+    if w.active < w.tabs.len() {
         let body_rect = Rect::new(0, body_top, rect.w, rect.h.saturating_sub(body_top));
-        let content_screen = render_node(&w.tabs[w.active.get()].content, body_rect, theme);
+        let content_screen = render_node(&w.tabs[w.active].content, body_rect, theme);
         screen.blit(Rect::new(0, body_top, content_screen.cols(), content_screen.rows()), &content_screen);
     }
 

@@ -157,7 +157,9 @@ pub struct TabsWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
     pub tabs: Vec<TabDef>,
-    pub active: ReadSignal<usize>,
+    /// Currently active tab index. Mutated directly by on_key (Left/Right).
+    /// External code switches tabs by rebuilding the widget tree with a new index.
+    pub active: usize,
     pub on_switch: Option<Box<dyn Fn(usize)>>,
 }
 
@@ -177,16 +179,20 @@ pub struct ScrollViewWidget {
 
 // ── Widget trait impls for built-in types ────────────────────────
 
-macro_rules! impl_widget_for {
-    ($ty:ty, $id:ident) => {
-        impl Widget for $ty {
-            fn id(&self) -> WidgetId { self.id }
-            fn layout_props(&self) -> &LayoutProps { &self.props }
-        }
-    };
-}
+impl Widget for TextWidget {
+    fn id(&self) -> WidgetId { self.id }
+    fn layout_props(&self) -> &LayoutProps { &self.props }
 
-impl_widget_for!(TextWidget, id);
+    fn on_mount(&mut self) {
+        self.text.subscribe(self.id);
+        self.style.subscribe(self.id);
+    }
+
+    fn on_unmount(&mut self) {
+        self.text.unsubscribe(self.id);
+        self.style.unsubscribe(self.id);
+    }
+}
 
 impl Widget for BoxWidget {
     fn id(&self) -> WidgetId { self.id }
@@ -272,6 +278,23 @@ impl Widget for ScrollViewWidget {
     fn id(&self) -> WidgetId { self.id }
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn children(&self) -> &[WidgetNode] { std::slice::from_ref(&*self.child) }
+
+    fn on_mount(&mut self) {
+        self.scroll_x.subscribe(self.id);
+        self.scroll_y.subscribe(self.id);
+    }
+
+    fn on_unmount(&mut self) {
+        self.scroll_x.unsubscribe(self.id);
+        self.scroll_y.unsubscribe(self.id);
+    }
+}
+
+impl Drop for ScrollViewWidget {
+    fn drop(&mut self) {
+        self.scroll_x.unsubscribe(self.id);
+        self.scroll_y.unsubscribe(self.id);
+    }
 }
 
 // ── Drop 兜底 — 确保退出时退订 Signal ──────────────────────────
@@ -300,6 +323,14 @@ impl Drop for ButtonWidget {
 impl Widget for ButtonWidget {
     fn id(&self) -> WidgetId { self.id }
     fn layout_props(&self) -> &LayoutProps { &self.props }
+
+    fn on_mount(&mut self) {
+        self.label.subscribe(self.id);
+    }
+
+    fn on_unmount(&mut self) {
+        self.label.unsubscribe(self.id);
+    }
 
     fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
         match &event.key {
@@ -370,20 +401,18 @@ impl Widget for TabsWidget {
     fn focusable(&self) -> bool { true }
 
     fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
-        let old = self.active.get();
+        let old = self.active;
         match &event.key {
             Key::ArrowRight | Key::Char('l') => {
-                let next = (old + 1) % self.tabs.len().max(1);
-                self.active = ReadSignal::constant(next);
+                self.active = (old + 1) % self.tabs.len().max(1);
             }
             Key::ArrowLeft | Key::Char('h') => {
-                let prev = if old == 0 { self.tabs.len().saturating_sub(1) } else { old - 1 };
-                self.active = ReadSignal::constant(prev);
+                self.active = if old == 0 { self.tabs.len().saturating_sub(1) } else { old - 1 };
             }
             _ => return KeyHandleResult::Bubble,
         }
-        if self.active.get() != old {
-            if let Some(ref cb) = self.on_switch { cb(self.active.get()); }
+        if self.active != old {
+            if let Some(ref cb) = self.on_switch { cb(self.active); }
         }
         KeyHandleResult::Handled
     }

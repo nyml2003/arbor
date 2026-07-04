@@ -229,7 +229,14 @@ impl WidgetNode {
     pub fn children(&self) -> &[WidgetNode] {
         match self {
             WidgetNode::Box(w) => &w.children,
-            WidgetNode::Tabs(_w) => &[],
+            WidgetNode::Tabs(w) => {
+                if w.tabs.is_empty() {
+                    &[]
+                } else {
+                    let idx = w.active.min(w.tabs.len() - 1);
+                    std::slice::from_ref(&w.tabs[idx].content)
+                }
+            }
             WidgetNode::ScrollView(w) => std::slice::from_ref(&*w.child),
             _ => &[],
         }

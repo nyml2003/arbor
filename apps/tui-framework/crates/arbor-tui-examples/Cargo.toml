@@ -1,0 +1,25 @@
+[package]
+name = "arbor-tui-examples"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "counter"
+path = "src/bin/counter.rs"
+
+[[bin]]
+name = "layout_demo"
+path = "src/bin/layout_demo.rs"
+
+[[bin]]
+name = "viewer"
+path = "src/bin/viewer.rs"
+
+[dependencies]
+arbor-tui = { path = "../arbor-tui" }
+arbor-tui-core = { path = "../arbor-tui-core" }
+arbor-tui-backend = { path = "../arbor-tui-backend" }
+crossterm = "0.28"

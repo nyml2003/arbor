@@ -3,6 +3,7 @@ members = [
     "crates/arbor-tui-core",
     "crates/arbor-tui-backend",
     "crates/arbor-tui",
+    "crates/arbor-tui-examples",
 ]
 resolver = "2"
 
