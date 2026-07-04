@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+*.iml
+.idea/
+
+# Android
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Misc
+*.log
+*.tmp

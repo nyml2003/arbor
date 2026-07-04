@@ -3,6 +3,7 @@
     "apps/memvfs/Cargo.toml",
     "apps/capture/src-tauri/Cargo.toml",
     "apps/keydock/Cargo.toml",
-    "packages/kaubo-features/next_kaubo/Cargo.toml"
+    "packages/kaubo-features/next_kaubo/Cargo.toml",
+    "apps/tui-framework/Cargo.toml"
   ]
 }

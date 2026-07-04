@@ -21,7 +21,7 @@ Arbor 现在按两条线推进：
 当前默认策略是孵化器 monorepo：
 
 - `apps/container`、`workspace/*` 是 Arbor 本体，长期留在本仓库。
-- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock` 是孵化项目，先留在本仓库。
+- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock`、`apps/netmon` 是孵化项目，先留在本仓库。
 - `packages/arbor-ui-*`、`packages/skill-manager-core` 是可复用基础设施，先跟随使用方一起演化。
 - 只有当一个项目有独立用户、独立发布节奏、独立构建测试，并且不再依赖 Arbor 私有数据时，才拆独立 git 仓库。
 
@@ -235,6 +235,21 @@ Arbor 现在按两条线推进：
 - 已有 TypeScript CLI、参数解析、DeepSeek HTTP 调用、流式输出、终端 Markdown 渲染、本地 skill 注入和包级测试。
 - 默认模型使用 `deepseek-v4-flash`。
 - 后续再评估是否增加持久化会话、多模型配置或本地工具能力。
+
+---
+
+## Build 域实用工具：网络监控 (netmon)
+
+**目标**：做一个网络连通性监控工具，轮询探测 + 即时记录断网/恢复。
+
+**定位**：
+- 它是 build 域的独立实用工具，不是 Arbor 容器里的一个页面。
+- 定时 TCP 连接探测 + ICMP 备选，状态变化时记录时间点。
+- 纯 Python stdlib，零外部依赖。
+
+**当前阶段**：
+- 已完成轮询探测、双写日志和统计摘要。
+- 短期继续留在 Arbor；v1 主链路稳定后评估是否需要独立拆仓。
 
 ---
 

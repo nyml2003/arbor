@@ -1,0 +1,119 @@
+/* ── Arbor Theme — Workbench Rounded Corners ────────────────
+   Load via: "Custom CSS and JS Loader" extension
+   Settings → "vscode_custom_css.imports" → add this file path
+   Then run "Reload Custom CSS and JS" command.              */
+
+:root {
+  --arbor-radius-sm: 4px;
+  --arbor-radius-md: 6px;
+  --arbor-radius-lg: 8px;
+}
+
+/* ── Tabs ──────────────────────────────────────────────── */
+.monaco-workbench .part.editor .tab {
+  border-radius: var(--arbor-radius-md) var(--arbor-radius-md) 0 0 !important;
+}
+
+/* ── Editor ────────────────────────────────────────────── */
+.monaco-editor .margin,
+.monaco-editor .monaco-editor-background,
+.monaco-editor .inputarea.ime-input {
+  border-radius: 0 !important;
+}
+
+/* ── Sidebar ───────────────────────────────────────────── */
+.monaco-workbench .part.sidebar .monaco-list .monaco-list-row {
+  border-radius: var(--arbor-radius-sm) !important;
+  margin: 1px 6px !important;
+}
+
+/* ── Input fields ──────────────────────────────────────── */
+.monaco-inputbox {
+  border-radius: var(--arbor-radius-sm) !important;
+}
+
+/* ── Buttons ───────────────────────────────────────────── */
+.monaco-button,
+.monaco-workbench .monaco-button {
+  border-radius: var(--arbor-radius-sm) !important;
+}
+
+/* ── Quick open / Command palette ──────────────────────── */
+.monaco-quick-open-widget {
+  border-radius: var(--arbor-radius-lg) !important;
+  overflow: hidden !important;
+}
+
+.monaco-quick-open-widget .monaco-list .monaco-list-row {
+  border-radius: var(--arbor-radius-sm) !important;
+  margin: 1px 6px !important;
+}
+
+/* ── Suggest / Autocomplete widget ─────────────────────── */
+.monaco-editor .suggest-widget {
+  border-radius: var(--arbor-radius-lg) !important;
+  overflow: hidden !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row {
+  border-radius: var(--arbor-radius-sm) !important;
+  margin: 1px 6px !important;
+}
+
+/* ── Hover widget ──────────────────────────────────────── */
+.monaco-editor .monaco-hover {
+  border-radius: var(--arbor-radius-md) !important;
+}
+
+/* ── Find widget ───────────────────────────────────────── */
+.monaco-editor .find-widget {
+  border-radius: var(--arbor-radius-md) !important;
+  overflow: hidden !important;
+}
+
+/* ── Notifications ─────────────────────────────────────── */
+.monaco-workbench .notifications-toasts .notification-toast {
+  border-radius: var(--arbor-radius-md) !important;
+}
+
+/* ── Context menus ─────────────────────────────────────── */
+.monaco-menu-container .monaco-menu {
+  border-radius: var(--arbor-radius-md) !important;
+  overflow: hidden !important;
+}
+
+/* ── Panel (terminal, output) ──────────────────────────── */
+.monaco-workbench .part.panel .monaco-list .monaco-list-row {
+  border-radius: var(--arbor-radius-sm) !important;
+  margin: 1px 6px !important;
+}
+
+/* ── Select dropdown ───────────────────────────────────── */
+.monaco-select-box {
+  border-radius: var(--arbor-radius-sm) !important;
+}
+
+/* ── Settings editor ───────────────────────────────────── */
+.monaco-workbench .settings-editor .settings-body .setting-item-contents {
+  border-radius: var(--arbor-radius-md) !important;
+}
+
+/* ── Extensions panel ──────────────────────────────────── */
+.monaco-workbench .extension-editor .body .detail-view {
+  border-radius: var(--arbor-radius-md) !important;
+}
+
+/* ── Peek view ─────────────────────────────────────────── */
+.monaco-editor .peekview-widget {
+  border-radius: var(--arbor-radius-md) var(--arbor-radius-md) 0 0 !important;
+}
+
+/* ── Banner ────────────────────────────────────────────── */
+.monaco-workbench .monaco-banner {
+  border-radius: var(--arbor-radius-sm) !important;
+}
+
+/* ── Keybinding widget ─────────────────────────────────── */
+.monaco-workbench .defineKeybindingWidget {
+  border-radius: var(--arbor-radius-lg) !important;
+}

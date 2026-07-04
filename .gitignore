@@ -18,8 +18,16 @@ target/
 .DS_Store
 Thumbs.db
 
+# Claude Code
+.claude/
+
+# data / log outputs
+*.jsonl
+*.geojson
+
 # IDE
 .idea/
+.cursorrules
 *.swp
 *.swo
 *.omx

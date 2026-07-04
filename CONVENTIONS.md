@@ -85,7 +85,7 @@ arbor/
 
 - 每完成一个 Phase，更新 `PLAN.md` 标记状态
 - 每做一次迭代，在 `learn/iteration-log/` 加一条记录
-- 每做一个技术决策，追加到 `DECISIONS.md`
+- 每做一个技术决策，追加到 `DECISIONS.md`；CLI 相关决策参考 `CLI-STRATEGY.md` 的维度框架
 - 每当出现新的编码约定，更新 `CONVENTIONS.md`
 - `README.md` 保持简洁，只反映当前状态
 - 每新增一个 app/package，更新 `README.md` 或 `PLAN.md` 中的当前状态

@@ -259,3 +259,39 @@ arbor/
 - 新增 app/package 时，必须说明它属于 Arbor 本体、孵化产品、技术样本、可复用库或纯经验沉淀。
 - 拆仓前先补齐 README、构建命令、测试命令和最小验收记录。
 - 具体状态表维护在 `workspace/manage/repo-strategy.md`。
+
+---
+
+## 13. CLI 工具选型框架：不搞一刀切，按维度做取舍
+
+**决定**：Arbor 不强制所有 CLI 工具统一语言或分发方式。每个新 CLI 工具按四个维度（目标用户、性能要求、生态能力、分发方式）做有意识的取舍，选型结果记录到 `DECISIONS.md`。
+
+**理由**：
+- Arbor 已经有 TypeScript npm bin、Rust 二进制、Python 脚本三种 CLI 范式在跑，各自服务不同场景
+- 没有银弹——不同工具面向不同用户、有不同运行时约束
+- 一刀切反而会导致某些工具被强行塞进不合适的范式
+
+**三种范式及其适用场景**：
+
+| 范式 | 适用场景 | 不适用场景 |
+|------|---------|-----------|
+| TypeScript + npm bin | 管理工具、要引用 workspace 包、自己用 | 要给非 JS 开发者、需要系统级 API |
+| Rust + 二进制 | 系统工具、游戏引擎、GUI、零依赖分发 | 快速原型、要引用 TS workspace 包 |
+| Python 脚本 | 快速原型、纯 stdlib、AI/网络生态 | 分发困难、启动慢、GIL 限制 |
+
+**详细决策框架**：参见 `CLI-STRATEGY.md`——包含业界参考、跨平台坑点清单、三种范式的具体注意事项、新增 CLI 工具 checklist。
+
+**当前 CLI 分布**（全部按维度匹配，没有坏的案例）：
+
+| 工具 | 范式 | 为什么是这个 |
+|------|------|------------|
+| `manage-cli`、`skill-manager-cli`、`aster` | TS npm bin | 要 import workspace 包，自己用，Node.js 已有 |
+| `shamrock`、`memvfs` | Rust 二进制 | 游戏引擎/文件系统，零依赖，追求性能 |
+| `keydock`、`clipdock` | Rust 二进制 (GUI) | 系统级能力（窗口、剪贴板、输入） |
+| `netmon`、`wifi-finder` | Python 脚本 | 快速原型，纯 stdlib，网络生态 |
+| `kaubo-ops` | Python 脚本 | Kaubo 项目内工具链，Python 生态 |
+
+**代价**：
+- 仓库里三种语言共存，新人需要理解三套工具链
+- 跨平台 CI 需要同时维护 TS/Rust/Python 的构建矩阵
+- 没有统一的 CLI 入口体验（有些是 `pnpm arbor-manage`，有些是 `python netmon.py`，有些是 `cargo run`）

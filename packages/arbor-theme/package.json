@@ -1,0 +1,60 @@
+{
+  "name": "arbor-theme",
+  "displayName": "Arbor Theme",
+  "description": "A refined, tasteful VSCode theme pair — Nocturne (dark, grey-based) and Vellum (light, paper-toned). Part of the Arbor project.",
+  "version": "0.1.0",
+  "publisher": "arbor",
+  "license": "MIT",
+  "homepage": "https://github.com/nyml2003/arbor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyml2003/arbor",
+    "directory": "packages/arbor-theme"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "keywords": [
+    "theme",
+    "dark",
+    "light",
+    "paper",
+    "nocturne",
+    "vellum",
+    "arbor",
+    "minimal",
+    "tasteful"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Arbor Nocturne",
+        "uiTheme": "vs-dark",
+        "path": "./themes/nocturne.json"
+      },
+      {
+        "label": "Arbor Nocturne Deep",
+        "uiTheme": "vs-dark",
+        "path": "./themes/nocturneDeep.json"
+      },
+      {
+        "label": "Arbor Vellum",
+        "uiTheme": "vs",
+        "path": "./themes/vellum.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "validate": "node scripts/validate.mjs",
+    "build": "pnpm generate && pnpm validate",
+    "package": "pnpm build && vsce package",
+    "publish": "vsce publish"
+  }
+}
