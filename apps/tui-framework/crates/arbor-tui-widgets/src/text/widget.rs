@@ -25,9 +25,10 @@ pub struct TextStyle {
 }
 
 impl Default for TextStyle {
+    /// Matches dark theme: soft white on black.
     fn default() -> Self {
         Self {
-            fg: AnsiColor::default(),
+            fg: AnsiColor { palette: arbor_tui_primitives::cell::PaletteColor(252), true_color: None },
             bg: AnsiColor { palette: arbor_tui_primitives::cell::PaletteColor(0), true_color: None },
             attrs: Attrs::default(),
         }

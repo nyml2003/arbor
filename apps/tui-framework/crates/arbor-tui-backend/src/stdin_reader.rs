@@ -7,7 +7,7 @@ use std::thread::{self, JoinHandle};
 
 use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 
-use arbor_tui_primitives::input::{InputReader, Key, KeyEvent, Modifiers};
+use arbor_tui_primitives::input::{InputReader, Key, KeyEvent, KeyEventKind, Modifiers};
 
 /// Bounded channel capacity per TEP-0004: 256 batches max.
 const EVENT_CHANNEL_CAP: usize = 256;
@@ -94,7 +94,7 @@ impl InputReader for StdinReader {
                 }
                 Err(_) => {
                     // Channel disconnected — return a dummy event
-                    return KeyEvent::char(' ');
+                    return KeyEvent { key: Key::Char(' '), modifiers: Modifiers::default(), kind: KeyEventKind::Press };
                 }
             }
         }
@@ -139,13 +139,22 @@ fn map_crossterm_event(event: Event) -> Option<KeyEvent> {
                 _ => return None, // Filter unsupported keys
             };
 
+            // Filter out Release events — each press produces Press+Release,
+            // processing both would double every input. IME composition on some
+            // platforms also produces Release for intermediate characters.
+            let kind = match key.kind {
+                crossterm::event::KeyEventKind::Press => KeyEventKind::Press,
+                crossterm::event::KeyEventKind::Repeat => KeyEventKind::Repeat,
+                crossterm::event::KeyEventKind::Release => return None,
+            };
+
             let modifiers = Modifiers {
                 ctrl: key.modifiers.contains(KeyModifiers::CONTROL),
                 alt: key.modifiers.contains(KeyModifiers::ALT),
                 shift: key.modifiers.contains(KeyModifiers::SHIFT),
             };
 
-            Some(KeyEvent { key: k, modifiers })
+            Some(KeyEvent { key: k, modifiers, kind })
         }
         Event::Resize(w, h) => {
             // Resize events are handled separately via the SignalManager.

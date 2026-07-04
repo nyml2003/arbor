@@ -149,6 +149,37 @@ impl Cell {
     }
 }
 
+/// A styled text fragment — the building block for rich text.
+/// Multiple Spans concatenate to form a single line with inline styling.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Span {
+    pub text: String,
+    pub fg: AnsiColor,
+    pub bg: AnsiColor,
+    pub attrs: Attrs,
+}
+
+impl Span {
+    pub fn new(text: impl Into<String>, fg: AnsiColor, bg: AnsiColor, attrs: Attrs) -> Self {
+        Self { text: text.into(), fg, bg, attrs }
+    }
+
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs::default() }
+    }
+
+    pub fn bold(text: impl Into<String>) -> Self {
+        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs { bold: true, ..Default::default() } }
+    }
+
+    pub fn italic(text: impl Into<String>) -> Self {
+        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs { italic: true, ..Default::default() } }
+    }
+
+    pub fn with_fg(mut self, fg: AnsiColor) -> Self { self.fg = fg; self }
+    pub fn with_bg(mut self, bg: AnsiColor) -> Self { self.bg = bg; self }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

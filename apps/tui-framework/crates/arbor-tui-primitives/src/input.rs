@@ -29,11 +29,22 @@ pub struct Modifiers {
     pub shift: bool,
 }
 
+/// Whether a key was pressed or released. IME composition on some
+/// platforms produces Release/Repeat events for intermediate characters;
+/// the application layer should typically only handle Press.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum KeyEventKind {
+    Press,
+    Repeat,
+    Release,
+}
+
 /// A keyboard event with key and modifier state.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct KeyEvent {
     pub key: Key,
     pub modifiers: Modifiers,
+    pub kind: KeyEventKind,
 }
 
 impl KeyEvent {
@@ -41,6 +52,7 @@ impl KeyEvent {
         Self {
             key: Key::Char(c),
             modifiers: Modifiers::default(),
+            kind: KeyEventKind::Press,
         }
     }
 

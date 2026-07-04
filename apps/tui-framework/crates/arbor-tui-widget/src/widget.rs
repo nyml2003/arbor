@@ -44,6 +44,12 @@ pub trait Widget {
         VirtualScreen::new(_rect.w, _rect.h)
     }
 
+    /// Render with focus hint. Override to show cursor/selection.
+    /// Default: delegates to `render()`.
+    fn render_focused(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
+        self.render(rect, theme)
+    }
+
     fn is_transparent(&self) -> bool { false }
     fn renders_children(&self) -> bool { false }
 
@@ -86,6 +92,9 @@ impl WidgetNode {
     }
     pub fn render(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
         self.0.render(rect, theme)
+    }
+    pub fn render_focused(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
+        self.0.render_focused(rect, theme)
     }
     pub fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         self.0.perform(action)

@@ -162,24 +162,21 @@ pub fn run_event_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_primitives::input::{Key, KeyEvent, Modifiers};
+    use arbor_tui_primitives::input::{Key, KeyEvent, KeyEventKind, Modifiers};
+
+    fn ke(key: Key) -> KeyEvent {
+        KeyEvent { key, modifiers: Modifiers::default(), kind: KeyEventKind::Press }
+    }
 
     #[test]
     fn merge_repeated_arrows() {
-        let events = vec![
-            KeyEvent { key: Key::ArrowUp, modifiers: Modifiers::default() },
-            KeyEvent { key: Key::ArrowUp, modifiers: Modifiers::default() },
-            KeyEvent { key: Key::ArrowUp, modifiers: Modifiers::default() },
-        ];
+        let events = vec![ke(Key::ArrowUp), ke(Key::ArrowUp), ke(Key::ArrowUp)];
         assert_eq!(merge_events(&events).len(), 1);
     }
 
     #[test]
     fn dont_merge_enter() {
-        let events = vec![
-            KeyEvent { key: Key::Enter, modifiers: Modifiers::default() },
-            KeyEvent { key: Key::Enter, modifiers: Modifiers::default() },
-        ];
+        let events = vec![ke(Key::Enter), ke(Key::Enter)];
         assert_eq!(merge_events(&events).len(), 2);
     }
 
@@ -187,7 +184,7 @@ mod tests {
     fn chain_break_on_different_keys() {
         let events = vec![
             KeyEvent::char('a'), KeyEvent::char('a'),
-            KeyEvent { key: Key::ArrowUp, modifiers: Modifiers::default() },
+            ke(Key::ArrowUp),
             KeyEvent::char('a'),
         ];
         assert_eq!(merge_events(&events).len(), 3);

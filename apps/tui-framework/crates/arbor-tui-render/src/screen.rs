@@ -1,6 +1,6 @@
 // VirtualScreen — the character grid buffer. Row-major flat array of Cell.
 
-use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell, Span};
 use arbor_tui_primitives::layout::Rect;
 
 /// A character grid of `cols × rows` cells, stored as a row-major flat vector.
@@ -76,6 +76,34 @@ impl VirtualScreen {
                 }
             }
             c += cw;
+        }
+    }
+
+    /// Write a sequence of styled spans at (col, row).
+    /// Each span has its own fg/bg/attrs — inline rich text.
+    pub fn write_spans(&mut self, col: u16, row: u16, spans: &[Span]) {
+        if row >= self.rows { return; }
+        let mut c = col;
+        for span in spans {
+            for ch in span.text.chars() {
+                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+                if c + cw > self.cols { break; }
+                if let Some(cell) = self.cell_at_mut(c, row) {
+                    cell.ch = ch;
+                    cell.fg = span.fg;
+                    cell.bg = span.bg;
+                    cell.attrs = span.attrs;
+                    cell.phantom = false;
+                }
+                if cw > 1 {
+                    for offset in 1..cw {
+                        if let Some(ghost) = self.cell_at_mut(c + offset, row) {
+                            ghost.phantom = true;
+                        }
+                    }
+                }
+                c += cw;
+            }
         }
     }
 

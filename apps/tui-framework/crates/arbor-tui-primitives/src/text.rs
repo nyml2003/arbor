@@ -12,6 +12,15 @@ pub fn measure_width(text: &str) -> u16 {
     text.width() as u16
 }
 
+/// Column offset after the first `n` characters of `text`.
+/// CJK-aware — a CJK char contributes 2 columns.
+pub fn column_offset(text: &str, n: usize) -> u16 {
+    text.chars()
+        .take(n)
+        .map(|ch| unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16)
+        .sum()
+}
+
 /// Expand `\t` to spaces, aligning to the next tab stop (multiples of 4).
 /// Must be called before `measure_width`, `truncate`, or `wrap_lines` —
 /// the terminal grid never contains raw `'\t'` characters.

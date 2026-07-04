@@ -66,6 +66,43 @@ impl Widget for InputWidget {
         screen
     }
 
+    fn render_focused(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
+        let mut screen = VirtualScreen::new(rect.w.max(1), 1);
+        let border_fg = theme.border();
+        let bg = theme.surface_alt();
+        let text_fg = theme.text();
+        let cursor_bg = theme.primary();
+
+        // "> " prompt with accent when focused
+        screen.write_str(0, 0, "> ", border_fg, bg, Attrs::default());
+
+        let content_start: u16 = 2;
+        let content_w = rect.w.saturating_sub(content_start);
+
+        let display = if self.password && !self.buffer.is_empty() {
+            "●".repeat(self.buffer.chars().count())
+        } else if self.buffer.is_empty() {
+            self.placeholder.clone()
+        } else {
+            self.buffer.clone()
+        };
+
+        let truncated = text::truncate(&display, content_w, TruncateStrategy::End);
+        screen.write_str(content_start, 0, &truncated, text_fg, bg, Attrs::default());
+
+        // Cursor position in columns (chars may be CJK = 2 cols wide)
+        let cursor_col = content_start + text::column_offset(&display, self.cursor);
+        if cursor_col < rect.w {
+            let cursor_ch = display.chars().nth(self.cursor).unwrap_or(' ');
+            if let Some(cell) = screen.cell_at_mut(cursor_col, 0) {
+                cell.ch = cursor_ch;
+                cell.bg = cursor_bg;
+                cell.fg = theme.surface();
+            }
+        }
+        screen
+    }
+
     fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         match action {
             WidgetAction::Activate => {

@@ -1,23 +1,19 @@
 // arbor-tui-widgets — built-in widget components.
-//
-// Each widget is a struct + impl Widget trait. Adding a new widget
-// requires ZERO changes to arbor-tui-core — just impl the trait.
-//
-// Layout:
-//   box_widget    — flex container, transparent (no visual)
-//   text_widget   — styled text with word wrap and truncation
-//   input_widget  — single-line text input
-//   button_widget — clickable button with style variants
-//   list_widget   — scrollable item list
-//   table_widget  — columnar table with header
-//   tabs_widget   — tabbed container
-//   scroll_widget — scrollable viewport over a child
+// Widget structs are pub(crate); only Builders + config types are public.
 
-pub mod box_widget;
-pub mod text_widget;
-pub mod input_widget;
-pub mod button_widget;
-pub mod list_widget;
-pub mod table_widget;
-pub mod tabs_widget;
-pub mod scroll_widget;
+pub mod border;
+pub mod button;
+pub mod container;
+pub mod input;
+pub mod list;
+pub mod rich_text;
+pub mod scroll;
+pub mod table;
+pub mod tabs;
+pub mod text;
+pub mod widget_manager;
+
+pub use button::widget::ButtonStyle;
+pub use table::widget::{ColumnDef, ColumnWidth};
+pub use tabs::widget::TabDef;
+pub use text::widget::TextStyle;

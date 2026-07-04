@@ -37,22 +37,22 @@ struct ThemeColors {
 }
 
 impl Theme {
-    /// Dark theme — default.
+    /// Dark theme — deep charcoal background, muted warm tones.
     pub fn dark() -> Self {
         Self {
             variant: ThemeVariant::Dark,
             colors: ThemeColors {
-                surface: PaletteColor(0),      // black
-                surface_alt: PaletteColor(8),  // dark gray
-                text: PaletteColor(7),         // white
-                text_dim: PaletteColor(8),     // dark gray
-                primary: PaletteColor(12),     // blue
-                secondary: PaletteColor(8),    // gray
-                danger: PaletteColor(9),       // red
-                success: PaletteColor(10),     // green
-                warning: PaletteColor(11),     // yellow
-                border: PaletteColor(8),       // gray
-                accent: PaletteColor(14),      // cyan
+                surface:     PaletteColor(0),   // pure black (matches Cell::default)
+                surface_alt: PaletteColor(234), // #1c1c1c charcoal card bg
+                text:        PaletteColor(252), // #d0d0d0 soft white
+                text_dim:    PaletteColor(243), // #767676 muted gray
+                primary:     PaletteColor(68),  // #5f87d7 soft blue
+                secondary:   PaletteColor(240), // #585858 medium gray
+                danger:      PaletteColor(167), // #d75f5f muted red
+                success:     PaletteColor(71),  // #5faf5f muted green
+                warning:     PaletteColor(179), // #d7af5f gold
+                border:      PaletteColor(59),  // #5f5f5f visible border
+                accent:      PaletteColor(73),  // #5fafaf teal
             },
         }
     }

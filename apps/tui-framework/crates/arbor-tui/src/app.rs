@@ -167,7 +167,7 @@ impl App {
         let layout_us = t0.elapsed().as_micros() as u64;
 
         let t1 = Instant::now();
-        let new_screen = render_tree((cols, rows), root, &layout, theme);
+        let new_screen = render_tree((cols, rows), root, &layout, theme, self.focus_manager.current());
         let render_us = t1.elapsed().as_micros() as u64;
 
         let t2 = Instant::now();
