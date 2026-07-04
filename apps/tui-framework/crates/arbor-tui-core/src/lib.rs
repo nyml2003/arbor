@@ -8,6 +8,7 @@ pub mod screen;
 pub mod diff;
 pub mod text;
 pub mod backend;
+pub mod error;
 pub mod layout;
 pub mod layout_engine;
 pub mod render;

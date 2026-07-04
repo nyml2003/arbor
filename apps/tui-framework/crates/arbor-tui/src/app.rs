@@ -1,7 +1,10 @@
 // App — the TUI application runtime.
 // Owns the widget tree, dirty tracker, theme, and coordinates the event/render loops.
+// All fallible operations propagate errors via anyhow::Result.
 
 use std::time::Instant;
+
+use anyhow::Context;
 
 use arbor_tui_core::backend::TerminalBackend;
 use arbor_tui_core::diff::{diff, merge_regions};
@@ -18,7 +21,6 @@ use arbor_tui_core::widget::{WidgetId, WidgetNode};
 const MIN_FRAME_INTERVAL_MS: u64 = 16;
 
 /// Per-frame performance measurements.
-/// Microsecond-level timing for layout, render, diff, and emit phases.
 #[derive(Clone, Debug, Default)]
 pub struct FrameStats {
     pub frame_seq: u64,
@@ -38,9 +40,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self {
-            theme: Theme::dark(),
-        }
+        Self { theme: Theme::dark() }
     }
 }
 
@@ -49,7 +49,6 @@ pub struct App {
     pub config: AppConfig,
     pub dirty_tracker: DirtyTracker,
     pub focus_manager: FocusManager,
-    /// Timing stats from the most recent frame.
     pub last_frame_stats: FrameStats,
     screen: VirtualScreen,
     last_frame_time: Instant,
@@ -59,7 +58,6 @@ pub struct App {
 }
 
 impl App {
-    /// Create a new App with the given screen dimensions.
     pub fn new(cols: u16, rows: u16, config: AppConfig) -> Self {
         Self {
             screen: VirtualScreen::new(cols, rows),
@@ -74,44 +72,36 @@ impl App {
         }
     }
 
-    /// Allocate the next unique WidgetId.
     pub fn next_widget_id(&mut self) -> WidgetId {
         let id = WidgetId(self.next_widget_id);
         self.next_widget_id += 1;
         id
     }
 
-    /// Get the current screen dimensions.
     pub fn screen_size(&self) -> (u16, u16) {
         (self.screen.cols(), self.screen.rows())
     }
 
-    /// Resize the screen (called on SIGWINCH).
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.screen.resize(cols, rows);
     }
 
     /// Run the full render pipeline on a widget tree.
     /// measure → layout → render → diff → emit.
-    /// Also rebuilds the focus tab order from the tree.
-    /// Returns true if anything was rendered.
+    /// Returns Ok(true) if anything was rendered, Ok(false) if skipped.
     pub fn render_widget_tree(
         &mut self,
         root: &WidgetNode,
         theme: &Theme,
         backend: &mut dyn TerminalBackend,
-    ) -> bool {
-        // Rebuild focus tab order before layout
+    ) -> anyhow::Result<bool> {
         self.focus_manager.rebuild(root);
 
-        // Frame rate throttle
         let elapsed = self.last_frame_time.elapsed();
         if elapsed.as_millis() < MIN_FRAME_INTERVAL_MS as u128 {
-            return false;
+            return Ok(false);
         }
 
-        // Drain dirty markers — we're doing a full-frame render.
-        // Callers that don't use Signals (e.g. examples) simply drain an empty set.
         let dirty_count = self.dirty_tracker.drain().len();
         let frame_start = Instant::now();
 
@@ -120,7 +110,8 @@ impl App {
 
         let t0 = Instant::now();
         let constraints = measure_tree(root, screen_size);
-        let layout = layout_tree(Rect::new(0, 0, cols, rows), root, &constraints);
+        let layout = layout_tree(Rect::new(0, 0, cols, rows), root, &constraints)
+            .context("layout failed")?;
         let layout_us = t0.elapsed().as_micros() as u64;
 
         let t1 = Instant::now();
@@ -135,11 +126,12 @@ impl App {
         let region_count = regions.len();
 
         if regions.is_empty() {
-            return false;
+            return Ok(false);
         }
 
         let t3 = Instant::now();
-        backend.emit(&regions, &new_screen);
+        backend.emit(&regions, &new_screen)
+            .context("backend emit failed")?;
         let emit_us = t3.elapsed().as_micros() as u64;
 
         self.screen = new_screen;
@@ -157,50 +149,46 @@ impl App {
             dirty_regions: region_count,
         };
 
-        true
+        Ok(true)
     }
 
-    /// Flag the app to stop running.
     pub fn quit(&mut self) {
         self.running = false;
     }
 
-    /// Check if the app is still running.
     pub fn is_running(&self) -> bool {
         self.running
     }
 
     /// Move focus to the next focusable widget (Tab).
-    /// Marks both old and new focus widgets dirty for re-render.
-    pub fn focus_next(&mut self) {
+    pub fn focus_next(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.next();
+        let new = self.focus_manager.next()
+            .context("focus_next failed")?;
         if old != new {
             if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }
             if let Some(id) = new { self.dirty_tracker.mark_dirty(id); }
         }
+        Ok(())
     }
 
     /// Move focus to the previous focusable widget (Shift+Tab).
-    pub fn focus_prev(&mut self) {
+    pub fn focus_prev(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.prev();
+        let new = self.focus_manager.prev()
+            .context("focus_prev failed")?;
         if old != new {
             if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }
             if let Some(id) = new { self.dirty_tracker.mark_dirty(id); }
         }
+        Ok(())
     }
 
-    /// Return the currently focused widget ID, if any.
     pub fn focused_widget(&self) -> Option<WidgetId> {
         self.focus_manager.current()
     }
 
     /// Dispatch a key event to the currently focused widget, with event bubbling.
-    /// 1. Try the focused widget's on_key()
-    /// 2. If Bubble, walk up the ancestor chain and try each parent
-    /// 3. Stop when Handled or reach root
-    /// Marks the handling widget dirty.
     pub fn dispatch_key(
         &mut self,
         root: &mut WidgetNode,
@@ -211,7 +199,6 @@ impl App {
             None => return,
         };
 
-        // Collect the dispatch chain: [target, parent, grandparent, ..., root]
         let mut chain = vec![target];
         chain.extend(self.focus_manager.ancestor_chain(target));
 
@@ -222,14 +209,11 @@ impl App {
                     self.dirty_tracker.mark_dirty(*widget_id);
                     return;
                 }
-                // Bubble → continue to parent
             }
         }
     }
 
-    /// Start the app.
     pub fn run(&mut self, _backend: &mut dyn TerminalBackend) {
         self.running = true;
-        // The main event loop is driven externally — see event_loop.rs
     }
 }

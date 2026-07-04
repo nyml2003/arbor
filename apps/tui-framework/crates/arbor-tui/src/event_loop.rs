@@ -1,5 +1,6 @@
 // Event loop — the main application loop.
 // Reads input events with blocking timeout, dispatches, triggers render.
+// Errors from the render pipeline are logged (eprintln) rather than panicking.
 
 use std::time::Duration;
 
@@ -20,9 +21,9 @@ pub fn merge_events(events: &[KeyEvent]) -> Vec<KeyEvent> {
     let mut merged: Vec<KeyEvent> = Vec::with_capacity(events.len());
     merged.push(events[0].clone());
     for next in &events[1..] {
-        let last = merged.last().unwrap();
+        let last = merged.last().expect("merged is non-empty after initial push");
         if can_merge(last, next) {
-            *merged.last_mut().unwrap() = next.clone();
+            *merged.last_mut().expect("merged is non-empty") = next.clone();
         } else {
             merged.push(next.clone());
         }
@@ -42,18 +43,14 @@ fn can_merge(a: &KeyEvent, b: &KeyEvent) -> bool {
 }
 
 /// Blocking poll — waits up to 100ms for input, then returns.
-/// Zero CPU when idle (os-level blocking on mpsc channel).
 pub fn poll_events(input: &dyn InputReader) -> Vec<KeyEvent> {
     input.poll_timeout(Duration::from_millis(100))
 }
 
 /// Run the main event loop.
-/// Handles Tab/Shift+Tab for focus navigation, Ctrl+Q/Esc to quit,
-/// and dispatches other keys to the focused widget.
 ///
-/// The `root` widget tree is passed as a mutable reference so that
-/// key events can modify widget state (e.g., InputWidget buffer).
-/// The tree should be persisted across frames for this to take effect.
+/// Errors from the render pipeline are printed to stderr and the loop continues.
+/// Only fatal backend errors (e.g., terminal disconnected) cause the loop to exit.
 pub fn run_event_loop(
     app: &mut App,
     root: &mut WidgetNode,
@@ -62,13 +59,16 @@ pub fn run_event_loop(
     theme: &Theme,
 ) {
     app.run(backend);
-    // Initialize widget lifecycle — subscriptions, internal state
     mount_tree(root);
 
     let mut first_frame = true;
     while app.is_running() {
         // SIGWINCH: detect terminal size change → force full relayout
-        check_resize(app, backend);
+        if let Err(e) = check_resize(app, backend) {
+            eprintln!("[arbor-tui] resize check failed: {e}");
+            app.quit();
+            break;
+        }
 
         let events = poll_events(input);
         if !events.is_empty() {
@@ -76,21 +76,33 @@ pub fn run_event_loop(
             for event in &merged {
                 use arbor_tui_core::input::Key;
                 match &event.key {
-                    // Global shortcuts
                     Key::Char('c') if event.modifiers.ctrl => app.quit(),
                     Key::Char('q') if event.modifiers.ctrl => app.quit(),
                     Key::Escape => app.quit(),
-                    // Focus navigation
-                    Key::Tab if event.modifiers.shift => app.focus_prev(),
-                    Key::Tab => app.focus_next(),
-                    // Dispatch to focused widget
+                    Key::Tab if event.modifiers.shift => {
+                        if let Err(e) = app.focus_prev() {
+                            eprintln!("[arbor-tui] focus_prev: {e}");
+                        }
+                    }
+                    Key::Tab => {
+                        if let Err(e) = app.focus_next() {
+                            eprintln!("[arbor-tui] focus_next: {e}");
+                        }
+                    }
                     _ => app.dispatch_key(root, event),
                 }
             }
         }
-        // Only render if something changed or this is the initial frame
+
         if first_frame || !app.dirty_tracker.is_empty() {
-            app.render_widget_tree(root, theme, backend);
+            match app.render_widget_tree(root, theme, backend) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("[arbor-tui] render failed: {e:?}");
+                    app.quit();
+                    break;
+                }
+            }
         }
         first_frame = false;
     }

@@ -1,5 +1,6 @@
 // CrosstermBackend — production terminal backend using crossterm.
 // Handles raw mode, alternate screen, ANSI emission, cursor control.
+// All I/O errors are propagated via BackendResult, not silently ignored.
 
 use std::io::{stdout, Stdout, Write};
 
@@ -8,7 +9,7 @@ use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, queue};
 
-use arbor_tui_core::backend::{TerminalBackend, TerminalGuard};
+use arbor_tui_core::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};
 use arbor_tui_core::cell::{AnsiColor, Attrs};
 use arbor_tui_core::diff::DirtyRegion;
 use arbor_tui_core::screen::VirtualScreen;
@@ -34,48 +35,32 @@ impl CrosstermBackend {
     /// Convert framework AnsiColor to crossterm Color.
     fn to_color(color: &AnsiColor) -> Color {
         if let Some(rgb) = &color.true_color {
-            // TrueColor available — use it directly
             Color::Rgb { r: rgb.0, g: rgb.1, b: rgb.2 }
         } else {
-            // 256-color palette
             Color::AnsiValue(color.palette.0)
         }
     }
 
-    /// Write a single cell to the current cursor position.
-    /// When NO_COLOR=1, foreground/background colors are skipped; text attributes are preserved.
-    fn write_cell(&mut self, ch: char, fg: &AnsiColor, bg: &AnsiColor, attrs: &Attrs) {
+    /// Write a single cell to the current cursor position, propagating errors.
+    fn write_cell(&mut self, ch: char, fg: &AnsiColor, bg: &AnsiColor, attrs: &Attrs) -> BackendResult<()> {
         if !self.no_color {
-            let _ = queue!(
+            queue!(
                 self.stdout,
                 SetForegroundColor(Self::to_color(fg)),
                 SetBackgroundColor(Self::to_color(bg)),
-            );
+            )?;
         }
 
-        if attrs.bold {
-            let _ = queue!(self.stdout, SetAttribute(Attribute::Bold));
-        }
-        if attrs.dim {
-            let _ = queue!(self.stdout, SetAttribute(Attribute::Dim));
-        }
-        if attrs.italic {
-            let _ = queue!(self.stdout, SetAttribute(Attribute::Italic));
-        }
-        if attrs.underline {
-            let _ = queue!(self.stdout, SetAttribute(Attribute::Underlined));
-        }
-        if attrs.reverse {
-            let _ = queue!(self.stdout, SetAttribute(Attribute::Reverse));
-        }
+        if attrs.bold   { queue!(self.stdout, SetAttribute(Attribute::Bold))?; }
+        if attrs.dim    { queue!(self.stdout, SetAttribute(Attribute::Dim))?; }
+        if attrs.italic { queue!(self.stdout, SetAttribute(Attribute::Italic))?; }
+        if attrs.underline { queue!(self.stdout, SetAttribute(Attribute::Underlined))?; }
+        if attrs.reverse { queue!(self.stdout, SetAttribute(Attribute::Reverse))?; }
 
-        let _ = queue!(self.stdout, Print(ch));
-
+        queue!(self.stdout, Print(ch))?;
         // Reset attributes after each cell to avoid leaking styles
-        let _ = queue!(
-            self.stdout,
-            SetAttribute(Attribute::Reset),
-        );
+        queue!(self.stdout, SetAttribute(Attribute::Reset))?;
+        Ok(())
     }
 }
 
@@ -83,24 +68,27 @@ struct CrosstermGuard;
 
 impl TerminalGuard for CrosstermGuard {
     fn restore(&mut self) {
+        // Best-effort restoration — we're already in a signal handler or
+        // panic path. The RAII Drop provides a second layer of protection.
         let _ = disable_raw_mode();
         let _ = execute!(stdout(), LeaveAlternateScreen, Show, Clear(ClearType::All));
     }
 }
 
 impl TerminalBackend for CrosstermBackend {
-    fn enter_raw_mode(&self) -> Box<dyn TerminalGuard> {
-        let _ = enable_raw_mode();
-        Box::new(CrosstermGuard)
+    fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>> {
+        enable_raw_mode()
+            .map_err(|e| BackendError::with_source("failed to enter raw mode", e))?;
+        Ok(Box::new(CrosstermGuard))
     }
 
-    fn size(&self) -> (u16, u16) {
-        size().unwrap_or((80, 24))
+    fn size(&self) -> BackendResult<(u16, u16)> {
+        size().map_err(|e| BackendError::with_source("failed to query terminal size", e))
     }
 
-    fn emit(&mut self, regions: &[DirtyRegion], screen: &VirtualScreen) {
+    fn emit(&mut self, regions: &[DirtyRegion], screen: &VirtualScreen) -> BackendResult<()> {
         if regions.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Sort and merge regions for optimal cursor movement
@@ -110,67 +98,66 @@ impl TerminalBackend for CrosstermBackend {
         let merged = merge_adjacent(&sorted);
 
         let mut current_row: Option<u16> = None;
-        let mut current_col: Option<u16> = None;
 
         for region in &merged {
-            // Move to region start if needed
-            if current_row != Some(region.row) || current_col != Some(region.start_col) {
-                let _ = queue!(self.stdout, MoveTo(region.start_col, region.row));
+            if current_row != Some(region.row) {
+                queue!(self.stdout, MoveTo(region.start_col, region.row))?;
                 current_row = Some(region.row);
-                current_col = Some(region.start_col);
             }
 
-            // Write cells in this region, skipping phantom (wide-char continuation) cells
             for col in region.start_col..region.end_col {
                 let cell = screen.cell_at(col, region.row);
                 if cell.phantom {
-                    // Phantom column of a wide char — skip emission to avoid
-                    // overwriting the second half of the CJK character.
-                    current_col = Some(col + 1);
                     continue;
                 }
-                self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs);
+                self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
             }
-            current_col = Some(region.end_col);
         }
 
-        let _ = self.stdout.flush();
+        self.stdout.flush()?;
+        Ok(())
     }
 
-    fn hide_cursor(&mut self) {
+    fn hide_cursor(&mut self) -> BackendResult<()> {
         if !self.cursor_hidden {
-            let _ = execute!(self.stdout, Hide);
+            execute!(self.stdout, Hide)?;
             self.cursor_hidden = true;
         }
+        Ok(())
     }
 
-    fn show_cursor(&mut self) {
+    fn show_cursor(&mut self) -> BackendResult<()> {
         if self.cursor_hidden {
-            let _ = execute!(self.stdout, Show);
+            execute!(self.stdout, Show)?;
             self.cursor_hidden = false;
         }
+        Ok(())
     }
 
-    fn enter_alternate_screen(&mut self) {
+    fn enter_alternate_screen(&mut self) -> BackendResult<()> {
         if !self.alt_screen {
-            let _ = execute!(self.stdout, EnterAlternateScreen);
+            execute!(self.stdout, EnterAlternateScreen)?;
             self.alt_screen = true;
         }
+        Ok(())
     }
 
-    fn exit_alternate_screen(&mut self) {
+    fn exit_alternate_screen(&mut self) -> BackendResult<()> {
         if self.alt_screen {
-            let _ = execute!(self.stdout, LeaveAlternateScreen);
+            execute!(self.stdout, LeaveAlternateScreen)?;
             self.alt_screen = false;
         }
+        Ok(())
     }
 
-    fn clear(&mut self) {
-        let _ = execute!(self.stdout, Clear(ClearType::All));
+    fn clear(&mut self) -> BackendResult<()> {
+        execute!(self.stdout, Clear(ClearType::All))?;
+        Ok(())
     }
 
-    fn flush(&mut self) {
-        let _ = self.stdout.flush();
+    fn flush(&mut self) -> BackendResult<()> {
+        self.stdout.flush()?;
+        Ok(())
     }
 }
 
@@ -183,9 +170,8 @@ fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
     let mut merged: Vec<DirtyRegion> = vec![regions[0].clone()];
 
     for next in &regions[1..] {
-        let last = merged.last_mut().unwrap();
+        let last = merged.last_mut().expect("merged must be non-empty after initial push");
         if next.row == last.row && next.start_col <= last.end_col {
-            // Touching or overlapping — extend
             last.end_col = last.end_col.max(next.end_col);
         } else {
             merged.push(next.clone());

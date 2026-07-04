@@ -6,6 +6,9 @@ license.workspace = true
 authors.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "counter"
 path = "src/bin/counter.rs"
@@ -23,3 +26,4 @@ arbor-tui = { path = "../arbor-tui" }
 arbor-tui-core = { path = "../arbor-tui-core" }
 arbor-tui-backend = { path = "../arbor-tui-backend" }
 crossterm = "0.28"
+anyhow = "1"

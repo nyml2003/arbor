@@ -9,5 +9,4 @@ pub mod terminal;
 pub use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 pub use arbor_tui_backend::simulated_backend::SimulatedBackend;
 pub use arbor_tui_backend::stdin_reader::StdinReader;
-pub use arbor_tui_core::backend::TerminalBackend;
-pub use arbor_tui_core::backend::TerminalGuard;
+pub use arbor_tui_core::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};

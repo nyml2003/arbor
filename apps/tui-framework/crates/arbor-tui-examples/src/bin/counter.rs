@@ -17,22 +17,31 @@ use arbor_tui_core::widget::{
 };
 
 use arbor_tui::app::{App, AppConfig};
+use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
-use arbor_tui_core::backend::TerminalBackend;
 use arbor_tui_core::input::{InputReader, Key};
 use std::time::Duration;
 
 fn main() {
-    let mut backend = CrosstermBackend::new();
-    let _ = execute!(stdout(), EnterAlternateScreen);
-    backend.hide_cursor();
-    backend.clear();
+    if let Err(e) = run() {
+        // Best-effort terminal restoration on error
+        let _ = execute!(stdout(), LeaveAlternateScreen);
+        eprintln!("[counter] fatal error: {e:?}");
+        std::process::exit(1);
+    }
+}
 
-    let _guard = backend.enter_raw_mode();
+fn run() -> anyhow::Result<()> {
+    let mut backend = CrosstermBackend::new();
+    execute!(stdout(), EnterAlternateScreen)?;
+    backend.hide_cursor()?;
+    backend.clear()?;
+
+    let _guard = backend.enter_raw_mode()?;
     let input = StdinReader::new();
     let theme = Theme::dark();
-    let (cols, rows) = backend.size();
+    let (cols, rows) = backend.size()?;
     let mut app = App::new(cols, rows, AppConfig::default());
     let mut counter: i32 = 0;
 
@@ -53,15 +62,20 @@ fn main() {
         if should_quit { break; }
 
         let root = build_ui(&theme, counter, cols, rows);
-        app.render_widget_tree(&root, &theme, &mut backend);
-
+        match app.render_widget_tree(&root, &theme, &mut backend) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[counter] render error: {e:?}");
+                break;
+            }
+        }
     }
 
-    let _ = execute!(stdout(), LeaveAlternateScreen);
+    execute!(stdout(), LeaveAlternateScreen)?;
+    Ok(())
 }
 
 fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
-    // 进度条宽度
     let bar_w = ((count % 40 + 40) % 40) as u16 + 1;
     let bar_text = "█".repeat(bar_w as usize);
 
@@ -75,7 +89,6 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
             ..Default::default()
         },
         children: vec![
-            // 标题
             WidgetNode::Text(TextWidget {
                 id: WidgetId(1),
                 props: LayoutProps { padding: RectOffset { bottom: 1, ..Default::default() }, ..Default::default() },
@@ -87,7 +100,6 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 计数器值
             WidgetNode::Text(TextWidget {
                 id: WidgetId(2),
                 props: LayoutProps { padding: RectOffset { left: 2, bottom: 1, ..Default::default() }, ..Default::default() },
@@ -96,7 +108,6 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 进度条
             WidgetNode::Text(TextWidget {
                 id: WidgetId(3),
                 props: LayoutProps { padding: RectOffset { bottom: 1, ..Default::default() }, ..Default::default() },
@@ -108,7 +119,6 @@ fn build_ui(theme: &Theme, count: i32, cols: u16, rows: u16) -> WidgetNode {
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 弹性占位 + 帮助信息沉底
             WidgetNode::Box(BoxWidget {
                 id: WidgetId(4),
                 props: LayoutProps { flex: 1.0, ..Default::default() },

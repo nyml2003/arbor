@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use crate::error::FocusError;
 use crate::widget::{Widget, WidgetId, WidgetNode};
 
 /// Manages keyboard focus across the widget tree.
@@ -61,29 +62,31 @@ impl FocusManager {
     }
 
     /// Move focus to the next focusable widget (Tab).
-    pub fn next(&mut self) -> Option<WidgetId> {
+    pub fn next(&mut self) -> Result<Option<WidgetId>, FocusError> {
         if self.tab_order.is_empty() {
-            return None;
+            return Ok(None);
         }
         let next_idx = match self.current_focus {
             Some(id) => {
-                let pos = self.tab_order.iter().position(|x| *x == id).unwrap_or(0);
+                let pos = self.tab_order.iter().position(|x| *x == id)
+                    .ok_or(FocusError::NotInTabOrder(id))?;
                 (pos + 1) % self.tab_order.len()
             }
             None => 0,
         };
         self.current_focus = Some(self.tab_order[next_idx]);
-        self.current_focus
+        Ok(self.current_focus)
     }
 
     /// Move focus to the previous focusable widget (Shift+Tab).
-    pub fn prev(&mut self) -> Option<WidgetId> {
+    pub fn prev(&mut self) -> Result<Option<WidgetId>, FocusError> {
         if self.tab_order.is_empty() {
-            return None;
+            return Ok(None);
         }
         let prev_idx = match self.current_focus {
             Some(id) => {
-                let pos = self.tab_order.iter().position(|x| *x == id).unwrap_or(0);
+                let pos = self.tab_order.iter().position(|x| *x == id)
+                    .ok_or(FocusError::NotInTabOrder(id))?;
                 if pos == 0 {
                     self.tab_order.len() - 1
                 } else {
@@ -93,7 +96,7 @@ impl FocusManager {
             None => self.tab_order.len() - 1,
         };
         self.current_focus = Some(self.tab_order[prev_idx]);
-        self.current_focus
+        Ok(self.current_focus)
     }
 
     /// Set focus to a specific widget. Returns true if successful.
@@ -357,8 +360,8 @@ mod tests {
         fm.rebuild(&root);
         assert!(fm.tab_order.is_empty());
         assert_eq!(fm.current(), None);
-        assert_eq!(fm.next(), None);
-        assert_eq!(fm.prev(), None);
+        assert_eq!(fm.next().unwrap(), None);
+        assert_eq!(fm.prev().unwrap(), None);
     }
 
     #[test]
@@ -391,7 +394,7 @@ mod tests {
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
         let first = fm.next().unwrap();
-        fm.next();
+        let _ = fm.next();
         let third = fm.next().unwrap();
         assert_eq!(third, first);
     }
@@ -401,7 +404,7 @@ mod tests {
         let root = make_box(0, vec![make_input(1), make_button(2, "OK")]);
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
-        assert_eq!(fm.prev().unwrap(), WidgetId(2));
+        assert_eq!(fm.prev().unwrap(), Some(WidgetId(2)));
     }
 
     #[test]
@@ -427,7 +430,7 @@ mod tests {
         let root = make_box(0, vec![make_input(1)]);
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
-        fm.next();
+        let _ = fm.next();
         fm.blur();
         assert_eq!(fm.current(), None);
     }
@@ -437,7 +440,7 @@ mod tests {
         let root = make_box(0, vec![make_input(1)]);
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
-        fm.next();
+        let _ = fm.next();
         assert!(fm.is_focused(WidgetId(1)));
         assert!(!fm.is_focused(WidgetId(999)));
     }
@@ -447,9 +450,9 @@ mod tests {
         let root = make_box(0, vec![make_input(1)]);
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
-        assert_eq!(fm.next().unwrap(), WidgetId(1));
-        assert_eq!(fm.next().unwrap(), WidgetId(1));
-        assert_eq!(fm.prev().unwrap(), WidgetId(1));
+        assert_eq!(fm.next().unwrap(), Some(WidgetId(1)));
+        assert_eq!(fm.next().unwrap(), Some(WidgetId(1)));
+        assert_eq!(fm.prev().unwrap(), Some(WidgetId(1)));
     }
 
     #[test]
@@ -457,7 +460,7 @@ mod tests {
         let root = make_box(0, vec![make_input(1)]);
         let mut fm = FocusManager::new();
         fm.rebuild(&root);
-        fm.next();
+        let _ = fm.next();
         assert_eq!(fm.current(), Some(WidgetId(1)));
         let new_root = make_box(0, vec![make_button(2, "OK")]);
         fm.rebuild(&new_root);
@@ -494,15 +497,6 @@ mod tests {
 
     #[test]
     fn mount_tree_calls_on_mount() {
-        use std::cell::RefCell;
-        use std::rc::Rc;
-
-        let mounted = Rc::new(RefCell::new(false));
-        let m_clone = mounted.clone();
-
-        // Build a tree and override on_mount via a closure-based approach.
-        // Since we can't easily override on_mount on built-in widgets,
-        // we verify that mount_tree traverses without panicking.
         let mut root = make_box(0, vec![make_input(1)]);
         mount_tree(&mut root);
         // mount_tree should not panic

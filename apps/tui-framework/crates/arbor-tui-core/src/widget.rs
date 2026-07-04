@@ -219,7 +219,7 @@ impl Widget for InputWidget {
                     let idx = self.buffer.char_indices()
                         .nth(self.cursor - 1)
                         .map(|(i, _)| i)
-                        .unwrap_or(0);
+                        .expect("cursor-1 must be a valid char boundary");
                     self.buffer.remove(idx);
                     self.cursor -= 1;
                     if let Some(ref cb) = self.on_change {
@@ -229,10 +229,11 @@ impl Widget for InputWidget {
                 KeyHandleResult::Handled
             }
             Key::Char(c) if !event.modifiers.ctrl && !event.modifiers.alt => {
-                self.buffer.insert(self.buffer.char_indices()
+                let insert_idx = self.buffer.char_indices()
                     .nth(self.cursor)
                     .map(|(i, _)| i)
-                    .unwrap_or(self.buffer.len()), *c);
+                    .unwrap_or_else(|| self.buffer.len());
+                self.buffer.insert(insert_idx, *c);
                 self.cursor += 1;
                 if let Some(ref cb) = self.on_change {
                     cb(self.buffer.clone());
@@ -261,7 +262,7 @@ impl Widget for InputWidget {
                     let idx = self.buffer.char_indices()
                         .nth(self.cursor)
                         .map(|(i, _)| i)
-                        .unwrap_or(self.buffer.len());
+                        .expect("cursor must be a valid char boundary when cursor < len");
                     self.buffer.remove(idx);
                     if let Some(ref cb) = self.on_change {
                         cb(self.buffer.clone());

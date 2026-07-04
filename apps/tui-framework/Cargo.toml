@@ -13,6 +13,16 @@ edition = "2021"
 license = "MIT"
 authors = ["nyml"]
 
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+# unwrap_used / expect_used are intentionally NOT denied —
+# this project follows "let it crash": .expect("why") is the
+# standard mechanism for enforcing invariants at runtime.
+
 [profile.release]
 opt-level = "z"
 lto = true

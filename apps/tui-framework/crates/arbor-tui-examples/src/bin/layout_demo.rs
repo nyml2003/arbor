@@ -1,5 +1,5 @@
 // Layout demo — 组件树 + 布局引擎 + 渲染管线的完整验证。
-// Box(Column) 里放标题 Text + 计数器 Text + 帮助 Text。
+// Box(Column) 里放标题 Text + 计数器 Text + Button + 帮助 Text。
 // j/k 增减计数，q 退出。
 
 use std::io::stdout;
@@ -17,29 +17,34 @@ use arbor_tui_core::widget::{
 };
 
 use arbor_tui::app::{App, AppConfig};
+use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
-use arbor_tui_core::backend::TerminalBackend;
 use arbor_tui_core::input::{InputReader, Key};
 use std::time::Duration;
 
 fn main() {
-    // ── 终端初始化 ──
-    let mut backend = CrosstermBackend::new();
-    let _ = execute!(stdout(), EnterAlternateScreen);
-    backend.hide_cursor();
-    backend.clear();
+    if let Err(e) = run() {
+        let _ = execute!(stdout(), LeaveAlternateScreen);
+        eprintln!("[layout_demo] fatal error: {e:?}");
+        std::process::exit(1);
+    }
+}
 
-    let _guard = backend.enter_raw_mode();
+fn run() -> anyhow::Result<()> {
+    let mut backend = CrosstermBackend::new();
+    execute!(stdout(), EnterAlternateScreen)?;
+    backend.hide_cursor()?;
+    backend.clear()?;
+
+    let _guard = backend.enter_raw_mode()?;
     let input = StdinReader::new();
 
-    // ── 状态 ──
     let theme = Theme::dark();
-    let (cols, rows) = backend.size();
+    let (cols, rows) = backend.size()?;
     let mut app = App::new(cols, rows, AppConfig::default());
     let mut counter: i32 = 0;
 
-    // ── 主循环 ──
     loop {
         let events = input.poll_timeout(Duration::from_millis(100));
         let mut should_quit = false;
@@ -57,11 +62,17 @@ fn main() {
         if should_quit { break; }
 
         let root = build_ui(&theme, counter, cols, rows);
-        app.render_widget_tree(&root, &theme, &mut backend);
-
+        match app.render_widget_tree(&root, &theme, &mut backend) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[layout_demo] render error: {e:?}");
+                break;
+            }
+        }
     }
 
-    let _ = execute!(stdout(), LeaveAlternateScreen);
+    execute!(stdout(), LeaveAlternateScreen)?;
+    Ok(())
 }
 
 fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
@@ -73,11 +84,10 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
             ..Default::default()
         },
         children: vec![
-            // 标题
             WidgetNode::Text(TextWidget {
                 id: WidgetId(1),
                 props: LayoutProps {
-                    padding: RectOffset{ top: 0, bottom: 1, left: 0, right: 0 },
+                    padding: RectOffset { top: 0, bottom: 1, left: 0, right: 0 },
                     ..Default::default()
                 },
                 text: ReadSignal::constant("Arbor TUI — Layout Demo".to_string()),
@@ -89,11 +99,10 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 计数器值
             WidgetNode::Text(TextWidget {
                 id: WidgetId(2),
                 props: LayoutProps {
-                    padding: RectOffset{ top: 1, bottom: 0, left: 2, right: 0 },
+                    padding: RectOffset { top: 1, bottom: 0, left: 2, right: 0 },
                     ..Default::default()
                 },
                 text: ReadSignal::constant(format!("Count: {}", count)),
@@ -105,11 +114,10 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 按钮（纯展示）
             WidgetNode::Button(ButtonWidget {
                 id: WidgetId(3),
                 props: LayoutProps {
-                    padding: RectOffset{ top: 1, bottom: 1, left: 0, right: 0 },
+                    padding: RectOffset { top: 1, bottom: 1, left: 0, right: 0 },
                     width: Some(20),
                     ..Default::default()
                 },
@@ -117,11 +125,10 @@ fn build_ui(theme: &Theme, count: i32, _cols: u16, _rows: u16) -> WidgetNode {
                 style: ButtonStyle::Primary,
                 on_click: None,
             }),
-            // 帮助
             WidgetNode::Text(TextWidget {
                 id: WidgetId(4),
                 props: LayoutProps {
-                    padding: RectOffset{ top: 1, left: 0, right: 0, bottom: 0 },
+                    padding: RectOffset { top: 1, left: 0, right: 0, bottom: 0 },
                     ..Default::default()
                 },
                 text: ReadSignal::constant("j/k: +/-  |  ^C/q: quit".to_string()),

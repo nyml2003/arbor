@@ -1,7 +1,7 @@
 // SimulatedBackend — in-memory terminal for testing.
 // Records all ANSI output and allows assertion on rendered content.
 
-use arbor_tui_core::backend::{TerminalBackend, TerminalGuard};
+use arbor_tui_core::backend::{BackendResult, TerminalBackend, TerminalGuard};
 use arbor_tui_core::diff::DirtyRegion;
 use arbor_tui_core::screen::VirtualScreen;
 
@@ -50,16 +50,15 @@ impl Drop for SimulatedGuard {
 }
 
 impl TerminalBackend for SimulatedBackend {
-    fn enter_raw_mode(&self) -> Box<dyn TerminalGuard> {
-        Box::new(SimulatedGuard)
+    fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>> {
+        Ok(Box::new(SimulatedGuard))
     }
 
-    fn size(&self) -> (u16, u16) {
-        (self.screen.cols(), self.screen.rows())
+    fn size(&self) -> BackendResult<(u16, u16)> {
+        Ok((self.screen.cols(), self.screen.rows()))
     }
 
-    fn emit(&mut self, regions: &[DirtyRegion], screen: &VirtualScreen) {
-        // Record the regions as faux ANSI output
+    fn emit(&mut self, regions: &[DirtyRegion], screen: &VirtualScreen) -> BackendResult<()> {
         use std::fmt::Write as FmtWrite;
         let mut buf = String::new();
         for region in regions {
@@ -73,7 +72,7 @@ impl TerminalBackend for SimulatedBackend {
             );
         }
         self.output.extend(buf.as_bytes());
-        // Also blit the dirty cells into our internal screen
+        // Blit the dirty cells into our internal screen
         for region in regions {
             for col in region.start_col..region.end_col {
                 let src = screen.cell_at(col, region.row);
@@ -82,45 +81,50 @@ impl TerminalBackend for SimulatedBackend {
                 }
             }
         }
+        Ok(())
     }
 
-    fn hide_cursor(&mut self) {
+    fn hide_cursor(&mut self) -> BackendResult<()> {
         self.output.extend(b"CSI ? 25 l");
+        Ok(())
     }
 
-    fn show_cursor(&mut self) {
+    fn show_cursor(&mut self) -> BackendResult<()> {
         self.output.extend(b"CSI ? 25 h");
+        Ok(())
     }
 
-    fn enter_alternate_screen(&mut self) {
+    fn enter_alternate_screen(&mut self) -> BackendResult<()> {
         self.alt_screen = true;
         self.output.extend(b"CSI ? 1049 h");
+        Ok(())
     }
 
-    fn exit_alternate_screen(&mut self) {
+    fn exit_alternate_screen(&mut self) -> BackendResult<()> {
         self.alt_screen = false;
         self.output.extend(b"CSI ? 1049 l");
+        Ok(())
     }
 
-    fn clear(&mut self) {
+    fn clear(&mut self) -> BackendResult<()> {
         self.output.extend(b"CSI 2 J");
+        Ok(())
     }
 
-    fn flush(&mut self) {
-        // no-op for simulated backend
+    fn flush(&mut self) -> BackendResult<()> {
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_core::cell::Cell;
     use arbor_tui_core::diff::{diff, merge_regions};
 
     #[test]
     fn simulated_backend_records_output() {
         let mut backend = SimulatedBackend::new(80, 24);
-        backend.enter_alternate_screen();
+        backend.enter_alternate_screen().unwrap();
         assert!(backend.output_contains("1049 h"));
     }
 
@@ -134,7 +138,7 @@ mod tests {
 
         let mut regions = diff(&old, &new_screen);
         merge_regions(&mut regions);
-        backend.emit(&regions, &new_screen);
+        backend.emit(&regions, &new_screen).unwrap();
 
         assert_eq!(backend.screen().cell_at(0, 0).ch, 'X');
     }

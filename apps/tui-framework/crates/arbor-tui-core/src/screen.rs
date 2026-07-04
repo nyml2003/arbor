@@ -2,7 +2,6 @@
 
 use crate::cell::Cell;
 use crate::layout::Rect;
-use unicode_width::UnicodeWidthChar;
 
 /// A character grid of `cols × rows` cells, stored as a row-major flat vector.
 ///

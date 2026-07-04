@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use crate::error::LayoutError;
 use crate::layout::{
     Align, AxisConstraint, Direction, Justify, LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint, sat_sub,
 };
@@ -208,10 +209,10 @@ pub fn layout_tree(
     root_rect: Rect,
     node: &WidgetNode,
     constraints: &HashMap<WidgetId, SizeConstraint>,
-) -> LayoutResult {
+) -> Result<LayoutResult, LayoutError> {
     let mut widgets = HashMap::new();
-    layout_node(root_rect, node, constraints, &mut widgets);
-    LayoutResult { widgets }
+    layout_node(root_rect, node, constraints, &mut widgets)?;
+    Ok(LayoutResult { widgets })
 }
 
 fn layout_node(
@@ -219,7 +220,7 @@ fn layout_node(
     node: &WidgetNode,
     constraints: &HashMap<WidgetId, SizeConstraint>,
     out: &mut HashMap<WidgetId, WidgetLayoutInfo>,
-) {
+) -> Result<(), LayoutError> {
     let props = node.layout_props();
     let content_rect = SizeCalc::content_rect(rect, props.padding);
     let _constraint = constraints.get(&node.id()).copied();
@@ -232,11 +233,9 @@ fn layout_node(
 
     match node {
         WidgetNode::Box(w) if !w.children.is_empty() => {
-            layout_flex_children(content_rect, &w.children, &w.props, constraints, out);
+            layout_flex_children(content_rect, &w.children, &w.props, constraints, out)?;
         }
         WidgetNode::Tabs(w) => {
-            // Layout tab header + active tab content
-            let header_rect = Rect::new(content_rect.x, content_rect.y, content_rect.w, 1);
             let body_rect = Rect::new(
                 content_rect.x,
                 content_rect.y + 1,
@@ -244,12 +243,10 @@ fn layout_node(
                 sat_sub(content_rect.h, 1),
             );
             if w.active < w.tabs.len() {
-                layout_node(body_rect, &w.tabs[w.active].content, constraints, out);
+                layout_node(body_rect, &w.tabs[w.active].content, constraints, out)?;
             }
-            let _ = header_rect;
         }
         WidgetNode::ScrollView(w) => {
-            // Child gets its natural size (larger than viewport), but clipped at render time
             let child_constraint = constraints.get(&w.child.id()).copied();
             if let Some(cc) = child_constraint {
                 let child_rect = Rect::new(
@@ -258,11 +255,12 @@ fn layout_node(
                     content_rect.w.max(cc.min_w),
                     content_rect.h.max(cc.min_h),
                 );
-                layout_node(child_rect, &w.child, constraints, out);
+                layout_node(child_rect, &w.child, constraints, out)?;
             }
         }
         _ => {} // Leaf nodes (Text, Input, Button) — no children to layout
     }
+    Ok(())
 }
 
 /// Flex layout for a container's children.
@@ -272,7 +270,7 @@ fn layout_flex_children(
     props: &LayoutProps,
     constraints: &HashMap<WidgetId, SizeConstraint>,
     out: &mut HashMap<WidgetId, WidgetLayoutInfo>,
-) {
+) -> Result<(), LayoutError> {
     let is_column = props.direction == Direction::Column;
     let main_available = if is_column { container.h } else { container.w };
 
@@ -293,7 +291,8 @@ fn layout_flex_children(
 
     for (i, child) in children.iter().enumerate() {
         let cp = child.layout_props();
-        let cc = constraints.get(&child.id()).copied().unwrap_or(SizeConstraint::unbounded());
+        let cc = constraints.get(&child.id()).copied()
+            .ok_or(LayoutError::MissingConstraints(child.id()))?;
         let (margin_main, margin_cross_start, margin_cross_end, cross_min, fixed_main) = if is_column {
             (
                 cp.margin.vertical(),
@@ -338,11 +337,12 @@ fn layout_flex_children(
             final_mains[info.idx] = (base + extra) as u16;
         } else if free_space < 0 && info.flex > 0.0 && flex_sum > 0.0 {
             let shrink = (free_space.abs() as f32 * info.flex / flex_sum) as i32;
-            let constraint = constraints.get(&children[info.idx].id()).copied();
+            let constraint = constraints.get(&children[info.idx].id()).copied()
+                .ok_or(LayoutError::MissingConstraints(children[info.idx].id()))?;
             let min_main = if is_column {
-                constraint.map(|c| c.min_h).unwrap_or(1)
+                constraint.min_h
             } else {
-                constraint.map(|c| c.min_w).unwrap_or(1)
+                constraint.min_w
             };
             final_mains[info.idx] = (base - shrink).max(min_main as i32) as u16;
         } else {
@@ -360,7 +360,8 @@ fn layout_flex_children(
             .map(|i| i.idx)
             .collect();
         flex_indices.sort_by(|a, b| {
-            children[*b].layout_props().flex.partial_cmp(&children[*a].layout_props().flex).unwrap()
+            children[*b].layout_props().flex.partial_cmp(&children[*a].layout_props().flex)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         for i in 0..remainder as usize {
             if let Some(&idx) = flex_indices.get(i % flex_indices.len().max(1)) {
@@ -423,8 +424,9 @@ fn layout_flex_children(
         };
 
         main_offset += final_mains[info.idx] + gap;
-        layout_node(child_rect, child, constraints, out);
+        layout_node(child_rect, child, constraints, out)?;
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -481,7 +483,7 @@ mod tests {
             make_text(2, "world"),
         ]);
         let c = measure_tree(&box_w, Size::new(80, 24));
-        let result = layout_tree(Rect::new(0, 0, 80, 24), &box_w, &c);
+        let result = layout_tree(Rect::new(0, 0, 80, 24), &box_w, &c).unwrap();
 
         let t1 = &result.widgets[&WidgetId(1)];
         let t2 = &result.widgets[&WidgetId(2)];
@@ -513,7 +515,7 @@ mod tests {
         });
 
         let c = measure_tree(&box_w, Size::new(80, 24));
-        let result = layout_tree(Rect::new(0, 0, 80, 24), &box_w, &c);
+        let result = layout_tree(Rect::new(0, 0, 80, 24), &box_w, &c).unwrap();
 
         // flex child should be taller than 1 (text height)
         let flex_info = &result.widgets[&WidgetId(2)];

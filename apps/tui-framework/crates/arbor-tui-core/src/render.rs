@@ -9,7 +9,7 @@ use crate::text::{self, TruncateStrategy, WrapStrategy};
 use crate::theme::Theme;
 use crate::widget::{
     BoxWidget, ButtonStyle, ColumnWidth, InputWidget, ListWidget, ScrollViewWidget,
-    TableWidget, TabsWidget, TextWidget, WidgetId, WidgetNode,
+    TableWidget, TabsWidget, TextWidget, WidgetNode,
 };
 
 /// Render a WidgetNode into a VirtualScreen for the given content_rect.
@@ -416,7 +416,7 @@ fn render_subtree(
 mod tests {
     use super::*;
     use crate::layout::LayoutProps;
-    use crate::widget::{ButtonWidget, TextWidget, TextStyle};
+    use crate::widget::{ButtonWidget, TextWidget, TextStyle, WidgetId};
 
     fn make_theme() -> Theme {
         Theme::dark()
@@ -489,7 +489,7 @@ mod tests {
         });
 
         let constraints = measure_tree(&root, Size::new(80, 24));
-        let layout = layout_tree(Rect::new(0, 0, 80, 24), &root, &constraints);
+        let layout = layout_tree(Rect::new(0, 0, 80, 24), &root, &constraints).unwrap();
         let screen = render_tree((80, 24), &root, &layout, &theme);
 
         // Both texts should be visible

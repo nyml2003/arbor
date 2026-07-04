@@ -26,7 +26,6 @@ fn full_pipeline_box_with_two_texts() {
     let theme = Theme::dark();
     let (cols, rows) = (80u16, 24u16);
 
-    // Build component tree
     let root = WidgetNode::Box(BoxWidget {
         id: WidgetId(0),
         props: LayoutProps {
@@ -54,15 +53,12 @@ fn full_pipeline_box_with_two_texts() {
         ],
     });
 
-    // Pipeline
     let constraints = measure_tree(&root, Size::new(cols, rows));
-    let layout = layout_tree(Rect::new(0, 0, cols, rows), &root, &constraints);
+    let layout = layout_tree(Rect::new(0, 0, cols, rows), &root, &constraints).unwrap();
     let screen = render_tree((cols, rows), &root, &layout, &theme);
 
-    // Verify output
     assert_eq!(screen.cols(), cols);
     assert_eq!(screen.rows(), rows);
-    // First text at its layout position (Box has padding, don't assume 0,0)
     let t1_info = &layout.widgets[&WidgetId(1)];
     assert_eq!(screen.cell_at(t1_info.content_rect.x, t1_info.content_rect.y).ch, 'H');
 }
@@ -83,24 +79,20 @@ fn diff_detects_change_after_counter_increment() {
         })
     };
 
-    // Frame 1: Count: 0
     let root1 = make_text(1, "Count: 0");
     let c1 = measure_tree(&root1, Size::new(cols, rows));
-    let l1 = layout_tree(Rect::new(0, 0, cols, rows), &root1, &c1);
+    let l1 = layout_tree(Rect::new(0, 0, cols, rows), &root1, &c1).unwrap();
     let screen1 = render_tree((cols, rows), &root1, &l1, &theme);
 
-    // Frame 2: Count: 1
     let root2 = make_text(1, "Count: 1");
     let c2 = measure_tree(&root2, Size::new(cols, rows));
-    let l2 = layout_tree(Rect::new(0, 0, cols, rows), &root2, &c2);
+    let l2 = layout_tree(Rect::new(0, 0, cols, rows), &root2, &c2).unwrap();
     let screen2 = render_tree((cols, rows), &root2, &l2, &theme);
 
-    // Diff should detect the change
     let mut regions = diff(&screen1, &screen2);
     merge_regions(&mut regions);
     assert!(!regions.is_empty(), "diff should detect the counter change");
 
-    // The changed region should include col 7 (where '0'→'1')
     let changed_cols: Vec<_> = regions.iter()
         .filter(|r| r.row == 0)
         .flat_map(|r| r.start_col..r.end_col)
@@ -112,7 +104,7 @@ fn diff_detects_change_after_counter_increment() {
 fn backend_emits_changes() {
     let theme = Theme::dark();
     let mut backend = SimulatedBackend::new(80, 24);
-    backend.enter_alternate_screen();
+    backend.enter_alternate_screen().unwrap();
 
     let make_text = |id: u64, text: &str| -> WidgetNode {
         WidgetNode::Text(TextWidget {
@@ -125,16 +117,14 @@ fn backend_emits_changes() {
         })
     };
 
-    // Initial render
     let root = make_text(1, "hello");
     let c = measure_tree(&root, Size::new(80, 24));
-    let l = layout_tree(Rect::new(0, 0, 80, 24), &root, &c);
+    let l = layout_tree(Rect::new(0, 0, 80, 24), &root, &c).unwrap();
     let screen = render_tree((80, 24), &root, &l, &theme);
     let mut regions = diff(&VirtualScreen::new(80, 24), &screen);
     merge_regions(&mut regions);
-    backend.emit(&regions, &screen);
+    backend.emit(&regions, &screen).unwrap();
 
-    // After emit, internal screen should have the content
     assert_eq!(backend.screen().cell_at(0, 0).ch, 'h');
 }
 
@@ -142,11 +132,9 @@ fn backend_emits_changes() {
 
 #[test]
 fn signal_set_marks_subscriber_dirty_and_renders_new_value() {
-    // 1. Create a reactive signal
     let text_signal = Signal::new("before".to_string());
     let read_signal = text_signal.read_only();
 
-    // 2. Build widget tree with the signal
     let widget_id = WidgetId(1);
     let mut root = WidgetNode::Text(TextWidget {
         id: widget_id,
@@ -157,21 +145,18 @@ fn signal_set_marks_subscriber_dirty_and_renders_new_value() {
         truncate: TruncateStrategy::End,
     });
 
-    // 3. Mount — triggers on_mount → subscribe
     mount_tree(&mut root);
 
-    // 4. Verify subscription: set signal → widget marked dirty
     let mut dirty = DirtyTracker::new();
     text_signal.set("after".to_string(), &mut dirty);
     assert!(dirty.is_dirty(widget_id), "widget should be dirty after signal change");
 
-    // 5. Render and verify new value appears
     let theme = Theme::dark();
     let constraints = measure_tree(&root, Size::new(80, 24));
-    let layout = layout_tree(Rect::new(0, 0, 80, 24), &root, &constraints);
+    let layout = layout_tree(Rect::new(0, 0, 80, 24), &root, &constraints).unwrap();
     let screen = render_tree((80, 24), &root, &layout, &theme);
 
-    assert_eq!(screen.cell_at(0, 0).ch, 'a'); // 'after'
+    assert_eq!(screen.cell_at(0, 0).ch, 'a');
     assert_eq!(screen.cell_at(1, 0).ch, 'f');
 }
 
@@ -192,7 +177,6 @@ fn signal_same_value_does_not_mark_dirty() {
 
     mount_tree(&mut root);
 
-    // Set to same value — should NOT mark dirty
     let mut dirty = DirtyTracker::new();
     text_signal.set("unchanged".to_string(), &mut dirty);
     assert!(!dirty.is_dirty(widget_id), "same value should not mark widget dirty");

@@ -19,52 +19,49 @@ use arbor_tui_core::widget::{
 };
 
 use arbor_tui::app::{App, AppConfig};
+use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
-use arbor_tui_core::backend::TerminalBackend;
 use arbor_tui_core::input::{InputReader, Key};
 use std::time::Duration;
 
 fn main() {
-    // ── 读取文件 ──
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("用法: cargo run --example viewer -p arbor-tui -- <文件路径>");
+    if let Err(e) = run() {
+        let _ = execute!(stdout(), LeaveAlternateScreen);
+        eprintln!("[viewer] fatal error: {e:?}");
         std::process::exit(1);
     }
+}
+
+fn run() -> anyhow::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        anyhow::bail!("用法: cargo run --example viewer -p arbor-tui -- <文件路径>");
+    }
     let path = &args[1];
-    let raw_content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("无法读取文件 {}: {}", path, e);
-            std::process::exit(1);
-        }
-    };
+    let raw_content = fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("无法读取文件 {}: {}", path, e))?;
     let content = text::expand_tabs(&raw_content);
 
-    // ── 终端初始化 ──
     let mut backend = CrosstermBackend::new();
-    let _ = execute!(stdout(), EnterAlternateScreen);
-    backend.hide_cursor();
-    backend.clear();
+    execute!(stdout(), EnterAlternateScreen)?;
+    backend.hide_cursor()?;
+    backend.clear()?;
 
-    let _guard = backend.enter_raw_mode();
+    let _guard = backend.enter_raw_mode()?;
     let input = StdinReader::new();
     let theme = Theme::dark();
-    let (mut cols, mut rows) = backend.size();
+    let (mut cols, mut rows) = backend.size()?;
     let mut app = App::new(cols, rows, AppConfig::default());
 
-    // ── 状态 ──
-    let raw_content = content; // keep original for re-wrap on resize
+    let raw_content = content;
     let mut content_w = cols.saturating_sub(6);
     let mut all_lines = wrap_content(&raw_content, content_w);
-    let mut max_scroll = all_lines.len(); // 允许最后一行滚到顶部
+    let mut max_scroll = all_lines.len();
     let mut scroll: usize = 0;
 
-    // ── 主循环 ──
     loop {
-        // 检测终端尺寸变化
-        let (new_cols, new_rows) = backend.size();
+        let (new_cols, new_rows) = backend.size()?;
         if new_cols != cols || new_rows != rows {
             cols = new_cols;
             rows = new_rows;
@@ -95,15 +92,19 @@ fn main() {
         }
         if should_quit { break; }
 
-        // ── 构建组件树 ──
         let root = build_ui(&theme, path, &all_lines, scroll, body_rows, cols, rows);
 
-        // ── 管线 ──
-        app.render_widget_tree(&root, &theme, &mut backend);
-
+        match app.render_widget_tree(&root, &theme, &mut backend) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[viewer] render error: {e:?}");
+                break;
+            }
+        }
     }
 
-    let _ = execute!(stdout(), LeaveAlternateScreen);
+    execute!(stdout(), LeaveAlternateScreen)?;
+    Ok(())
 }
 
 fn wrap_content(raw: &str, width: u16) -> Vec<String> {
@@ -112,7 +113,7 @@ fn wrap_content(raw: &str, width: u16) -> Vec<String> {
             if line.is_empty() {
                 vec![String::new()]
             } else {
-                text::wrap_lines(line, width, text::WrapStrategy::Char)
+                text::wrap_lines(line, width, WrapStrategy::Char)
             }
         })
         .collect()
@@ -134,7 +135,6 @@ fn build_ui(
         attrs: Attrs { bold: true, ..Default::default() },
     };
 
-    // 可见行：拼接行号 + 内容
     let end = (scroll + body_rows as usize).min(all_lines.len());
     let body_text: String = (scroll..end)
         .map(|i| {
@@ -166,7 +166,6 @@ fn build_ui(
             ..Default::default()
         },
         children: vec![
-            // 标题栏
             WidgetNode::Text(TextWidget {
                 id: WidgetId(1),
                 props: LayoutProps::default(),
@@ -175,7 +174,6 @@ fn build_ui(
                 wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 文件内容（弹性填充）
             WidgetNode::Text(TextWidget {
                 id: WidgetId(2),
                 props: LayoutProps {
@@ -185,10 +183,9 @@ fn build_ui(
                 },
                 text: ReadSignal::constant(body_text),
                 style: ReadSignal::constant(TextStyle::default()),
-                wrap: WrapStrategy::None, // 行已预先 wrap 好
+                wrap: WrapStrategy::None,
                 truncate: TruncateStrategy::End,
             }),
-            // 状态栏
             WidgetNode::Text(TextWidget {
                 id: WidgetId(3),
                 props: LayoutProps::default(),

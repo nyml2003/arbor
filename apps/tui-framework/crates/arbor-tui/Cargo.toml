@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 arbor-tui-core = { path = "../arbor-tui-core" }
 arbor-tui-backend = { path = "../arbor-tui-backend" }
+anyhow = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

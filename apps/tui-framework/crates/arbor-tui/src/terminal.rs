@@ -1,7 +1,7 @@
 // Terminal lifecycle management.
 // RAII guard for raw mode enter/exit, plus panic hook for emergency recovery.
 
-use arbor_tui_core::backend::TerminalBackend;
+use arbor_tui_core::backend::{BackendError, TerminalBackend};
 
 /// Install a panic hook that restores the terminal before printing the panic.
 ///
@@ -12,6 +12,7 @@ pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         use std::io::Write;
         let mut stdout = std::io::stdout();
+        // Best-effort — we're already panicking, so silently ignore write errors.
         let _ = write!(stdout, "\x1b[?1049l"); // exit alternate screen
         let _ = write!(stdout, "\x1b[?25h");   // show cursor
         let _ = stdout.flush();
@@ -26,9 +27,9 @@ pub struct TerminalHandle {
 
 impl TerminalHandle {
     /// Enter raw mode and acquire the terminal.
-    pub fn acquire(backend: &dyn TerminalBackend) -> Self {
-        let guard = backend.enter_raw_mode();
-        Self { guard: Some(guard) }
+    pub fn acquire(backend: &dyn TerminalBackend) -> Result<Self, BackendError> {
+        let guard = backend.enter_raw_mode()?;
+        Ok(Self { guard: Some(guard) })
     }
 
     /// Temporarily release the terminal (for subprocess execution).
@@ -40,14 +41,14 @@ impl TerminalHandle {
     }
 
     /// Re-acquire after a temporary release.
-    pub fn reacquire(&mut self, backend: &dyn TerminalBackend) {
-        self.guard = Some(backend.enter_raw_mode());
+    pub fn reacquire(&mut self, backend: &dyn TerminalBackend) -> Result<(), BackendError> {
+        self.guard = Some(backend.enter_raw_mode()?);
+        Ok(())
     }
 }
 
 impl Drop for TerminalHandle {
     fn drop(&mut self) {
-        // Guard's Drop handles terminal restoration
         self.guard.take();
     }
 }
