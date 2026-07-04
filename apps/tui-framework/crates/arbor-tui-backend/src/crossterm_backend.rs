@@ -91,16 +91,17 @@ impl TerminalBackend for CrosstermBackend {
             return Ok(());
         }
 
-        // Sort and merge regions for optimal cursor movement
         let mut sorted: Vec<_> = regions.to_vec();
         sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
 
         let merged = merge_adjacent(&sorted);
 
         let mut current_row: Option<u16> = None;
+        let mut current_col: Option<u16> = None;
 
         for region in &merged {
-            if current_row != Some(region.row) {
+            // Move cursor if row changed OR col is not contiguous
+            if current_row != Some(region.row) || current_col != Some(region.start_col) {
                 queue!(self.stdout, MoveTo(region.start_col, region.row))?;
                 current_row = Some(region.row);
             }
@@ -108,10 +109,12 @@ impl TerminalBackend for CrosstermBackend {
             for col in region.start_col..region.end_col {
                 let cell = screen.cell_at(col, region.row);
                 if cell.phantom {
+                    // Skip phantom columns of wide chars — cursor still advances
                     continue;
                 }
                 self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
             }
+            current_col = Some(region.end_col);
         }
 
         self.stdout.flush()?;

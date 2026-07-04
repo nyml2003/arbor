@@ -298,16 +298,16 @@ fn layout_flex_children(
                 cp.margin.vertical(),
                 cp.margin.left,
                 cp.margin.right,
-                cc.min_w + cp.margin.horizontal(),
-                cc.min_h + cp.margin.vertical(),
+                cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
+                cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
             )
         } else {
             (
                 cp.margin.horizontal(),
                 cp.margin.top,
                 cp.margin.bottom,
-                cc.min_h + cp.margin.vertical(),
-                cc.min_w + cp.margin.horizontal(),
+                cc.min_h + cp.margin.vertical() + cp.padding.vertical(),
+                cc.min_w + cp.margin.horizontal() + cp.padding.horizontal(),
             )
         };
 
@@ -339,12 +339,18 @@ fn layout_flex_children(
             let shrink = (free_space.abs() as f32 * info.flex / flex_sum) as i32;
             let constraint = constraints.get(&children[info.idx].id()).copied()
                 .ok_or(LayoutError::MissingConstraints(children[info.idx].id()))?;
-            let min_main = if is_column {
+            let child_padding = children[info.idx].layout_props().padding;
+            let min_content = if is_column {
                 constraint.min_h
             } else {
                 constraint.min_w
             };
-            final_mains[info.idx] = (base - shrink).max(min_main as i32) as u16;
+            let min_pad = if is_column {
+                child_padding.vertical()
+            } else {
+                child_padding.horizontal()
+            };
+            final_mains[info.idx] = (base - shrink).max((min_content + min_pad) as i32) as u16;
         } else {
             final_mains[info.idx] = base as u16;
         }
