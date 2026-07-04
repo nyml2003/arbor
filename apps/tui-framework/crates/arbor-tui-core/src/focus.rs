@@ -188,15 +188,15 @@ impl WidgetNode {
         }
     }
 
-    /// Dispatch a key event to this widget. Returns Handled if consumed, Bubble to propagate.
-    pub fn on_key(&mut self, event: &crate::input::KeyEvent) -> crate::input::KeyHandleResult {
+    /// Dispatch an action to this widget. Returns Handled if consumed, Bubble to propagate.
+    pub fn perform(&mut self, action: &crate::widget::WidgetAction) -> crate::input::KeyHandleResult {
         match self {
-            WidgetNode::Input(w) => w.on_key(event),
-            WidgetNode::Button(w) => w.on_key(event),
-            WidgetNode::List(w) => w.on_key(event),
-            WidgetNode::Table(w) => w.on_key(event),
-            WidgetNode::Tabs(w) => w.on_key(event),
-            WidgetNode::ScrollView(w) => w.on_key(event),
+            WidgetNode::Input(w) => w.perform(action),
+            WidgetNode::Button(w) => w.perform(action),
+            WidgetNode::List(w) => w.perform(action),
+            WidgetNode::Table(w) => w.perform(action),
+            WidgetNode::Tabs(w) => w.perform(action),
+            WidgetNode::ScrollView(w) => w.perform(action),
             _ => crate::input::KeyHandleResult::Bubble,
         }
     }

@@ -15,7 +15,7 @@ use arbor_tui_core::layout_engine::{layout_tree, measure_tree};
 use arbor_tui_core::render::render_tree;
 use arbor_tui_core::screen::VirtualScreen;
 use arbor_tui_core::theme::Theme;
-use arbor_tui_core::widget::{WidgetId, WidgetNode};
+use arbor_tui_core::widget::{WidgetAction, WidgetId, WidgetNode};
 
 /// Frame rate cap — 60fps = ~16.67ms minimum interval.
 const MIN_FRAME_INTERVAL_MS: u64 = 16;
@@ -189,10 +189,10 @@ impl App {
     }
 
     /// Dispatch a key event to the currently focused widget, with event bubbling.
-    pub fn dispatch_key(
+    pub fn dispatch_action(
         &mut self,
         root: &mut WidgetNode,
-        event: &arbor_tui_core::input::KeyEvent,
+        action: &WidgetAction,
     ) {
         let target = match self.focus_manager.current() {
             Some(id) => id,
@@ -204,7 +204,7 @@ impl App {
 
         for widget_id in &chain {
             if let Some(widget) = find_widget_mut(root, *widget_id) {
-                let result = widget.on_key(event);
+                let result = widget.perform(action);
                 if matches!(result, arbor_tui_core::input::KeyHandleResult::Handled) {
                     self.dirty_tracker.mark_dirty(*widget_id);
                     return;

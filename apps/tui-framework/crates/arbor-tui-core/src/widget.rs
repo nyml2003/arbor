@@ -3,13 +3,34 @@
 
 use crate::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use crate::screen::VirtualScreen;
-use crate::input::{Key, KeyEvent, KeyHandleResult};
+use crate::input::KeyHandleResult;
 use crate::signal::ReadSignal;
 use crate::theme::Theme;
 
 /// Unique widget identifier — auto-assigned by the App on creation.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct WidgetId(pub u64);
+
+/// Widget-level action — what a widget can DO, independent of any key binding.
+///
+/// Key→Action mapping is owned by the application layer (event_loop).
+/// Widgets receive actions, not keys.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum WidgetAction {
+    NavigateUp,
+    NavigateDown,
+    NavigateLeft,
+    NavigateRight,
+    Activate,
+    Cancel,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Delete,
+    Backspace,
+    TypeChar(char),
+}
 
 /// The Widget trait — all components implement this.
 ///
@@ -28,10 +49,13 @@ pub trait Widget {
         VirtualScreen::new(_rect.w, _rect.h)
     }
 
-    // Focus / input
+    // Focus
     fn focusable(&self) -> bool { false }
     fn tab_index(&self) -> u16 { 0 }
-    fn on_key(&mut self, _event: &KeyEvent) -> KeyHandleResult { KeyHandleResult::Bubble }
+
+    /// Perform an abstract action. Returns Handled if consumed, Bubble to propagate.
+    /// The default implementation does nothing (Bubble).
+    fn perform(&mut self, _action: &WidgetAction) -> KeyHandleResult { KeyHandleResult::Bubble }
 
     // Lifecycle
     fn on_mount(&mut self) {}
@@ -157,7 +181,7 @@ pub struct TabsWidget {
     pub id: WidgetId,
     pub props: LayoutProps,
     pub tabs: Vec<TabDef>,
-    /// Currently active tab index. Mutated directly by on_key (Left/Right).
+    /// Currently active tab index. Mutated by perform() on NavigateLeft/Right.
     /// External code switches tabs by rebuilding the widget tree with a new index.
     pub active: usize,
     pub on_switch: Option<Box<dyn Fn(usize)>>,
@@ -205,17 +229,16 @@ impl Widget for InputWidget {
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn focusable(&self) -> bool { true }
 
-    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
-        match &event.key {
-            Key::Enter => {
+    fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
+        match action {
+            WidgetAction::Activate => {
                 if let Some(ref cb) = self.on_submit {
                     cb(self.buffer.clone());
                 }
                 KeyHandleResult::Handled
             }
-            Key::Backspace => {
+            WidgetAction::Backspace => {
                 if self.cursor > 0 {
-                    // Remove the char before cursor
                     let idx = self.buffer.char_indices()
                         .nth(self.cursor - 1)
                         .map(|(i, _)| i)
@@ -228,7 +251,7 @@ impl Widget for InputWidget {
                 }
                 KeyHandleResult::Handled
             }
-            Key::Char(c) if !event.modifiers.ctrl && !event.modifiers.alt => {
+            WidgetAction::TypeChar(c) => {
                 let insert_idx = self.buffer.char_indices()
                     .nth(self.cursor)
                     .map(|(i, _)| i)
@@ -240,23 +263,23 @@ impl Widget for InputWidget {
                 }
                 KeyHandleResult::Handled
             }
-            Key::ArrowLeft => {
+            WidgetAction::NavigateLeft => {
                 if self.cursor > 0 { self.cursor -= 1; }
                 KeyHandleResult::Handled
             }
-            Key::ArrowRight => {
+            WidgetAction::NavigateRight => {
                 if self.cursor < self.buffer.chars().count() { self.cursor += 1; }
                 KeyHandleResult::Handled
             }
-            Key::Home => {
+            WidgetAction::Home => {
                 self.cursor = 0;
                 KeyHandleResult::Handled
             }
-            Key::End => {
+            WidgetAction::End => {
                 self.cursor = self.buffer.chars().count();
                 KeyHandleResult::Handled
             }
-            Key::Delete => {
+            WidgetAction::Delete => {
                 let len = self.buffer.chars().count();
                 if self.cursor < len {
                     let idx = self.buffer.char_indices()
@@ -333,9 +356,9 @@ impl Widget for ButtonWidget {
         self.label.unsubscribe(self.id);
     }
 
-    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
-        match &event.key {
-            Key::Enter | Key::Char(' ') => {
+    fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
+        match action {
+            WidgetAction::Activate => {
                 if let Some(ref cb) = self.on_click { cb(); }
                 KeyHandleResult::Handled
             }
@@ -349,14 +372,14 @@ impl Widget for ListWidget {
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn focusable(&self) -> bool { true }
 
-    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+    fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         let old = self.selected;
-        match &event.key {
-            Key::ArrowDown | Key::Char('j') => {
+        match action {
+            WidgetAction::NavigateDown => {
                 let max = self.items.len().saturating_sub(1);
                 self.selected = Some(self.selected.map_or(0, |s| (s + 1).min(max)));
             }
-            Key::ArrowUp | Key::Char('k') => {
+            WidgetAction::NavigateUp => {
                 if let Some(s) = self.selected {
                     if s > 0 { self.selected = Some(s - 1); }
                 }
@@ -375,14 +398,14 @@ impl Widget for TableWidget {
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn focusable(&self) -> bool { true }
 
-    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+    fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         let old = self.selected;
-        match &event.key {
-            Key::ArrowDown | Key::Char('j') => {
+        match action {
+            WidgetAction::NavigateDown => {
                 let max = self.cells.len().saturating_sub(1);
                 self.selected = Some(self.selected.map_or(0, |s| (s + 1).min(max)));
             }
-            Key::ArrowUp | Key::Char('k') => {
+            WidgetAction::NavigateUp => {
                 if let Some(s) = self.selected {
                     if s > 0 { self.selected = Some(s - 1); }
                 }
@@ -401,13 +424,13 @@ impl Widget for TabsWidget {
     fn layout_props(&self) -> &LayoutProps { &self.props }
     fn focusable(&self) -> bool { true }
 
-    fn on_key(&mut self, event: &KeyEvent) -> KeyHandleResult {
+    fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         let old = self.active;
-        match &event.key {
-            Key::ArrowRight | Key::Char('l') => {
+        match action {
+            WidgetAction::NavigateRight => {
                 self.active = (old + 1) % self.tabs.len().max(1);
             }
-            Key::ArrowLeft | Key::Char('h') => {
+            WidgetAction::NavigateLeft => {
                 self.active = if old == 0 { self.tabs.len().saturating_sub(1) } else { old - 1 };
             }
             _ => return KeyHandleResult::Bubble,
@@ -422,7 +445,6 @@ impl Widget for TabsWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::{Key, KeyEvent};
 
     fn make_input() -> InputWidget {
         InputWidget {
@@ -440,7 +462,7 @@ mod tests {
     #[test]
     fn input_char_appends_to_buffer() {
         let mut w = make_input();
-        let result = w.on_key(&KeyEvent::char('a'));
+        let result = w.perform(&WidgetAction::TypeChar('a'));
         assert_eq!(result, KeyHandleResult::Handled);
         assert_eq!(w.buffer, "a");
         assert_eq!(w.cursor, 1);
@@ -451,7 +473,7 @@ mod tests {
         let mut w = make_input();
         w.buffer = "abc".to_string();
         w.cursor = 3;
-        let result = w.on_key(&KeyEvent { key: Key::Backspace, modifiers: Default::default() });
+        let result = w.perform(&WidgetAction::Backspace);
         assert_eq!(result, KeyHandleResult::Handled);
         assert_eq!(w.buffer, "ab");
         assert_eq!(w.cursor, 2);
@@ -468,7 +490,7 @@ mod tests {
         w.buffer = "hello".to_string();
         w.on_submit = Some(Box::new(move |s| *sub_clone.borrow_mut() = s));
 
-        let result = w.on_key(&KeyEvent { key: Key::Enter, modifiers: Default::default() });
+        let result = w.perform(&WidgetAction::Activate);
         assert_eq!(result, KeyHandleResult::Handled);
         assert_eq!(*submitted.borrow(), "hello");
     }
@@ -483,8 +505,8 @@ mod tests {
         let mut w = make_input();
         w.on_change = Some(Box::new(move |s| ch_clone.borrow_mut().push(s)));
 
-        w.on_key(&KeyEvent::char('a'));
-        w.on_key(&KeyEvent::char('b'));
+        w.perform(&WidgetAction::TypeChar('a'));
+        w.perform(&WidgetAction::TypeChar('b'));
         assert_eq!(*changes.borrow(), vec!["a".to_string(), "ab".to_string()]);
     }
 
@@ -493,7 +515,7 @@ mod tests {
         let mut w = make_input();
         w.buffer = "abc".to_string();
         w.cursor = 3;
-        w.on_key(&KeyEvent { key: Key::ArrowLeft, modifiers: Default::default() });
+        w.perform(&WidgetAction::NavigateLeft);
         assert_eq!(w.cursor, 2);
     }
 
@@ -502,7 +524,7 @@ mod tests {
         let mut w = make_input();
         w.buffer = "abc".to_string();
         w.cursor = 3;
-        w.on_key(&KeyEvent { key: Key::Home, modifiers: Default::default() });
+        w.perform(&WidgetAction::Home);
         assert_eq!(w.cursor, 0);
     }
 
@@ -510,15 +532,15 @@ mod tests {
     fn input_delete_removes_char_at_cursor() {
         let mut w = make_input();
         w.buffer = "abc".to_string();
-        w.cursor = 1; // before 'b'
-        w.on_key(&KeyEvent { key: Key::Delete, modifiers: Default::default() });
+        w.cursor = 1;
+        w.perform(&WidgetAction::Delete);
         assert_eq!(w.buffer, "ac");
     }
 
     #[test]
-    fn input_escape_bubbles() {
+    fn input_unknown_action_bubbles() {
         let mut w = make_input();
-        let result = w.on_key(&KeyEvent { key: Key::Escape, modifiers: Default::default() });
+        let result = w.perform(&WidgetAction::Cancel);
         assert_eq!(result, KeyHandleResult::Bubble);
     }
 }

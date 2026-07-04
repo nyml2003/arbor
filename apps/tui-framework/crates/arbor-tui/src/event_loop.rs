@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use arbor_tui_core::backend::TerminalBackend;
 use arbor_tui_core::focus::mount_tree;
-use arbor_tui_core::input::{InputReader, KeyEvent};
+use arbor_tui_core::input::{InputReader, Key, KeyEvent};
 use arbor_tui_core::theme::Theme;
-use arbor_tui_core::widget::WidgetNode;
+use arbor_tui_core::widget::{WidgetAction, WidgetNode};
 
 use crate::app::App;
 use crate::signal_manager::check_resize;
@@ -47,6 +47,37 @@ pub fn poll_events(input: &dyn InputReader) -> Vec<KeyEvent> {
     input.poll_timeout(Duration::from_millis(100))
 }
 
+/// Map a KeyEvent to a WidgetAction.
+///
+/// This is the single place where physical keys are bound to logical actions.
+/// Widgets receive ONLY actions — they never see KeyEvents.
+/// Applications can override, extend, or replace this mapping entirely.
+pub fn default_keymap(event: &KeyEvent) -> Option<WidgetAction> {
+    if event.modifiers.ctrl || event.modifiers.alt {
+        // Modifier chords are handled at the app level (e.g. Ctrl+C → quit),
+        // not mapped to widget actions.
+        return None;
+    }
+    match &event.key {
+        Key::ArrowUp    => Some(WidgetAction::NavigateUp),
+        Key::ArrowDown  => Some(WidgetAction::NavigateDown),
+        Key::ArrowLeft  => Some(WidgetAction::NavigateLeft),
+        Key::ArrowRight => Some(WidgetAction::NavigateRight),
+        Key::Enter      => Some(WidgetAction::Activate),
+        Key::Escape     => Some(WidgetAction::Cancel),
+        Key::Home       => Some(WidgetAction::Home),
+        Key::End        => Some(WidgetAction::End),
+        Key::PageUp     => Some(WidgetAction::PageUp),
+        Key::PageDown   => Some(WidgetAction::PageDown),
+        Key::Delete     => Some(WidgetAction::Delete),
+        Key::Backspace  => Some(WidgetAction::Backspace),
+        Key::Tab        => None, // handled by focus system, not widgets
+        Key::Char(c)    => Some(WidgetAction::TypeChar(*c)),
+        Key::Insert     => None,
+        Key::F(_)       => None,
+    }
+}
+
 /// Run the main event loop.
 ///
 /// Errors from the render pipeline are printed to stderr and the loop continues.
@@ -74,22 +105,29 @@ pub fn run_event_loop(
         if !events.is_empty() {
             let merged = merge_events(&events);
             for event in &merged {
-                use arbor_tui_core::input::Key;
+                // Global shortcuts (app-level, not dispatched to widgets)
                 match &event.key {
-                    Key::Char('c') if event.modifiers.ctrl => app.quit(),
-                    Key::Char('q') if event.modifiers.ctrl => app.quit(),
-                    Key::Escape => app.quit(),
+                    Key::Char('c') if event.modifiers.ctrl => { app.quit(); continue; }
+                    Key::Char('q') if event.modifiers.ctrl => { app.quit(); continue; }
+                    Key::Escape => { app.quit(); continue; }
                     Key::Tab if event.modifiers.shift => {
                         if let Err(e) = app.focus_prev() {
                             eprintln!("[arbor-tui] focus_prev: {e}");
                         }
+                        continue;
                     }
                     Key::Tab => {
                         if let Err(e) = app.focus_next() {
                             eprintln!("[arbor-tui] focus_next: {e}");
                         }
+                        continue;
                     }
-                    _ => app.dispatch_key(root, event),
+                    _ => {}
+                }
+
+                // Map key → action, dispatch to focused widget
+                if let Some(action) = default_keymap(event) {
+                    app.dispatch_action(root, &action);
                 }
             }
         }
