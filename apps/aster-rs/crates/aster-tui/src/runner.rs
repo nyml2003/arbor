@@ -17,7 +17,7 @@ use aster_domain::ConversationStatus;
 
 use crate::frame_stats::FrameAccumulator;
 use crate::state::AppState;
-use crate::ui::{build_ui, UiMetrics};
+use crate::ui::{build_ui, estimate_line_count, UiMetrics};
 
 pub fn run() -> anyhow::Result<()> {
     let mut backend = CrosstermBackend::new();
@@ -72,7 +72,7 @@ pub fn run() -> anyhow::Result<()> {
 
         let streamed_tokens = state.borrow_mut().poll_stream();
         if streamed_tokens > 0 {
-            app.update_signal(&scroll_y, u16::MAX);
+            scroll_to_bottom(&mut app, &scroll_y, &state, &theme, rows);
             needs_rebuild = true;
         }
 
@@ -92,23 +92,19 @@ pub fn run() -> anyhow::Result<()> {
                     }
                 }
                 Key::ArrowUp => {
-                    let value = scroll_y.get().saturating_sub(1);
-                    app.update_signal(&scroll_y, value);
+                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, -1);
                     needs_rebuild = true;
                 }
                 Key::ArrowDown => {
-                    let value = scroll_y.get().saturating_add(1);
-                    app.update_signal(&scroll_y, value);
+                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, 1);
                     needs_rebuild = true;
                 }
                 Key::PageUp => {
-                    let value = scroll_y.get().saturating_sub(10);
-                    app.update_signal(&scroll_y, value);
+                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, -10);
                     needs_rebuild = true;
                 }
                 Key::PageDown => {
-                    let value = scroll_y.get().saturating_add(10);
-                    app.update_signal(&scroll_y, value);
+                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, 10);
                     needs_rebuild = true;
                 }
                 Key::Home => {
@@ -116,7 +112,7 @@ pub fn run() -> anyhow::Result<()> {
                     needs_rebuild = true;
                 }
                 Key::End => {
-                    app.update_signal(&scroll_y, u16::MAX);
+                    scroll_to_bottom(&mut app, &scroll_y, &state, &theme, rows);
                     needs_rebuild = true;
                 }
                 Key::Tab if event.modifiers.shift => {
@@ -134,6 +130,7 @@ pub fn run() -> anyhow::Result<()> {
         }
 
         if state.borrow_mut().take_changed() {
+            clamp_current_scroll(&mut app, &scroll_y, &state, &theme, rows);
             needs_rebuild = true;
         }
 
@@ -169,4 +166,88 @@ pub fn run() -> anyhow::Result<()> {
     backend.exit_alternate_screen()?;
     println!("{}", frames.report());
     Ok(())
+}
+
+fn update_scroll<C: aster_application::ChatStreamPort>(
+    app: &mut App,
+    scroll_y: &Signal<u16>,
+    state: &Rc<RefCell<AppState<C>>>,
+    theme: &Theme,
+    rows: u16,
+    delta: i32,
+) {
+    let line_count = line_count_for_state(state, theme);
+    let next = if delta < 0 {
+        scroll_y.get().saturating_sub(delta.unsigned_abs() as u16)
+    } else {
+        scroll_y.get().saturating_add(delta as u16)
+    };
+    app.update_signal(scroll_y, clamp_scroll_y(next, line_count, rows));
+}
+
+fn scroll_to_bottom<C: aster_application::ChatStreamPort>(
+    app: &mut App,
+    scroll_y: &Signal<u16>,
+    state: &Rc<RefCell<AppState<C>>>,
+    theme: &Theme,
+    rows: u16,
+) {
+    let line_count = line_count_for_state(state, theme);
+    app.update_signal(scroll_y, max_scroll_y(line_count, rows));
+}
+
+fn clamp_current_scroll<C: aster_application::ChatStreamPort>(
+    app: &mut App,
+    scroll_y: &Signal<u16>,
+    state: &Rc<RefCell<AppState<C>>>,
+    theme: &Theme,
+    rows: u16,
+) {
+    let line_count = line_count_for_state(state, theme);
+    app.update_signal(scroll_y, clamp_scroll_y(scroll_y.get(), line_count, rows));
+}
+
+fn line_count_for_state<C: aster_application::ChatStreamPort>(
+    state: &Rc<RefCell<AppState<C>>>,
+    theme: &Theme,
+) -> usize {
+    let borrowed = state.borrow();
+    let chat = borrowed.chat();
+    estimate_line_count(chat.messages(), chat.state(), theme)
+}
+
+fn clamp_scroll_y(scroll_y: u16, line_count: usize, rows: u16) -> u16 {
+    scroll_y.min(max_scroll_y(line_count, rows))
+}
+
+fn max_scroll_y(line_count: usize, rows: u16) -> u16 {
+    let visible_rows = visible_message_rows(rows) as usize;
+    line_count
+        .saturating_sub(visible_rows)
+        .min(u16::MAX as usize) as u16
+}
+
+fn visible_message_rows(rows: u16) -> u16 {
+    rows.saturating_sub(7).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn huge_scroll_is_clamped_when_content_fits_viewport() {
+        assert_eq!(clamp_scroll_y(u16::MAX, 3, 24), 0);
+    }
+
+    #[test]
+    fn bottom_scroll_uses_content_minus_visible_rows() {
+        assert_eq!(max_scroll_y(30, 24), 13);
+    }
+
+    #[test]
+    fn tiny_terminal_still_has_one_visible_message_row() {
+        assert_eq!(visible_message_rows(3), 1);
+        assert_eq!(max_scroll_y(5, 3), 4);
+    }
 }

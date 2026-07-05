@@ -8,6 +8,7 @@ use arbor_tui_domain::signal::Signal;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{WidgetId, WidgetNode};
 
+use arbor_tui_application::app::FrameStats;
 use arbor_tui_application::app::{App, RenderResult};
 use arbor_tui_application::runtime::{runtime_step, RuntimeInput, RuntimeStepResult};
 
@@ -180,6 +181,10 @@ impl TuiTestDriver {
 
     pub fn last_render(&self) -> Option<RenderResult> {
         self.last_render
+    }
+
+    pub fn last_frame_stats(&self) -> &FrameStats {
+        self.app.last_frame_stats()
     }
 
     pub fn output(&self) -> &[u8] {

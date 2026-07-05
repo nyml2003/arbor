@@ -7,7 +7,12 @@ Aster 目前是一个 TUI 聊天应用。核心技术栈：
 - **Rust** + `arbor-tui` 自研 TUI 框架（立即模式渲染、信号驱动响应式）
 - **DeepSeek API**（OpenAI 兼容协议），SSE 流式输出
 - **pulldown-cmark** + **syntect** 做 Markdown 渲染和代码高亮
-- 约 1700 行代码，4 个模块：`main.rs`（UI + 事件循环）、`api.rs`（HTTP + SSE）、`chat.rs`（会话状态机）、`markdown.rs`（Markdown → Span 树）
+- 代码按 DDD 风格拆成 5 个 crate：
+  - `aster-domain`：消息、角色、会话状态和状态转换。
+  - `aster-application`：聊天用例、流式事件和模型客户端端口。
+  - `aster-adapters`：DeepSeek/OpenAI 兼容 HTTP + SSE 适配器。
+  - `aster-markdown`：Markdown 到 arbor-tui `Span`/block 的转换。
+  - `aster-tui`：终端运行循环、状态模型、`build_ui` 和性能统计。
 
 当前能做的事：
 
@@ -281,17 +286,19 @@ params:
 
 ## 项目结构
 
-- `src/main.rs` — TUI 渲染 + 事件循环
-- `src/api.rs` — DeepSeek API 客户端
-- `src/chat.rs` — 会话状态机
-- `src/markdown.rs` — Markdown 渲染
+- `crates/aster-domain` — 纯领域模型。不能依赖 TUI、HTTP、环境变量或文件系统。
+- `crates/aster-application` — 用例层和端口。负责发送消息、轮询流式事件、更新会话状态。
+- `crates/aster-adapters` — DeepSeek/OpenAI 兼容 API 适配器。负责环境变量、HTTP 和 SSE。
+- `crates/aster-markdown` — Markdown 渲染。负责把文本转换成 arbor-tui 可渲染的 blocks。
+- `crates/aster-tui` — 可运行 TUI。文件按 `state.rs -> ui.rs -> runner.rs` 分层。
 
 ## 编码规范
 
 - 模块注释用 `//` 写文件头
 - 函数注释只写行为、条件、风险，不解释一眼能懂的代码
 - 用 `anyhow::Result` 做顶层错误类型
-- 新增模块先在 `main.rs` 里 `mod xxx;`
+- 新增业务规则先放 `aster-domain` 或 `aster-application`，不要写进 `aster-tui`。
+- `build_ui` 保持纯构建函数。输入状态和 theme，输出 widget tree。
 
 ## 测试
 

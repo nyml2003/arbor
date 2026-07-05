@@ -41,6 +41,15 @@ impl VirtualScreen {
         self.cells.get(idx).cloned().unwrap_or_default()
     }
 
+    /// Borrow a cell at (col, row). Returns None for out-of-bounds access.
+    pub fn cell_at_ref(&self, col: u16, row: u16) -> Option<&Cell> {
+        if col >= self.cols || row >= self.rows {
+            return None;
+        }
+        let idx = row as usize * self.cols as usize + col as usize;
+        self.cells.get(idx)
+    }
+
     /// Get a mutable reference to a cell. Returns None for out-of-bounds.
     pub fn cell_at_mut(&mut self, col: u16, row: u16) -> Option<&mut Cell> {
         if col >= self.cols || row >= self.rows {
@@ -207,6 +216,12 @@ mod tests {
         let s = VirtualScreen::new(10, 5);
         let c = s.cell_at(100, 100);
         assert_eq!(c.ch, ' ');
+    }
+
+    #[test]
+    fn oob_ref_returns_none() {
+        let s = VirtualScreen::new(10, 5);
+        assert!(s.cell_at_ref(100, 100).is_none());
     }
 
     #[test]

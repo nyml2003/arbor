@@ -211,33 +211,64 @@ fn emit_regions_to<W: Write>(
     regions: &[DirtyRegion],
     screen: &VirtualScreen,
 ) -> BackendResult<()> {
-    let mut sorted = expand_to_full_rows(regions, screen);
-    sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
+    emit_regions_to_with_stats(writer, no_color, regions, screen).map(|_| ())
+}
 
-    let merged = merge_adjacent(&sorted);
+/// ANSI encoder work counters used by tests and simulated diagnostics.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct EncodeStats {
+    pub input_regions: usize,
+    pub dirty_rows: usize,
+    pub cursor_moves: usize,
+    pub style_runs: usize,
+    pub grid_cells: usize,
+}
+
+fn emit_regions_to_with_stats<W: Write>(
+    writer: &mut W,
+    no_color: bool,
+    regions: &[DirtyRegion],
+    screen: &VirtualScreen,
+) -> BackendResult<EncodeStats> {
+    let expanded = expand_to_full_rows(regions, screen);
+    let mut stats = EncodeStats {
+        input_regions: regions.len(),
+        dirty_rows: expanded.len(),
+        grid_cells: expanded
+            .iter()
+            .map(|region| region.end_col.saturating_sub(region.start_col) as usize)
+            .sum(),
+        ..Default::default()
+    };
 
     let mut current_row: Option<u16> = None;
     let mut current_col: Option<u16> = None;
+    let mut run_text = String::with_capacity(screen.cols() as usize);
 
-    for region in &merged {
+    for region in &expanded {
         if current_row != Some(region.row) || current_col != Some(region.start_col) {
             queue!(writer, MoveTo(region.start_col, region.row))?;
+            stats.cursor_moves += 1;
             current_row = Some(region.row);
         }
 
         let mut col = region.start_col;
         while col < region.end_col {
-            let cell = screen.cell_at(col, region.row);
+            let cell = screen
+                .cell_at_ref(col, region.row)
+                .expect("expanded region must stay inside screen bounds");
             if cell.phantom {
                 col += 1;
                 continue;
             }
 
-            let mut run_text = String::new();
+            run_text.clear();
             run_text.push(cell.ch);
             let mut run_end = col + 1;
             while run_end < region.end_col {
-                let next = screen.cell_at(run_end, region.row);
+                let next = screen
+                    .cell_at_ref(run_end, region.row)
+                    .expect("expanded region must stay inside screen bounds");
                 if next.phantom {
                     run_end += 1;
                     continue;
@@ -250,12 +281,13 @@ fn emit_regions_to<W: Write>(
             }
 
             write_run_to(writer, no_color, &run_text, &cell.fg, &cell.bg, &cell.attrs)?;
+            stats.style_runs += 1;
             col = run_end;
         }
         current_col = Some(region.end_col);
     }
 
-    Ok(())
+    Ok(stats)
 }
 
 fn expand_to_full_rows(regions: &[DirtyRegion], screen: &VirtualScreen) -> Vec<DirtyRegion> {
@@ -287,26 +319,15 @@ pub fn encode_regions_for_testing(
     Ok(output)
 }
 
-/// Merge adjacent dirty regions on the same row.
-fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
-    if regions.is_empty() {
-        return vec![];
-    }
-
-    let mut merged: Vec<DirtyRegion> = vec![regions[0].clone()];
-
-    for next in &regions[1..] {
-        let last = merged
-            .last_mut()
-            .expect("merged must be non-empty after initial push");
-        if next.row == last.row && next.start_col <= last.end_col {
-            last.end_col = last.end_col.max(next.end_col);
-        } else {
-            merged.push(next.clone());
-        }
-    }
-
-    merged
+#[cfg(any(test, feature = "simulated"))]
+pub fn encode_regions_for_testing_with_stats(
+    regions: &[DirtyRegion],
+    screen: &VirtualScreen,
+    no_color: bool,
+) -> BackendResult<(Vec<u8>, EncodeStats)> {
+    let mut output = Vec::new();
+    let stats = emit_regions_to_with_stats(&mut output, no_color, regions, screen)?;
+    Ok((output, stats))
 }
 
 #[cfg(test)]
@@ -422,5 +443,73 @@ mod tests {
         assert!(ansi.contains("  X  "));
         assert!(!ansi.contains("\x1b[K"));
         assert!(!ansi.contains("\x1b[X"));
+    }
+
+    #[test]
+    fn encode_waterline_single_style_row_is_one_run() {
+        let mut screen = VirtualScreen::new(240, 1);
+        for col in 0..240 {
+            *screen.cell_at_mut(col, 0).unwrap() = Cell {
+                ch: ' ',
+                fg: AnsiColor::from_palette(252),
+                bg: AnsiColor::from_palette(234),
+                ..Default::default()
+            };
+        }
+        let regions = [DirtyRegion {
+            row: 0,
+            start_col: 37,
+            end_col: 38,
+        }];
+
+        let (_output, stats) = encode_regions_for_testing_with_stats(&regions, &screen, false)
+            .expect("encoding should succeed");
+
+        assert_eq!(stats.input_regions, 1);
+        assert_eq!(stats.dirty_rows, 1);
+        assert_eq!(stats.cursor_moves, 1);
+        assert_eq!(stats.style_runs, 1);
+        assert_eq!(stats.grid_cells, 240);
+    }
+
+    #[test]
+    fn encode_waterline_duplicate_regions_collapse_to_dirty_rows() {
+        let mut screen = VirtualScreen::new(80, 3);
+        for row in 0..3 {
+            for col in 0..80 {
+                *screen.cell_at_mut(col, row).unwrap() = Cell {
+                    ch: ' ',
+                    fg: AnsiColor::from_palette(252),
+                    bg: AnsiColor::from_palette(234),
+                    ..Default::default()
+                };
+            }
+        }
+        let regions = [
+            DirtyRegion {
+                row: 2,
+                start_col: 40,
+                end_col: 41,
+            },
+            DirtyRegion {
+                row: 0,
+                start_col: 1,
+                end_col: 2,
+            },
+            DirtyRegion {
+                row: 2,
+                start_col: 10,
+                end_col: 11,
+            },
+        ];
+
+        let (_output, stats) = encode_regions_for_testing_with_stats(&regions, &screen, false)
+            .expect("encoding should succeed");
+
+        assert_eq!(stats.input_regions, 3);
+        assert_eq!(stats.dirty_rows, 2);
+        assert_eq!(stats.cursor_moves, 2);
+        assert_eq!(stats.style_runs, 2);
+        assert_eq!(stats.grid_cells, 160);
     }
 }

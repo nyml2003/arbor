@@ -23,6 +23,29 @@ pub struct UiMetrics {
     pub last_frame_us: u64,
 }
 
+pub fn estimate_line_count(
+    messages: &[ChatMessage],
+    state: &ConversationStatus,
+    theme: &Theme,
+) -> usize {
+    if messages.is_empty() {
+        return 1;
+    }
+
+    let mut total_lines = 0usize;
+    for message in messages {
+        total_lines += 1;
+        total_lines += estimate_content_lines(message.content(), theme);
+        total_lines += 1;
+    }
+
+    if matches!(state, ConversationStatus::Error { .. }) {
+        total_lines += 2;
+    }
+
+    total_lines
+}
+
 pub fn build_ui<C: ChatStreamPort + 'static>(
     factory: &WidgetFactory,
     theme: &Theme,
@@ -318,6 +341,20 @@ fn push_message_content(
     let _ = width;
 }
 
+fn estimate_content_lines(content: &str, theme: &Theme) -> usize {
+    if content.is_empty() {
+        return 1;
+    }
+
+    aster_markdown::parse_blocks(content, theme)
+        .into_iter()
+        .map(|block| match block {
+            aster_markdown::Block::Text(lines) => lines.len(),
+            aster_markdown::Block::Code { lines, .. } => lines.len() + 4,
+        })
+        .sum()
+}
+
 fn indent_lines(lines: Vec<Vec<Span>>, theme: &Theme) -> Vec<Vec<Span>> {
     lines
         .into_iter()
@@ -360,14 +397,20 @@ mod tests {
     use aster_domain::ChatMessage;
 
     #[derive(Clone)]
-    struct FakeClient;
+    struct FakeClient {
+        events: Vec<aster_application::StreamEvent>,
+    }
 
     impl ChatStreamPort for FakeClient {
         fn start_stream(
             &self,
             _messages: &[ChatMessage],
         ) -> Result<StreamReceiver, ChatStreamError> {
-            unimplemented!("UI tests do not start streams")
+            let (tx, rx) = std::sync::mpsc::channel();
+            for event in self.events.clone() {
+                tx.send(event).unwrap();
+            }
+            Ok(rx)
         }
     }
 
@@ -375,7 +418,7 @@ mod tests {
     fn welcome_screen_has_no_black_text_background_in_light_theme() {
         let factory = WidgetFactory::new();
         let theme = Theme::light();
-        let state = Rc::new(RefCell::new(AppState::new(FakeClient)));
+        let state = Rc::new(RefCell::new(AppState::new(FakeClient { events: vec![] })));
         let scroll = Signal::new(0u16);
 
         let root = build_ui(
@@ -394,5 +437,36 @@ mod tests {
 
         assert!(harness.find_text("Welcome to Aster").len() > 0);
         harness.assert_no_black_bg_on_text().unwrap();
+    }
+
+    #[test]
+    fn clamped_scroll_offset_keeps_short_reply_visible() {
+        let factory = WidgetFactory::new();
+        let theme = Theme::dark();
+        let state = Rc::new(RefCell::new(AppState::new(FakeClient {
+            events: vec![
+                aster_application::StreamEvent::Token("visible reply".to_string()),
+                aster_application::StreamEvent::Done,
+            ],
+        })));
+        state.borrow_mut().submit_message("hello".to_string());
+        state.borrow_mut().poll_stream();
+        let scroll = Signal::new(0u16);
+
+        let root = build_ui(
+            &factory,
+            &theme,
+            &state,
+            scroll.read_only(),
+            80,
+            24,
+            UiMetrics {
+                fps: 0.0,
+                last_frame_us: 0,
+            },
+        );
+        let harness = WidgetHarness::render(&root, 80, 24, &theme);
+
+        assert!(harness.find_text("visible reply").len() > 0);
     }
 }

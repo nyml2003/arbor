@@ -26,8 +26,12 @@ pub fn diff(old: &VirtualScreen, new: &VirtualScreen) -> Vec<DirtyRegion> {
         let mut dirty_start: u16 = 0;
 
         for col in 0..cols {
-            let a = old.cell_at(col, row);
-            let b = new.cell_at(col, row);
+            let a = old
+                .cell_at_ref(col, row)
+                .expect("col and row are bounded by old screen size");
+            let b = new
+                .cell_at_ref(col, row)
+                .expect("col and row are bounded by new screen size");
 
             if a != b && !in_dirty {
                 in_dirty = true;

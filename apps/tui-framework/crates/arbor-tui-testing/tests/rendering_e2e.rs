@@ -24,6 +24,21 @@ fn initial_text_render_emits_output_and_updates_screen() {
 }
 
 #[test]
+fn initial_render_reports_frame_stats_waterline() {
+    let theme = Theme::dark();
+    let factory = WidgetFactory::new();
+    let root = Text::new("hello e2e").build(&factory, &theme);
+    let driver = mounted(root, 20, 1, theme);
+    let stats = driver.last_frame_stats();
+
+    assert_eq!(stats.frame_seq, 1);
+    assert!(
+        stats.dirty_regions > 0,
+        "initial render should report emitted dirty regions"
+    );
+}
+
+#[test]
 fn idle_tick_after_stable_render_does_not_emit_more_output() {
     let theme = Theme::dark();
     let factory = WidgetFactory::new();
