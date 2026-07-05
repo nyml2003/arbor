@@ -3,6 +3,8 @@
 
 use arbor_tui_domain::cell::{AnsiColor, Cell};
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
+use arbor_tui_domain::render::render_tree;
 use arbor_tui_domain::screen::VirtualScreen;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetId, WidgetNode};
@@ -34,6 +36,10 @@ impl Widget for BorderWidget {
     }
     fn is_transparent(&self) -> bool {
         false
+    }
+
+    fn renders_children(&self) -> bool {
+        true
     }
 
     fn measure_subtree(
@@ -68,7 +74,27 @@ impl Widget for BorderWidget {
         }
     }
 
-    fn render(&self, rect: Rect, _theme: &Theme) -> VirtualScreen {
+    fn render(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
+        self.render_border_and_child(rect, theme, None)
+    }
+
+    fn render_with_focus(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
+        self.render_border_and_child(rect, theme, focused)
+    }
+}
+
+impl BorderWidget {
+    fn render_border_and_child(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
         let mut screen = VirtualScreen::new(rect.w.max(3), rect.h.max(2));
         let w = rect.w;
         let h = rect.h;
@@ -181,6 +207,34 @@ impl Widget for BorderWidget {
             }
         }
 
+        self.render_child_into(&mut screen, w, h, theme, focused);
+
         screen
+    }
+
+    fn render_child_into(
+        &self,
+        screen: &mut VirtualScreen,
+        border_w: u16,
+        border_h: u16,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) {
+        let child_w = border_w.saturating_sub(2);
+        let child_h = border_h.saturating_sub(2);
+        if child_w == 0 || child_h == 0 {
+            return;
+        }
+
+        let child = self.child.as_ref();
+        let child_size = Size::new(child_w, child_h);
+        let constraints = measure_tree(child, child_size);
+        let child_screen = match layout_tree(Rect::new(0, 0, child_w, child_h), child, &constraints)
+        {
+            Ok(layout) => render_tree((child_w, child_h), child, &layout, theme, focused),
+            Err(_) => child.render(Rect::new(0, 0, child_w, child_h), theme),
+        };
+
+        screen.blit(Rect::new(1, 1, child_w, child_h), &child_screen);
     }
 }

@@ -122,3 +122,22 @@ fn border_without_title() {
     let h = WidgetHarness::render(&root, 40, 5, &t);
     assert!(!h.find_text("no title").is_empty());
 }
+
+#[test]
+fn border_clips_overflowing_child_content_to_interior() {
+    let (wm, t) = wm_and_theme();
+    let root = Border::new()
+        .child(Text::new("row1\nrow2\nrow3").build(&wm, &t))
+        .build(&wm, &t);
+
+    let h = WidgetHarness::render(&root, 10, 4, &t);
+
+    assert!(!h.find_text("row1").is_empty());
+    assert!(!h.find_text("row2").is_empty());
+    assert!(h.find_text("row3").is_empty());
+    assert_eq!(h.cell_at(0, 3).ch, '\u{2514}');
+    assert_eq!(h.cell_at(9, 3).ch, '\u{2518}');
+    for col in 1..9 {
+        assert_eq!(h.cell_at(col, 3).ch, '\u{2500}');
+    }
+}
