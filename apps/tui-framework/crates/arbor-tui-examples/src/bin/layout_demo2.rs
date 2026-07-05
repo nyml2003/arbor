@@ -1,6 +1,6 @@
 // Layout demo — header / 3-column body / footer, all with rounded borders.
 // Type "/theme dark" or "/theme light" in the footer input and press Enter.
-// PgUp/PgDn 切换中间栏内容，^C/q 退出。
+// Type in the center fuzzy panel to filter files. ^C/q exits.
 
 use std::cell::{Cell as StdCell, RefCell};
 use std::io::stdout;
@@ -21,7 +21,7 @@ use arbor_tui_adapters::stdin_reader::StdinReader;
 use arbor_tui_application::app::App;
 use arbor_tui_application::runtime::{runtime_step, RuntimeInput};
 use arbor_tui_application::TerminalBackend;
-use arbor_tui_composites::{Panel, PromptBar, StatusLine};
+use arbor_tui_composites::{FuzzyPanel, Panel, PromptBar, StatusLine};
 use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::widget_factory::WidgetFactory;
@@ -224,50 +224,25 @@ fn build_ui(
     .title(" Nav ")
     .build(factory, t);
 
-    let center = Panel::new(
-        RichText::new()
-            .bg(panel_cell)
-            .padding(RectOffset::all(1))
-            .line(vec![Span::new(
-                "═══ Welcome ═══",
-                t.primary(),
-                panel_bg,
-                Attrs {
-                    bold: true,
-                    ..Default::default()
-                },
-            )])
-            .line(vec![])
-            .line(vec![Span::new(
-                "3-column layout with rounded borders.",
-                t.text(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![])
-            .line(vec![Span::new(
-                format!("Left {left_w} | Center flex | Right {right_w}"),
-                t.text_dim(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![])
-            .line(vec![Span::new(
-                "Use footer: /theme dark | /theme light",
-                t.success(),
-                panel_bg,
-                Attrs {
-                    italic: true,
-                    ..Default::default()
-                },
-            )])
-            .build(factory, t),
-    )
+    let center = FuzzyPanel::new([
+        "src/bin/layout_demo2.rs",
+        "src/panel/builder.rs",
+        "src/fuzzy_panel/widget.rs",
+        "src/prompt_bar/builder.rs",
+        "src/scroll_column/builder.rs",
+        "tests/composites.rs",
+        "Cargo.toml",
+        "docs/TEPs/TEP-0005-components.md",
+        "README.md",
+    ])
     .rounded()
     .flex(1.0)
     .fg(demo_border_fg(t, t.accent()))
     .bg(panel_bg)
-    .title(" Content ")
+    .accent(t.primary())
+    .title(" Fuzzy Files ")
+    .placeholder("type to filter files")
+    .empty_text("No files match")
     .build(factory, t);
 
     let right = Panel::new(
@@ -385,7 +360,7 @@ mod tests {
         for text in [
             "Arbor TUI".to_string(),
             "Home".to_string(),
-            "Welcome".to_string(),
+            "Fuzzy Files".to_string(),
             format!("{cols}x{rows}"),
         ] {
             let (col, row) = harness
@@ -404,6 +379,13 @@ mod tests {
                 "{text:?} should use the light panel background"
             );
         }
+
+        let (selected_col, selected_row) = harness.find_text("src/bin/layout_demo2.rs")[0];
+        assert_eq!(
+            harness.cell_at(selected_col, selected_row).bg,
+            theme.primary(),
+            "selected fuzzy panel row should use the light primary background"
+        );
 
         let (title_col, title_row) = harness.find_text("Arbor TUI")[0];
         assert_eq!(harness.cell_at(title_col, title_row).fg, theme.border());

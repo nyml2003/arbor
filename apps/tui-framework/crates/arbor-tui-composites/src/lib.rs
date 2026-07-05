@@ -3,11 +3,13 @@
 //! This crate owns framework-level molecule components. It stays business
 //! agnostic: applications provide state, text, callbacks, and semantics.
 
+mod fuzzy_panel;
 mod panel;
 mod prompt_bar;
 mod scroll_column;
 mod status_line;
 
+pub use fuzzy_panel::{FuzzyPanel, FuzzyPanelSelection};
 pub use panel::Panel;
 pub use prompt_bar::PromptBar;
 pub use scroll_column::{ContentBlock, ScrollColumn};

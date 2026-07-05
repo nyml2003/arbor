@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use arbor_tui_composites::{ContentBlock, Panel, PromptBar, ScrollColumn, StatusLine};
+use arbor_tui_composites::{
+    ContentBlock, FuzzyPanel, FuzzyPanelSelection, Panel, PromptBar, ScrollColumn, StatusLine,
+};
 use arbor_tui_domain::input::Key;
 use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::signal::Signal;
@@ -149,4 +151,105 @@ fn prompt_bar_submit_callback_uses_nested_input_event_path() {
     driver.send_key(Key::Enter).unwrap();
 
     assert_eq!(submitted.borrow().as_str(), "deploy");
+}
+
+#[test]
+fn fuzzy_panel_renders_prompt_items_and_status() {
+    let (factory, theme) = wm_and_theme();
+    let root = FuzzyPanel::new(["src/main.rs", "README.md", "Cargo.toml"])
+        .title(" Files ")
+        .rounded()
+        .placeholder("Search files")
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 48, 8, &theme);
+
+    assert!(!harness.find_text("Files").is_empty());
+    assert!(!harness.find_text("Search files").is_empty());
+    assert!(!harness.find_text("src/main.rs").is_empty());
+    assert!(!harness.find_text("README.md").is_empty());
+    assert!(!harness.find_text("1/3 matches").is_empty());
+}
+
+#[test]
+fn fuzzy_panel_filters_items_from_typed_query() {
+    let (factory, theme) = wm_and_theme();
+    let root = FuzzyPanel::new(["src/main.rs", "README.md", "Cargo.toml"])
+        .placeholder("Search files")
+        .build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 48, 8, theme);
+
+    driver.render_initial().unwrap();
+    driver.focus_next().unwrap();
+    driver.send_chars("read").unwrap();
+
+    assert!(!driver.find_text("read").is_empty());
+    assert!(!driver.find_text("README.md").is_empty());
+    assert!(driver.find_text("src/main.rs").is_empty());
+    assert!(!driver.find_text("1/1 matches").is_empty());
+}
+
+#[test]
+fn fuzzy_panel_renders_empty_text_when_no_items_match() {
+    let (factory, theme) = wm_and_theme();
+    let root = FuzzyPanel::new(["src/main.rs", "README.md"])
+        .empty_text("Nothing found")
+        .build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 48, 8, theme);
+
+    driver.render_initial().unwrap();
+    driver.focus_next().unwrap();
+    driver.send_chars("zzz").unwrap();
+
+    assert!(!driver.find_text("Nothing found").is_empty());
+    assert!(!driver.find_text("0/0 matches").is_empty());
+}
+
+#[test]
+fn fuzzy_panel_submits_selected_original_item() {
+    let (factory, theme) = wm_and_theme();
+    let selected = Rc::new(RefCell::new(None::<FuzzyPanelSelection>));
+    let selected_for_cb = Rc::clone(&selected);
+    let root = FuzzyPanel::new(["alpha", "beta", "gamma"])
+        .on_submit(move |selection| {
+            *selected_for_cb.borrow_mut() = Some(selection);
+        })
+        .build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 48, 8, theme);
+
+    driver.render_initial().unwrap();
+    driver.focus_next().unwrap();
+    driver.send_key(Key::ArrowDown).unwrap();
+    driver.send_key(Key::Enter).unwrap();
+
+    assert_eq!(
+        selected.borrow().as_ref(),
+        Some(&FuzzyPanelSelection {
+            index: 1,
+            item: "beta".to_string(),
+        })
+    );
+}
+
+#[test]
+fn fuzzy_panel_emits_query_changes() {
+    let (factory, theme) = wm_and_theme();
+    let queries = Rc::new(RefCell::new(Vec::<String>::new()));
+    let queries_for_cb = Rc::clone(&queries);
+    let root = FuzzyPanel::new(["alpha", "beta"])
+        .on_query_change(move |query| {
+            queries_for_cb.borrow_mut().push(query);
+        })
+        .build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 48, 8, theme);
+
+    driver.render_initial().unwrap();
+    driver.focus_next().unwrap();
+    driver.send_chars("ab").unwrap();
+    driver.send_key(Key::Backspace).unwrap();
+
+    assert_eq!(
+        queries.borrow().as_slice(),
+        ["a".to_string(), "ab".to_string(), "a".to_string()]
+    );
 }
