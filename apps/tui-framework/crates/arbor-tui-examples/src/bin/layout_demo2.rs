@@ -180,6 +180,7 @@ fn build_ui(
     // ── Body: 3 columns ────────────────────────────────────────
     let left = Border::new()
         .rounded()
+        .flex(1.0)
         .fg(demo_border_fg(t, t.primary()))
         .bg(panel_bg)
         .title(" Nav ")
@@ -279,6 +280,7 @@ fn build_ui(
 
     let right = Border::new()
         .rounded()
+        .flex(1.0)
         .fg(demo_border_fg(t, t.success()))
         .bg(panel_bg)
         .title(" Info ")

@@ -154,10 +154,9 @@ impl TerminalBackend for CrosstermBackend {
     }
 }
 
-fn write_cell_to<W: Write>(
+fn queue_style_to<W: Write>(
     writer: &mut W,
     no_color: bool,
-    ch: char,
     fg: &AnsiColor,
     bg: &AnsiColor,
     attrs: &Attrs,
@@ -185,9 +184,23 @@ fn write_cell_to<W: Write>(
     if attrs.reverse {
         queue!(writer, SetAttribute(Attribute::Reverse))?;
     }
+    Ok(())
+}
 
-    queue!(writer, Print(ch))?;
-    // Reset attributes after each cell so styles never leak into the next cell.
+fn write_run_to<W: Write>(
+    writer: &mut W,
+    no_color: bool,
+    text: &str,
+    fg: &AnsiColor,
+    bg: &AnsiColor,
+    attrs: &Attrs,
+) -> BackendResult<()> {
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    queue_style_to(writer, no_color, fg, bg, attrs)?;
+    queue!(writer, Print(text))?;
     queue!(writer, SetAttribute(Attribute::Reset))?;
     Ok(())
 }
@@ -198,7 +211,7 @@ fn emit_regions_to<W: Write>(
     regions: &[DirtyRegion],
     screen: &VirtualScreen,
 ) -> BackendResult<()> {
-    let mut sorted: Vec<_> = regions.to_vec();
+    let mut sorted = expand_to_full_rows(regions, screen);
     sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
 
     let merged = merge_adjacent(&sorted);
@@ -212,17 +225,55 @@ fn emit_regions_to<W: Write>(
             current_row = Some(region.row);
         }
 
-        for col in region.start_col..region.end_col {
+        let mut col = region.start_col;
+        while col < region.end_col {
             let cell = screen.cell_at(col, region.row);
             if cell.phantom {
+                col += 1;
                 continue;
             }
-            write_cell_to(writer, no_color, cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
+
+            let mut run_text = String::new();
+            run_text.push(cell.ch);
+            let mut run_end = col + 1;
+            while run_end < region.end_col {
+                let next = screen.cell_at(run_end, region.row);
+                if next.phantom {
+                    run_end += 1;
+                    continue;
+                }
+                if next.fg != cell.fg || next.bg != cell.bg || next.attrs != cell.attrs {
+                    break;
+                }
+                run_text.push(next.ch);
+                run_end += 1;
+            }
+
+            write_run_to(writer, no_color, &run_text, &cell.fg, &cell.bg, &cell.attrs)?;
+            col = run_end;
         }
         current_col = Some(region.end_col);
     }
 
     Ok(())
+}
+
+fn expand_to_full_rows(regions: &[DirtyRegion], screen: &VirtualScreen) -> Vec<DirtyRegion> {
+    let mut rows: Vec<u16> = regions
+        .iter()
+        .filter(|region| region.row < screen.rows())
+        .map(|region| region.row)
+        .collect();
+    rows.sort_unstable();
+    rows.dedup();
+
+    rows.into_iter()
+        .map(|row| DirtyRegion {
+            row,
+            start_col: 0,
+            end_col: screen.cols(),
+        })
+        .collect()
 }
 
 #[cfg(any(test, feature = "simulated"))]
@@ -316,5 +367,60 @@ mod tests {
         assert!(!ansi.contains("\x1b[K"));
         assert!(!ansi.contains("\x1b[0K"));
         assert!(ansi.contains("\x1b[48;5;11m"));
+    }
+
+    #[test]
+    fn emit_blank_background_run_writes_styled_spaces_without_line_clear() {
+        let mut screen = VirtualScreen::new(4, 1);
+        for col in 0..4 {
+            *screen.cell_at_mut(col, 0).unwrap() = Cell {
+                ch: ' ',
+                fg: AnsiColor::from_palette(8),
+                bg: AnsiColor::from_palette(15),
+                ..Default::default()
+            };
+        }
+        let regions = [DirtyRegion {
+            row: 0,
+            start_col: 0,
+            end_col: 4,
+        }];
+        let mut out = Vec::new();
+
+        emit_regions_to(&mut out, false, &regions, &screen).unwrap();
+        let ansi = String::from_utf8_lossy(&out);
+
+        assert!(ansi.contains("\x1b[48;5;15m"));
+        assert!(ansi.contains("    "));
+        assert_eq!(ansi.matches("\x1b[0m").count(), 1);
+        assert!(!ansi.contains("\x1b[K"));
+    }
+
+    #[test]
+    fn emit_expands_dirty_cell_to_full_row_background_repaint() {
+        let mut screen = VirtualScreen::new(5, 1);
+        for col in 0..5 {
+            *screen.cell_at_mut(col, 0).unwrap() = Cell {
+                ch: ' ',
+                fg: AnsiColor::from_palette(8),
+                bg: AnsiColor::from_palette(15),
+                ..Default::default()
+            };
+        }
+        screen.cell_at_mut(2, 0).unwrap().ch = 'X';
+        let regions = [DirtyRegion {
+            row: 0,
+            start_col: 2,
+            end_col: 3,
+        }];
+        let mut out = Vec::new();
+
+        emit_regions_to(&mut out, false, &regions, &screen).unwrap();
+        let ansi = String::from_utf8_lossy(&out);
+
+        assert!(ansi.contains("\x1b[1;1H"));
+        assert!(ansi.contains("  X  "));
+        assert!(!ansi.contains("\x1b[K"));
+        assert!(!ansi.contains("\x1b[X"));
     }
 }
