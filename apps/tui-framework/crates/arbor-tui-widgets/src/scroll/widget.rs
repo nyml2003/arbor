@@ -5,6 +5,8 @@
 
 use arbor_tui_domain::cell::Cell;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
+use arbor_tui_domain::render::render_tree;
 use arbor_tui_domain::screen::VirtualScreen;
 use arbor_tui_domain::signal::ReadSignal;
 use arbor_tui_domain::theme::Theme;
@@ -63,12 +65,12 @@ impl Widget for ScrollViewWidget {
         SizeConstraint::bounded(available)
     }
 
-    fn render(&self, rect: Rect, _theme: &Theme) -> VirtualScreen {
+    fn render(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
         let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
 
         // 先用背景色填充整个视口，避免子组件比视口小时 Cell::default() 黑底覆盖父组件。
         let fill = Cell {
-            bg: _theme.surface(),
+            bg: theme.surface(),
             ..Default::default()
         };
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
@@ -76,7 +78,13 @@ impl Widget for ScrollViewWidget {
         // Render child at its full natural size (larger than viewport)
         let child_h = self.content_h.max(rect.h).max(1);
         let child_rect = Rect::new(0, 0, rect.w.max(1), child_h);
-        let child_screen = self.child.render(child_rect, _theme);
+        let child = self.child.as_ref();
+        let child_size = Size::new(child_rect.w, child_rect.h);
+        let constraints = measure_tree(child, child_size);
+        let child_screen = match layout_tree(child_rect, child, &constraints) {
+            Ok(layout) => render_tree((child_rect.w, child_rect.h), child, &layout, theme, None),
+            Err(_) => child.render(child_rect, theme),
+        };
 
         // Copy visible viewport
         let copy_w = rect

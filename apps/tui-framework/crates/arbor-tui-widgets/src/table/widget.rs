@@ -1,5 +1,7 @@
 // TableWidget — columnar data table with header row.
 
+use std::cell::Cell as MutCell;
+
 use arbor_tui_domain::cell::{Attrs, Cell};
 use arbor_tui_domain::input::KeyHandleResult;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
@@ -14,7 +16,8 @@ pub struct TableWidget {
     pub columns: Vec<ColumnDef>,
     pub cells: Vec<Vec<String>>,
     pub selected: Option<usize>,
-    pub scroll_offset: usize,
+    pub scroll_offset: MutCell<usize>,
+    pub viewport_rows: MutCell<usize>,
     pub on_select: Option<Box<dyn Fn(Option<usize>)>>,
     pub on_scroll: Option<Box<dyn Fn(usize)>>,
     pub render_cell: Option<Box<dyn Fn(usize, usize) -> String>>,
@@ -63,6 +66,8 @@ impl Widget for TableWidget {
         let border_fg = theme.border();
         let text = theme.text();
         let accent = theme.accent();
+        self.viewport_rows
+            .set((rect.h.saturating_sub(2) as usize).max(1));
 
         let bg_cell = Cell {
             bg,
@@ -107,7 +112,10 @@ impl Widget for TableWidget {
         // Data rows
         let data_start: u16 = 2;
         let visible_rows = (rect.h.saturating_sub(data_start)) as usize;
-        let start = self.scroll_offset;
+        let start = self
+            .scroll_offset
+            .get()
+            .min(self.cells.len().saturating_sub(1));
         let end = (start + visible_rows).min(self.cells.len());
 
         for (i, row_idx) in (start..end).enumerate() {
@@ -151,11 +159,34 @@ impl Widget for TableWidget {
             _ => return KeyHandleResult::Bubble,
         }
         if self.selected != old {
+            self.scroll_selected_into_view();
             if let Some(ref cb) = self.on_select {
                 cb(self.selected);
             }
         }
         KeyHandleResult::Handled
+    }
+}
+
+impl TableWidget {
+    fn scroll_selected_into_view(&self) {
+        let Some(selected) = self.selected else {
+            return;
+        };
+        let visible = self.viewport_rows.get().max(1);
+        let old_offset = self.scroll_offset.get();
+        let mut next_offset = old_offset;
+        if selected < old_offset {
+            next_offset = selected;
+        } else if selected >= old_offset + visible {
+            next_offset = selected + 1 - visible;
+        }
+        if next_offset != old_offset {
+            self.scroll_offset.set(next_offset);
+            if let Some(ref cb) = self.on_scroll {
+                cb(next_offset);
+            }
+        }
     }
 }
 

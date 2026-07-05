@@ -2,13 +2,13 @@ use crate::text::widget::{TextStyle, TextWidget};
 use crate::widget_factory::WidgetFactory;
 use arbor_tui_domain::cell::{AnsiColor, Attrs};
 use arbor_tui_domain::layout::{LayoutProps, RectOffset};
-use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::signal::{ReadSignal, Signal};
 use arbor_tui_domain::text::{TruncateStrategy, WrapStrategy};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Text {
-    content: String,
+    content: ReadSignal<String>,
     fg: Option<AnsiColor>,
     bg: Option<AnsiColor>,
     attrs: Attrs,
@@ -17,12 +17,13 @@ pub struct Text {
     width: Option<u16>,
     wrap: WrapStrategy,
     truncate: TruncateStrategy,
+    style_signal: Option<ReadSignal<TextStyle>>,
 }
 
 impl Text {
     pub fn new(content: impl Into<String>) -> Self {
         Self {
-            content: content.into(),
+            content: ReadSignal::constant(content.into()),
             fg: None,
             bg: None,
             attrs: Attrs::default(),
@@ -31,7 +32,24 @@ impl Text {
             width: None,
             wrap: WrapStrategy::None,
             truncate: TruncateStrategy::End,
+            style_signal: None,
         }
+    }
+    pub fn content_signal(mut self, signal: ReadSignal<String>) -> Self {
+        self.content = signal;
+        self
+    }
+    pub fn content_from(mut self, signal: &Signal<String>) -> Self {
+        self.content = signal.read_only();
+        self
+    }
+    pub fn style_signal(mut self, signal: ReadSignal<TextStyle>) -> Self {
+        self.style_signal = Some(signal);
+        self
+    }
+    pub fn style_from(mut self, signal: &Signal<TextStyle>) -> Self {
+        self.style_signal = Some(signal.read_only());
+        self
     }
     pub fn fg(mut self, c: AnsiColor) -> Self {
         self.fg = Some(c);
@@ -76,6 +94,9 @@ impl Text {
             bg: self.bg.unwrap_or(t.surface()),
             attrs: self.attrs,
         };
+        let style_signal = self
+            .style_signal
+            .unwrap_or_else(|| ReadSignal::constant(style));
         factory.wrap(|id| TextWidget {
             id,
             props: LayoutProps {
@@ -84,8 +105,8 @@ impl Text {
                 width: self.width,
                 ..Default::default()
             },
-            text: ReadSignal::constant(self.content),
-            style: ReadSignal::constant(style),
+            text: self.content,
+            style: style_signal,
             wrap: self.wrap,
             truncate: self.truncate,
         })

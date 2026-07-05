@@ -4,6 +4,7 @@ use arbor_tui_domain::cell::{AnsiColor, Cell, PaletteColor};
 use arbor_tui_domain::focus::mount_tree;
 use arbor_tui_domain::input::{Key, KeyEvent, KeyEventKind, Modifiers};
 use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::signal::Signal;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{WidgetId, WidgetNode};
 
@@ -91,12 +92,46 @@ impl TuiTestDriver {
     }
 
     pub fn send_key(&mut self, key: Key) -> anyhow::Result<()> {
+        self.send_modified_key(key, Modifiers::default())
+    }
+
+    pub fn send_modified_key(&mut self, key: Key, modifiers: Modifiers) -> anyhow::Result<()> {
         self.tick([KeyEvent {
             key,
-            modifiers: Modifiers::default(),
+            modifiers,
             kind: KeyEventKind::Press,
         }])?;
         Ok(())
+    }
+
+    pub fn send_shift_tab(&mut self) -> anyhow::Result<()> {
+        self.send_modified_key(
+            Key::Tab,
+            Modifiers {
+                shift: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn send_ctrl_char(&mut self, c: char) -> anyhow::Result<()> {
+        self.send_modified_key(
+            Key::Char(c),
+            Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn update_signal<T: Clone + PartialEq>(
+        &mut self,
+        signal: &Signal<T>,
+        value: T,
+    ) -> anyhow::Result<RuntimeStepResult> {
+        self.mount();
+        self.app.update_signal(signal, value);
+        self.tick([])
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> anyhow::Result<()> {
@@ -165,6 +200,23 @@ impl TuiTestDriver {
 
     pub fn find_text(&self, needle: &str) -> Vec<(u16, u16)> {
         find_text_in_screen(self.screen(), needle)
+    }
+
+    pub fn row_text(&self, row: u16) -> String {
+        (0..self.screen().cols())
+            .map(|col| self.screen().cell_at(col, row).ch)
+            .collect()
+    }
+
+    pub fn visible_text(&self) -> String {
+        let mut text = String::new();
+        for row in 0..self.screen().rows() {
+            text.push_str(&self.row_text(row));
+            if row + 1 < self.screen().rows() {
+                text.push('\n');
+            }
+        }
+        text
     }
 
     pub fn assert_no_default_black_on_visible_text(&self) -> Result<(), Vec<(u16, u16, char)>> {

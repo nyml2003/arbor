@@ -8,6 +8,13 @@ pub struct Table {
     cells: Vec<Vec<String>>,
     padding: RectOffset,
     flex: f32,
+    on_select: Option<Box<dyn Fn(Option<usize>)>>,
+}
+
+impl Default for Table {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Table {
@@ -17,6 +24,7 @@ impl Table {
             cells: vec![],
             padding: RectOffset::default(),
             flex: 0.0,
+            on_select: None,
         }
     }
 
@@ -40,6 +48,11 @@ impl Table {
         self
     }
 
+    pub fn on_select(mut self, f: impl Fn(Option<usize>) + 'static) -> Self {
+        self.on_select = Some(Box::new(f));
+        self
+    }
+
     pub fn build(
         self,
         factory: &WidgetFactory,
@@ -55,8 +68,9 @@ impl Table {
             columns: self.columns,
             cells: self.cells,
             selected: None,
-            scroll_offset: 0,
-            on_select: None,
+            scroll_offset: std::cell::Cell::new(0),
+            viewport_rows: std::cell::Cell::new(1),
+            on_select: self.on_select,
             on_scroll: None,
             render_cell: None,
         })

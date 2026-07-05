@@ -8,6 +8,7 @@ pub struct Tabs {
     active: usize,
     padding: RectOffset,
     flex: f32,
+    on_switch: Option<Box<dyn Fn(usize)>>,
 }
 
 impl Tabs {
@@ -17,6 +18,7 @@ impl Tabs {
             active,
             padding: RectOffset::default(),
             flex: 0.0,
+            on_switch: None,
         }
     }
     pub fn tabs(mut self, t: Vec<TabDef>) -> Self {
@@ -29,6 +31,10 @@ impl Tabs {
     }
     pub fn padding(mut self, p: RectOffset) -> Self {
         self.padding = p;
+        self
+    }
+    pub fn on_switch(mut self, f: impl Fn(usize) + 'static) -> Self {
+        self.on_switch = Some(Box::new(f));
         self
     }
     pub fn build(
@@ -45,7 +51,7 @@ impl Tabs {
             },
             tabs: self.tabs,
             active: self.active,
-            on_switch: None,
+            on_switch: self.on_switch,
         })
     }
 }

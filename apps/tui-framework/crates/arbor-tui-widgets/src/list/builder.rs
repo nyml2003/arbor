@@ -7,6 +7,7 @@ pub struct List {
     items: Vec<String>,
     padding: RectOffset,
     flex: f32,
+    on_select: Option<Box<dyn Fn(Option<usize>)>>,
 }
 
 impl Default for List {
@@ -21,6 +22,7 @@ impl List {
             items: vec![],
             padding: RectOffset::default(),
             flex: 0.0,
+            on_select: None,
         }
     }
     pub fn items(mut self, items: Vec<String>) -> Self {
@@ -33,6 +35,10 @@ impl List {
     }
     pub fn padding(mut self, p: RectOffset) -> Self {
         self.padding = p;
+        self
+    }
+    pub fn on_select(mut self, f: impl Fn(Option<usize>) + 'static) -> Self {
+        self.on_select = Some(Box::new(f));
         self
     }
     pub fn build(
@@ -49,8 +55,9 @@ impl List {
             },
             items: self.items,
             selected: None,
-            scroll_offset: 0,
-            on_select: None,
+            scroll_offset: std::cell::Cell::new(0),
+            viewport_rows: std::cell::Cell::new(1),
+            on_select: self.on_select,
             on_scroll: None,
             render_item: None,
         })

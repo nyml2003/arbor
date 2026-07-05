@@ -32,6 +32,9 @@ impl Widget for ButtonWidget {
     fn layout_props(&self) -> &LayoutProps {
         &self.props
     }
+    fn focusable(&self) -> bool {
+        true
+    }
 
     fn on_mount(&mut self) {
         self.label.subscribe(self.id);

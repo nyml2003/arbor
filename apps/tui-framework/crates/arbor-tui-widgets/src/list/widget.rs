@@ -1,5 +1,7 @@
 // ListWidget — scrollable item list.
 
+use std::cell::Cell as MutCell;
+
 use arbor_tui_domain::cell::{Attrs, Cell};
 use arbor_tui_domain::input::KeyHandleResult;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
@@ -13,7 +15,8 @@ pub struct ListWidget {
     pub props: LayoutProps,
     pub items: Vec<String>,
     pub selected: Option<usize>,
-    pub scroll_offset: usize,
+    pub scroll_offset: MutCell<usize>,
+    pub viewport_rows: MutCell<usize>,
     pub on_select: Option<Box<dyn Fn(Option<usize>)>>,
     pub on_scroll: Option<Box<dyn Fn(usize)>>,
     pub render_item: Option<Box<dyn Fn(usize, bool) -> String>>,
@@ -49,6 +52,7 @@ impl Widget for ListWidget {
         let bg = theme.surface();
         let accent = theme.accent();
         let text = theme.text();
+        self.viewport_rows.set((rect.h as usize).max(1));
 
         let bg_cell = Cell {
             bg,
@@ -57,7 +61,10 @@ impl Widget for ListWidget {
         screen.fill_rect(Rect::new(0, 0, rect.w, rect.h), &bg_cell);
 
         let visible_count = rect.h as usize;
-        let start = self.scroll_offset;
+        let start = self
+            .scroll_offset
+            .get()
+            .min(self.items.len().saturating_sub(1));
         let end = (start + visible_count).min(self.items.len());
 
         for (i, item_idx) in (start..end).enumerate() {
@@ -116,10 +123,33 @@ impl Widget for ListWidget {
             _ => return KeyHandleResult::Bubble,
         }
         if self.selected != old {
+            self.scroll_selected_into_view();
             if let Some(ref cb) = self.on_select {
                 cb(self.selected);
             }
         }
         KeyHandleResult::Handled
+    }
+}
+
+impl ListWidget {
+    fn scroll_selected_into_view(&self) {
+        let Some(selected) = self.selected else {
+            return;
+        };
+        let visible = self.viewport_rows.get().max(1);
+        let old_offset = self.scroll_offset.get();
+        let mut next_offset = old_offset;
+        if selected < old_offset {
+            next_offset = selected;
+        } else if selected >= old_offset + visible {
+            next_offset = selected + 1 - visible;
+        }
+        if next_offset != old_offset {
+            self.scroll_offset.set(next_offset);
+            if let Some(ref cb) = self.on_scroll {
+                cb(next_offset);
+            }
+        }
     }
 }
