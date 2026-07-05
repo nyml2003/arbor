@@ -128,6 +128,25 @@ fn tabs_renders_headers() {
 }
 
 #[test]
+fn tabs_content_starts_below_header_and_separator() {
+    let (wm, t) = wm_and_theme();
+    let root = Tabs::new(0)
+        .tabs(vec![TabDef {
+            label: "General".into(),
+            content: Text::new("body").build(&wm, &t),
+        }])
+        .build(&wm, &t);
+
+    let h = WidgetHarness::render(&root, 30, 4, &t);
+    let header = h.find_text("General")[0];
+    let body = h.find_text("body")[0];
+
+    assert_eq!(header.1, 0);
+    assert_eq!(h.cell_at(0, 1).bg.palette, t.border().palette);
+    assert_eq!(body.1, 2);
+}
+
+#[test]
 fn tabs_light_theme_no_black_bg() {
     let (wm, _) = wm_and_theme();
     let t = Theme::light();

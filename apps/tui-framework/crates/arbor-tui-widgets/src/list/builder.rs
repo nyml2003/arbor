@@ -35,8 +35,12 @@ impl List {
         self.padding = p;
         self
     }
-    pub fn build(self, wm: &WidgetFactory, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
-        wm.wrap(|id| ListWidget {
+    pub fn build(
+        self,
+        factory: &WidgetFactory,
+        _theme: &arbor_tui_render::theme::Theme,
+    ) -> WidgetNode {
+        factory.wrap(|id| ListWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,

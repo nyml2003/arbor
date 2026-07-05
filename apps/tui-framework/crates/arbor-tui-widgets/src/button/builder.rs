@@ -40,8 +40,12 @@ impl Button {
         self.width = Some(w);
         self
     }
-    pub fn build(self, wm: &WidgetFactory, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
-        wm.wrap(|id| ButtonWidget {
+    pub fn build(
+        self,
+        factory: &WidgetFactory,
+        _theme: &arbor_tui_render::theme::Theme,
+    ) -> WidgetNode {
+        factory.wrap(|id| ButtonWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,

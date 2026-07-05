@@ -48,9 +48,13 @@ impl Scroll {
         self.scroll_y = Some(s);
         self
     }
-    pub fn build(self, wm: &WidgetFactory, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+    pub fn build(
+        self,
+        factory: &WidgetFactory,
+        _theme: &arbor_tui_render::theme::Theme,
+    ) -> WidgetNode {
         let child = self.child.expect("Scroll::child must be set before build");
-        wm.wrap(|id| ScrollViewWidget {
+        factory.wrap(|id| ScrollViewWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,

@@ -70,13 +70,13 @@ impl Text {
         self
     }
 
-    pub fn build(self, wm: &WidgetFactory, t: &Theme) -> WidgetNode {
+    pub fn build(self, factory: &WidgetFactory, t: &Theme) -> WidgetNode {
         let style = TextStyle {
             fg: self.fg.unwrap_or(t.text()),
             bg: self.bg.unwrap_or(t.surface()),
             attrs: self.attrs,
         };
-        wm.wrap(|id| TextWidget {
+        factory.wrap(|id| TextWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,

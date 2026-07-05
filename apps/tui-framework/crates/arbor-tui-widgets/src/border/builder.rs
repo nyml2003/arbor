@@ -60,8 +60,8 @@ impl Border {
         self.padding = p;
         self
     }
-    pub fn build(self, wm: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
-        wm.wrap(|id| BorderWidget {
+    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+        factory.wrap(|id| BorderWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,

@@ -1,5 +1,5 @@
 // App — the TUI application runtime.
-// Owns the widget tree, dirty tracker, theme, and coordinates the event/render loops.
+// Owns runtime state and coordinates focus, dirty tracking, resize, and rendering.
 // All fallible operations propagate errors via anyhow::Result.
 
 use std::time::Instant;
@@ -8,6 +8,7 @@ use anyhow::Context;
 
 use arbor_tui_primitives::layout::{Rect, Size};
 use arbor_tui_reactive::dirty::DirtyTracker;
+use arbor_tui_reactive::signal::Signal;
 use arbor_tui_render::backend::TerminalBackend;
 use arbor_tui_render::diff::{diff, merge_regions};
 use arbor_tui_render::screen::VirtualScreen;
@@ -46,56 +47,33 @@ pub struct FrameStats {
     pub dirty_regions: usize,
 }
 
-/// Application configuration.
-pub struct AppConfig {
-    pub theme: Theme,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            theme: Theme::dark(),
-        }
-    }
-}
-
 /// The TUI application runtime.
 pub struct App {
-    pub config: AppConfig,
-    pub dirty_tracker: DirtyTracker,
-    pub focus_manager: FocusManager,
-    pub last_frame_stats: FrameStats,
+    dirty_tracker: DirtyTracker,
+    focus_manager: FocusManager,
+    last_frame_stats: FrameStats,
     screen: VirtualScreen,
     last_frame_time: Instant,
     frame_seq: u64,
     running: bool,
-    next_widget_id: u64,
     // Resize debounce state
     pending_resize: Option<(u16, u16)>,
     last_resize_seen: Instant,
 }
 
 impl App {
-    pub fn new(cols: u16, rows: u16, config: AppConfig) -> Self {
+    pub fn new(cols: u16, rows: u16) -> Self {
         Self {
             screen: VirtualScreen::new(cols, rows),
             dirty_tracker: DirtyTracker::new(),
             focus_manager: FocusManager::new(),
             last_frame_stats: FrameStats::default(),
-            config,
             last_frame_time: Instant::now(),
             frame_seq: 0,
             running: false,
-            next_widget_id: 1,
             pending_resize: None,
             last_resize_seen: Instant::now(),
         }
-    }
-
-    pub fn next_widget_id(&mut self) -> WidgetId {
-        let id = WidgetId(self.next_widget_id);
-        self.next_widget_id += 1;
-        id
     }
 
     pub fn screen_size(&self) -> (u16, u16) {
@@ -104,6 +82,26 @@ impl App {
 
     pub fn screen(&self) -> &VirtualScreen {
         &self.screen
+    }
+
+    pub fn last_frame_stats(&self) -> &FrameStats {
+        &self.last_frame_stats
+    }
+
+    pub(crate) fn has_pending_render(&self) -> bool {
+        !self.dirty_tracker.is_empty()
+    }
+
+    pub(crate) fn take_dirty_widgets(&mut self) -> Vec<WidgetId> {
+        self.dirty_tracker.drain().into_iter().collect()
+    }
+
+    pub(crate) fn rebuild_focus(&mut self, root: &WidgetNode) {
+        self.focus_manager.rebuild(root);
+    }
+
+    pub fn update_signal<T: Clone + PartialEq>(&mut self, signal: &Signal<T>, value: T) {
+        signal.set(value, &mut self.dirty_tracker);
     }
 
     /// Notify of a potential terminal size change.
@@ -148,12 +146,12 @@ impl App {
         theme: &Theme,
         backend: &mut dyn TerminalBackend,
     ) -> anyhow::Result<RenderResult> {
-        self.focus_manager.rebuild(root);
+        self.rebuild_focus(root);
 
         // Check force_render BEFORE draining — resize sets force_render to
         // guarantee the next frame is not skipped by the throttle.
-        let force = !self.dirty_tracker.is_empty();
-        let dirty_count = self.dirty_tracker.drain().len();
+        let force = self.has_pending_render();
+        let dirty_count = self.take_dirty_widgets().len();
 
         if self.frame_seq > 0 && !force {
             let elapsed = self.last_frame_time.elapsed();
@@ -293,5 +291,23 @@ impl App {
 
     pub fn run(&mut self) {
         self.running = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arbor_tui_reactive::signal::Signal;
+
+    #[test]
+    fn update_signal_marks_subscribers_dirty_without_exposing_dirty_tracker() {
+        let signal = Signal::new("before".to_string());
+        signal.subscribe(WidgetId(1));
+        let mut app = App::new(20, 1);
+
+        app.update_signal(&signal, "after".to_string());
+
+        assert_eq!(signal.get(), "after");
+        assert!(app.has_pending_render());
     }
 }

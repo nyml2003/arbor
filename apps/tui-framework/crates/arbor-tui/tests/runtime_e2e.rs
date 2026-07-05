@@ -27,6 +27,38 @@ fn key_script_updates_input_and_terminal_screen() {
 }
 
 #[test]
+fn idle_tick_after_initial_render_does_not_emit_output() {
+    let theme = Theme::dark();
+    let factory = WidgetFactory::new();
+    let root = Text::new("stable").build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 30, 1, theme);
+
+    driver.render_initial().unwrap();
+    assert!(driver.output_contains("CSI"));
+    let output_len = driver.output_len();
+
+    let step = driver.tick([]).unwrap();
+
+    assert!(!step.should_render);
+    assert_eq!(driver.last_render(), None);
+    assert_eq!(driver.output_len(), output_len);
+}
+
+#[test]
+fn repeated_characters_are_not_merged_by_runtime() {
+    let theme = Theme::dark();
+    let factory = WidgetFactory::new();
+    let root = Input::new().placeholder("type").build(&factory, &theme);
+    let mut driver = TuiTestDriver::new(root, 30, 1, theme);
+
+    driver.render_initial().unwrap();
+    driver.focus_next().unwrap();
+    driver.send_chars("bookkeeper").unwrap();
+
+    assert!(!driver.find_text("bookkeeper").is_empty());
+}
+
+#[test]
 fn tab_focus_marks_runtime_for_render() {
     let theme = Theme::dark();
     let factory = WidgetFactory::new();
@@ -89,7 +121,7 @@ fn escape_quits_through_runtime_step() {
         .unwrap();
 
     assert!(step.should_quit);
-    assert!(!driver.app.is_running());
+    assert!(!driver.is_running());
 }
 
 #[test]

@@ -7,14 +7,14 @@ use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::focus::mount_tree;
 use arbor_tui_widget::widget::{WidgetId, WidgetNode};
 
-use crate::app::{App, AppConfig, RenderResult};
+use crate::app::{App, RenderResult};
 use crate::runtime::{runtime_step, RuntimeInput, RuntimeStepResult};
 
 pub struct TuiTestDriver {
-    pub app: App,
-    pub root: WidgetNode,
-    pub backend: SimulatedBackend,
-    pub theme: Theme,
+    app: App,
+    root: WidgetNode,
+    backend: SimulatedBackend,
+    theme: Theme,
     mounted: bool,
     first_frame: bool,
     last_step: RuntimeStepResult,
@@ -24,13 +24,7 @@ pub struct TuiTestDriver {
 impl TuiTestDriver {
     pub fn new(root: WidgetNode, cols: u16, rows: u16, theme: Theme) -> Self {
         Self {
-            app: App::new(
-                cols,
-                rows,
-                AppConfig {
-                    theme: theme.clone(),
-                },
-            ),
+            app: App::new(cols, rows),
             root,
             backend: SimulatedBackend::new(cols, rows),
             theme,
@@ -41,7 +35,7 @@ impl TuiTestDriver {
         }
     }
 
-    pub fn mount(&mut self) {
+    fn mount(&mut self) {
         if !self.mounted {
             self.app.run();
             mount_tree(&mut self.root);
@@ -54,10 +48,11 @@ impl TuiTestDriver {
         events: impl IntoIterator<Item = KeyEvent>,
     ) -> anyhow::Result<RuntimeStepResult> {
         self.mount();
-        let input = RuntimeInput {
-            events: events.into_iter().collect(),
-            first_frame: self.first_frame,
-            resize: None,
+        let events = events.into_iter().collect();
+        let input = if self.first_frame {
+            RuntimeInput::first_frame_with_events(events)
+        } else {
+            RuntimeInput::new(events)
         };
         let step = runtime_step(&mut self.app, &mut self.root, &self.backend, input)?;
         if step.should_clear {
@@ -140,12 +135,32 @@ impl TuiTestDriver {
         self.app.focused_widget()
     }
 
+    pub fn is_running(&self) -> bool {
+        self.app.is_running()
+    }
+
     pub fn last_step(&self) -> RuntimeStepResult {
         self.last_step
     }
 
     pub fn last_render(&self) -> Option<RenderResult> {
         self.last_render
+    }
+
+    pub fn output(&self) -> &[u8] {
+        self.backend.output()
+    }
+
+    pub fn output_len(&self) -> usize {
+        self.backend.output_len()
+    }
+
+    pub fn output_contains(&self, needle: &str) -> bool {
+        self.backend.output_contains(needle)
+    }
+
+    pub fn clear_output(&mut self) {
+        self.backend.clear_output();
     }
 
     pub fn find_text(&self, needle: &str) -> Vec<(u16, u16)> {

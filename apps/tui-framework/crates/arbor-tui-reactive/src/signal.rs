@@ -21,8 +21,8 @@ struct SignalInner<T: Clone + PartialEq> {
 /// Writable reactive value. Owned by the business layer.
 ///
 /// Components receive a `ReadSignal<T>` view via `signal.read_only()`.
-/// `Signal::set()` requires `&mut DirtyTracker` — the caller is responsible
-/// for passing the app's tracker. No global state.
+/// `Signal::set()` requires an explicit dirty tracker so state writes stay
+/// visible to tests and application runtime code.
 pub struct Signal<T: Clone + PartialEq> {
     inner: Rc<RefCell<SignalInner<T>>>,
 }
@@ -137,31 +137,6 @@ impl<T: Clone + PartialEq> ReadSignal<T> {
         let mut inner = self.inner.borrow_mut();
         inner.subscribers.retain(|id| *id != widget_id);
     }
-}
-
-/// Convenience helper: from a `Signal<T>`, create a `(ReadSignal<T>, Box<dyn Fn(T)>)` pair.
-///
-/// The `ReadSignal` goes to the component. The write closure captures the signal's
-/// inner state and sets the value directly — the caller must still call
-/// `signal.set()` with a `DirtyTracker` to trigger re-render.
-///
-/// For full reactivity, use the returned `ReadSignal` in a widget and call
-/// `signal.set(new_value, &mut app.dirty_tracker)` in the write closure.
-pub fn bind_signal<T: Clone + PartialEq + 'static>(
-    sig: &Signal<T>,
-) -> (ReadSignal<T>, Box<dyn Fn(T)>) {
-    let read = sig.read_only();
-    let inner = Rc::clone(&sig.inner);
-    let write: Box<dyn Fn(T)> = Box::new(move |v| {
-        let mut data = inner.borrow_mut();
-        if v != data.value {
-            data.value = v;
-            data.generation += 1;
-            // Note: DirtyTracker notification happens via the generation bump.
-            // The caller should drain generations in the event loop.
-        }
-    });
-    (read, write)
 }
 
 #[cfg(test)]

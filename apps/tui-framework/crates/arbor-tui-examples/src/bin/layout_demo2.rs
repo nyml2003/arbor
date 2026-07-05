@@ -11,13 +11,13 @@ use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 use arbor_tui_primitives::cell::{Attrs, Span};
-use arbor_tui_primitives::input::{InputReader, Key};
+use arbor_tui_primitives::input::InputReader;
 use arbor_tui_primitives::layout::RectOffset;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::WidgetNode;
 
-use arbor_tui::app::{App, AppConfig};
-use arbor_tui::event_loop::default_keymap;
+use arbor_tui::app::App;
+use arbor_tui::runtime::{runtime_step, RuntimeInput};
 use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
@@ -47,29 +47,60 @@ fn run() -> anyhow::Result<()> {
     let theme = Rc::new(RefCell::new(Theme::dark()));
     let theme_changed = Rc::new(Cell::new(false));
     let (mut cols, mut rows) = backend.size()?;
-    let mut app = App::new(cols, rows, AppConfig::default());
-    let wm = WidgetFactory::new();
-    let mut root = build_ui(&wm, &theme.borrow(), cols, rows, &theme_changed, &theme);
+    let mut app = App::new(cols, rows);
+    let factory = WidgetFactory::new();
+    let mut root = build_ui(
+        &factory,
+        &theme.borrow(),
+        cols,
+        rows,
+        &theme_changed,
+        &theme,
+    );
     let mut needs_rebuild = true;
     let mut first = true;
+    app.run();
 
-    loop {
-        let (new_cols, new_rows) = backend.size()?;
-        if (new_cols != cols || new_rows != rows) && app.check_resize(new_cols, new_rows, 50) {
-            cols = new_cols;
-            rows = new_rows;
-            backend.clear()?;
-            root = build_ui(&wm, &theme.borrow(), cols, rows, &theme_changed, &theme);
+    while app.is_running() {
+        let events = input.poll_timeout(Duration::from_millis(100));
+        let runtime_input = if first {
+            RuntimeInput::first_frame_with_events(events)
+        } else {
+            RuntimeInput::new(events)
+        };
+        let step = runtime_step(&mut app, &mut root, &backend, runtime_input)?;
+
+        if step.resized {
+            (cols, rows) = app.screen_size();
+            root = build_ui(
+                &factory,
+                &theme.borrow(),
+                cols,
+                rows,
+                &theme_changed,
+                &theme,
+            );
             needs_rebuild = true;
+        }
+
+        if step.should_clear {
+            backend.clear()?;
         }
 
         if theme_changed.get() {
             theme_changed.set(false);
-            root = build_ui(&wm, &theme.borrow(), cols, rows, &theme_changed, &theme);
+            root = build_ui(
+                &factory,
+                &theme.borrow(),
+                cols,
+                rows,
+                &theme_changed,
+                &theme,
+            );
             needs_rebuild = true;
         }
 
-        if needs_rebuild || !app.dirty_tracker.is_empty() {
+        if needs_rebuild || step.should_render {
             if let Err(e) = app.render_widget_tree(&root, &theme.borrow(), &mut backend) {
                 eprintln!("[layout_demo] render: {e:?}");
                 break;
@@ -77,32 +108,11 @@ fn run() -> anyhow::Result<()> {
             needs_rebuild = false;
             if first {
                 let _ = app.focus_next();
-                first = false;
             }
         }
 
-        let events = input.poll_timeout(Duration::from_millis(100));
-        let mut should_quit = false;
-        for event in &events {
-            if event.modifiers.ctrl && matches!(event.key, Key::Char('c')) {
-                should_quit = true;
-            }
-            match &event.key {
-                Key::Char('q') | Key::Escape => should_quit = true,
-                Key::Tab if event.modifiers.shift => {
-                    let _ = app.focus_prev();
-                }
-                Key::Tab => {
-                    let _ = app.focus_next();
-                }
-                _ => {
-                    if let Some(a) = default_keymap(event) {
-                        app.dispatch_action(&mut root, &a);
-                    }
-                }
-            }
-        }
-        if should_quit {
+        first = false;
+        if step.should_quit {
             break;
         }
     }
@@ -112,7 +122,7 @@ fn run() -> anyhow::Result<()> {
 }
 
 fn build_ui(
-    wm: &WidgetFactory,
+    factory: &WidgetFactory,
     t: &Theme,
     cols: u16,
     rows: u16,
@@ -135,9 +145,9 @@ fn build_ui(
         .child(
             Text::new(format!("Theme: {theme_name}  |  ^C/q to quit"))
                 .fg(t.text_dim())
-                .build(wm, t),
+                .build(factory, t),
         )
-        .build(wm, t);
+        .build(factory, t);
 
     // ── Footer with theme-switching input ──────────────────────
     let t_clone = theme_rc.clone();
@@ -158,9 +168,9 @@ fn build_ui(
                     }
                     changed.set(true);
                 })
-                .build(wm, t),
+                .build(factory, t),
         )
-        .build(wm, t);
+        .build(factory, t);
 
     // ── Body: 3 columns ────────────────────────────────────────
     let left = Border::new()
@@ -209,9 +219,9 @@ fn build_ui(
                     t.surface(),
                     Default::default(),
                 )])
-                .build(wm, t),
+                .build(factory, t),
         )
-        .build(wm, t);
+        .build(factory, t);
 
     let center = Border::new()
         .rounded()
@@ -265,9 +275,9 @@ fn build_ui(
                         },
                     ),
                 ])
-                .build(wm, t),
+                .build(factory, t),
         )
-        .build(wm, t);
+        .build(factory, t);
 
     let right = Border::new()
         .rounded()
@@ -312,18 +322,18 @@ fn build_ui(
                     t.surface(),
                     Default::default(),
                 )])
-                .build(wm, t),
+                .build(factory, t),
         )
-        .build(wm, t);
+        .build(factory, t);
 
     let body = Row::new()
         .flex(1.0)
         .children([
             left,
-            Col::new().flex(1.0).children([center]).build(wm, t),
+            Col::new().flex(1.0).children([center]).build(factory, t),
             right,
         ])
-        .build(wm, t);
+        .build(factory, t);
 
     Col::new()
         .size(cols, rows)
@@ -334,5 +344,5 @@ fn build_ui(
             right: 1,
         })
         .children([header, body, footer])
-        .build(wm, t)
+        .build(factory, t)
 }

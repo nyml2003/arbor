@@ -1,15 +1,14 @@
 use arbor_tui_primitives::input::{Key, KeyEvent};
 use arbor_tui_render::backend::TerminalBackend;
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_widget::widget::{WidgetAction, WidgetNode};
 
 use crate::app::App;
-use crate::event_loop::{default_keymap, merge_events};
 use crate::signal_manager::check_resize;
 
 pub struct RuntimeInput {
-    pub events: Vec<KeyEvent>,
-    pub first_frame: bool,
-    pub resize: Option<(u16, u16)>,
+    events: Vec<KeyEvent>,
+    first_frame: bool,
+    resize: Option<(u16, u16)>,
 }
 
 impl RuntimeInput {
@@ -17,6 +16,14 @@ impl RuntimeInput {
         Self {
             events,
             first_frame: false,
+            resize: None,
+        }
+    }
+
+    pub fn first_frame_with_events(events: Vec<KeyEvent>) -> Self {
+        Self {
+            events,
+            first_frame: true,
             resize: None,
         }
     }
@@ -44,6 +51,70 @@ pub struct RuntimeStepResult {
     pub should_clear: bool,
     pub should_quit: bool,
     pub resized: bool,
+}
+
+/// Merge repeatable navigation events before they reach widgets.
+///
+/// Text input is not mergeable. Repeated characters are real user input.
+pub fn merge_events(events: &[KeyEvent]) -> Vec<KeyEvent> {
+    if events.is_empty() {
+        return vec![];
+    }
+    let mut merged: Vec<KeyEvent> = Vec::with_capacity(events.len());
+    merged.push(events[0].clone());
+    for next in &events[1..] {
+        let last = merged
+            .last()
+            .expect("merged is non-empty after initial push");
+        if can_merge(last, next) {
+            *merged.last_mut().expect("merged is non-empty") = next.clone();
+        } else {
+            merged.push(next.clone());
+        }
+    }
+    merged
+}
+
+fn can_merge(a: &KeyEvent, b: &KeyEvent) -> bool {
+    if a.key != b.key || a.modifiers != b.modifiers {
+        return false;
+    }
+    matches!(
+        &a.key,
+        Key::ArrowUp
+            | Key::ArrowDown
+            | Key::ArrowLeft
+            | Key::ArrowRight
+            | Key::PageUp
+            | Key::PageDown
+    )
+}
+
+/// Map a physical key event to a logical widget action.
+///
+/// Widgets receive actions, not terminal key events.
+pub fn default_keymap(event: &KeyEvent) -> Option<WidgetAction> {
+    if event.modifiers.ctrl || event.modifiers.alt {
+        return None;
+    }
+    match &event.key {
+        Key::ArrowUp => Some(WidgetAction::NavigateUp),
+        Key::ArrowDown => Some(WidgetAction::NavigateDown),
+        Key::ArrowLeft => Some(WidgetAction::NavigateLeft),
+        Key::ArrowRight => Some(WidgetAction::NavigateRight),
+        Key::Enter => Some(WidgetAction::Activate),
+        Key::Escape => Some(WidgetAction::Cancel),
+        Key::Home => Some(WidgetAction::Home),
+        Key::End => Some(WidgetAction::End),
+        Key::PageUp => Some(WidgetAction::PageUp),
+        Key::PageDown => Some(WidgetAction::PageDown),
+        Key::Delete => Some(WidgetAction::Delete),
+        Key::Backspace => Some(WidgetAction::Backspace),
+        Key::Tab => None,
+        Key::Char(c) => Some(WidgetAction::TypeChar(*c)),
+        Key::Insert => None,
+        Key::F(_) => None,
+    }
 }
 
 pub fn runtime_step(
@@ -101,13 +172,13 @@ pub fn runtime_step(
 
         if let Some(action) = default_keymap(event) {
             app.dispatch_action(root, &action);
-            if !app.dirty_tracker.is_empty() {
+            if app.has_pending_render() {
                 result.should_render = true;
             }
         }
     }
 
-    if !app.dirty_tracker.is_empty() {
+    if app.has_pending_render() {
         result.should_render = true;
     }
 
@@ -118,25 +189,23 @@ pub fn runtime_step(
 mod tests {
     use super::*;
     use arbor_tui_backend::simulated_backend::SimulatedBackend;
-    use arbor_tui_primitives::input::KeyEvent;
+    use arbor_tui_primitives::input::{Key, KeyEvent, KeyEventKind, Modifiers};
     use arbor_tui_render::theme::Theme;
     use arbor_tui_widgets::input::Input;
     use arbor_tui_widgets::widget_factory::WidgetFactory;
-
-    use crate::app::AppConfig;
 
     #[test]
     fn typing_marks_runtime_for_render() {
         let theme = Theme::dark();
         let factory = WidgetFactory::new();
         let mut root = Input::new().build(&factory, &theme);
-        let mut app = App::new(20, 1, AppConfig::default());
+        let mut app = App::new(20, 1);
         let backend = SimulatedBackend::new(20, 1);
 
         app.run();
-        app.focus_manager.rebuild(&root);
+        app.rebuild_focus(&root);
         app.focus_next().unwrap();
-        app.dirty_tracker.drain();
+        app.take_dirty_widgets();
 
         let result = runtime_step(
             &mut app,
@@ -147,5 +216,46 @@ mod tests {
         .unwrap();
 
         assert!(result.should_render);
+    }
+
+    fn ke(key: Key) -> KeyEvent {
+        KeyEvent {
+            key,
+            modifiers: Modifiers::default(),
+            kind: KeyEventKind::Press,
+        }
+    }
+
+    #[test]
+    fn merge_repeated_arrows() {
+        let events = vec![ke(Key::ArrowUp), ke(Key::ArrowUp), ke(Key::ArrowUp)];
+        assert_eq!(merge_events(&events).len(), 1);
+    }
+
+    #[test]
+    fn merge_keeps_repeated_text_input() {
+        let events = vec![
+            KeyEvent::char('a'),
+            KeyEvent::char('a'),
+            KeyEvent::char('a'),
+        ];
+        assert_eq!(merge_events(&events).len(), 3);
+    }
+
+    #[test]
+    fn merge_does_not_merge_enter() {
+        let events = vec![ke(Key::Enter), ke(Key::Enter)];
+        assert_eq!(merge_events(&events).len(), 2);
+    }
+
+    #[test]
+    fn merge_chain_breaks_on_different_keys() {
+        let events = vec![
+            KeyEvent::char('a'),
+            KeyEvent::char('a'),
+            ke(Key::ArrowUp),
+            KeyEvent::char('a'),
+        ];
+        assert_eq!(merge_events(&events).len(), 4);
     }
 }

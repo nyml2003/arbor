@@ -19,8 +19,8 @@ use arbor_tui_widget::widget::WidgetNode;
 /// ```ignore
 /// let root = Border::new()
 ///     .title(" Test ")
-///     .child(Text::new("hello").build(&wm, &theme))
-///     .build(&wm, &theme);
+///     .child(Text::new("hello").build(&factory, &theme))
+///     .build(&factory, &theme);
 ///
 /// let harness = WidgetHarness::render(&root, 80, 24, &Theme::light());
 /// assert!(harness.find_text("hello").len() > 0);

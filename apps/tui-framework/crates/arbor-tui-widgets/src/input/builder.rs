@@ -47,8 +47,12 @@ impl Input {
         self.on_submit = Some(Box::new(f));
         self
     }
-    pub fn build(self, wm: &WidgetFactory, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
-        wm.wrap(|id| InputWidget {
+    pub fn build(
+        self,
+        factory: &WidgetFactory,
+        _theme: &arbor_tui_render::theme::Theme,
+    ) -> WidgetNode {
+        factory.wrap(|id| InputWidget {
             id,
             props: LayoutProps {
                 width: self.width,

@@ -13,8 +13,7 @@ use arbor_tui_render::screen::VirtualScreen;
 /// - Allows tests to assert on rendered content
 pub struct SimulatedBackend {
     screen: VirtualScreen,
-    /// Accumulated ANSI output from all emit calls.
-    pub output: Vec<u8>,
+    output: Vec<u8>,
     alt_screen: bool,
 }
 
@@ -29,8 +28,20 @@ impl SimulatedBackend {
 
     /// Check if the output contains the given UTF-8 string.
     pub fn output_contains(&self, needle: &str) -> bool {
-        let output_str = String::from_utf8_lossy(&self.output);
+        let output_str = String::from_utf8_lossy(self.output());
         output_str.contains(needle)
+    }
+
+    pub fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    pub fn output_len(&self) -> usize {
+        self.output.len()
+    }
+
+    pub fn clear_output(&mut self) {
+        self.output.clear();
     }
 
     /// Get a reference to the internal screen (the current "displayed" state).

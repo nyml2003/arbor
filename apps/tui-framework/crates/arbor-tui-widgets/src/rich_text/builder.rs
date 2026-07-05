@@ -46,12 +46,12 @@ impl RichText {
         self.bg = Some(cell);
         self
     }
-    pub fn build(self, wm: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
         let default_bg = Cell {
             bg: t.surface(),
             ..Default::default()
         };
-        wm.wrap(|id| RichTextWidget {
+        factory.wrap(|id| RichTextWidget {
             id,
             props: LayoutProps {
                 padding: self.padding,
