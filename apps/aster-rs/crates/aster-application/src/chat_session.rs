@@ -94,6 +94,13 @@ impl<C: ChatStreamPort> ChatSession<C> {
         new_tokens
     }
 
+    pub fn cancel_stream(&mut self) {
+        if let Some(rx) = self.stream_rx.take() {
+            rx.cancel();
+            self.conversation.finish_stream();
+        }
+    }
+
     pub fn dismiss_error(&mut self) {
         self.conversation.dismiss_error();
     }
@@ -118,7 +125,7 @@ mod tests {
             for event in self.events.clone() {
                 tx.send(event).unwrap();
             }
-            Ok(rx)
+            Ok(StreamReceiver::new(rx))
         }
     }
 
@@ -166,5 +173,18 @@ mod tests {
                 message: "network down".to_string()
             }
         );
+    }
+
+    #[test]
+    fn cancel_stream_returns_session_to_idle() {
+        let mut session = ChatSession::new(FakeClient {
+            events: vec![StreamEvent::Token("hello".to_string())],
+        });
+
+        session.send("hi".to_string()).unwrap();
+        session.cancel_stream();
+
+        assert_eq!(session.state(), &ConversationStatus::Idle);
+        assert_eq!(session.poll(), 0);
     }
 }

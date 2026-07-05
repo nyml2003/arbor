@@ -1,253 +1,433 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use anyhow::Context;
-use arbor_tui_adapters::crossterm_backend::CrosstermBackend;
-use arbor_tui_adapters::stdin_reader::StdinReader;
 use arbor_tui_application::app::App;
-use arbor_tui_application::runtime::{default_keymap, runtime_step, RuntimeInput};
-use arbor_tui_application::TerminalBackend;
-use arbor_tui_domain::input::{InputReader, Key};
+use arbor_tui_domain::input::{Key, KeyEvent};
 use arbor_tui_domain::signal::Signal;
 use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::WidgetNode;
+use arbor_tui_runtime::{run_crossterm_terminal_app, TerminalApp};
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 use aster_adapters::DeepSeekClient;
+use aster_application::ChatStreamPort;
 use aster_domain::ConversationStatus;
 
-use crate::frame_stats::FrameAccumulator;
 use crate::state::AppState;
-use crate::ui::{build_ui, estimate_line_count, UiMetrics};
+use crate::ui::{build_ui, estimate_line_count};
 
-pub fn run() -> anyhow::Result<()> {
-    let mut backend = CrosstermBackend::new();
-    backend.enter_alternate_screen()?;
-    backend.hide_cursor()?;
-    backend.clear()?;
-    let _raw_mode = backend.enter_raw_mode()?;
+const UI_CHROME_ROWS: u16 = 7;
 
-    let input = StdinReader::new();
-    let theme = Theme::dark();
-    let (mut cols, mut rows) = backend.size()?;
-    let mut app = App::new(cols, rows);
-    let factory = WidgetFactory::new();
-    let client = DeepSeekClient::from_env().context("failed to create DeepSeek client")?;
-    let state = Rc::new(RefCell::new(AppState::new(client)));
-    let scroll_y = Rc::new(Signal::new(0u16));
-    let mut frames = FrameAccumulator::new();
-    let mut first = true;
-    let mut needs_rebuild = true;
-    app.run();
+#[derive(Copy, Clone)]
+struct ScrollConfig {
+    line_step: u16,
+    page_step: u16,
+}
 
-    let mut root = build_ui(
-        &factory,
-        &theme,
-        &state,
-        scroll_y.read_only(),
-        cols,
-        rows,
-        UiMetrics {
-            fps: frames.fps(),
-            last_frame_us: frames.last_frame_us(),
-        },
-    );
-
-    while app.is_running() {
-        let events = input.poll_timeout(Duration::from_millis(100));
-        let runtime_input = if first {
-            RuntimeInput::first_frame_with_events(Vec::new())
-        } else {
-            RuntimeInput::new(Vec::new())
-        };
-        let step = runtime_step(&mut app, &mut root, &backend, runtime_input)?;
-
-        if step.resized {
-            (cols, rows) = app.screen_size();
-            needs_rebuild = true;
+impl Default for ScrollConfig {
+    fn default() -> Self {
+        Self {
+            line_step: 1,
+            page_step: 10,
         }
+    }
+}
 
-        if step.should_clear {
-            backend.clear()?;
+#[derive(Clone)]
+struct AsterRuntime {
+    factory: Rc<WidgetFactory>,
+    state: Rc<RefCell<AppState>>,
+    scroll_y: Rc<Signal<u16>>,
+    scroll: ScrollConfig,
+}
+
+impl AsterRuntime {
+    fn new(client: impl ChatStreamPort + 'static) -> Self {
+        Self {
+            factory: Rc::new(WidgetFactory::new()),
+            state: Rc::new(RefCell::new(AppState::new(client))),
+            scroll_y: Rc::new(Signal::new(0)),
+            scroll: ScrollConfig::default(),
         }
+    }
 
-        let streamed_tokens = state.borrow_mut().poll_stream();
-        if streamed_tokens > 0 {
-            scroll_to_bottom(&mut app, &scroll_y, &state, &theme, rows);
-            needs_rebuild = true;
-        }
+    fn build_ui(&self, theme: &Theme, cols: u16, rows: u16) -> WidgetNode {
+        build_ui(
+            &self.factory,
+            theme,
+            &self.state,
+            self.scroll_y.read_only(),
+            cols,
+            rows,
+        )
+    }
 
-        for event in &events {
-            match &event.key {
-                Key::Char('c') if event.modifiers.ctrl => app.quit(),
-                Key::Char('q') if event.modifiers.ctrl => app.quit(),
-                Key::Escape => {
-                    if matches!(
-                        state.borrow().chat().state(),
-                        ConversationStatus::Streaming { .. }
-                    ) {
-                        state.borrow_mut().dismiss_error();
-                        needs_rebuild = true;
-                    } else {
-                        app.quit();
-                    }
+    fn handle_events(&self, app: &mut App, theme: &Theme, events: &mut Vec<KeyEvent>) -> bool {
+        let mut needs_render = false;
+        let mut scroll_delta = 0i32;
+        let mut remaining = Vec::with_capacity(events.len());
+        let viewport = MessageViewport::from_rows(app.screen_size().1);
+
+        for event in events.drain(..) {
+            let consumed = match &event.key {
+                Key::Escape if self.is_streaming() => {
+                    self.state.borrow_mut().cancel_stream();
+                    needs_render = true;
+                    true
+                }
+                Key::Escape if self.is_error() => {
+                    self.state.borrow_mut().dismiss_error();
+                    needs_render = true;
+                    true
                 }
                 Key::ArrowUp => {
-                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, -1);
-                    needs_rebuild = true;
+                    scroll_delta = scroll_delta.saturating_sub(self.line_step());
+                    true
                 }
                 Key::ArrowDown => {
-                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, 1);
-                    needs_rebuild = true;
+                    scroll_delta = scroll_delta.saturating_add(self.line_step());
+                    true
                 }
                 Key::PageUp => {
-                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, -10);
-                    needs_rebuild = true;
+                    scroll_delta = scroll_delta.saturating_sub(self.page_step());
+                    true
                 }
                 Key::PageDown => {
-                    update_scroll(&mut app, &scroll_y, &state, &theme, rows, 10);
-                    needs_rebuild = true;
+                    scroll_delta = scroll_delta.saturating_add(self.page_step());
+                    true
                 }
                 Key::Home => {
-                    app.update_signal(&scroll_y, 0);
-                    needs_rebuild = true;
+                    scroll_delta = 0;
+                    needs_render |= self.set_scroll_y(app, 0);
+                    true
                 }
                 Key::End => {
-                    scroll_to_bottom(&mut app, &scroll_y, &state, &theme, rows);
-                    needs_rebuild = true;
+                    scroll_delta = 0;
+                    needs_render |= self.scroll_to_bottom(app, theme, viewport);
+                    true
                 }
-                Key::Tab if event.modifiers.shift => {
-                    let _ = app.focus_prev();
-                }
-                Key::Tab => {
-                    let _ = app.focus_next();
-                }
-                _ => {
-                    if let Some(action) = default_keymap(event) {
-                        app.dispatch_action(&mut root, &action);
-                    }
-                }
+                _ => false,
+            };
+
+            if !consumed {
+                remaining.push(event);
             }
         }
 
-        if state.borrow_mut().take_changed() {
-            clamp_current_scroll(&mut app, &scroll_y, &state, &theme, rows);
+        if scroll_delta != 0 {
+            needs_render |= self.move_scroll(app, theme, viewport, scroll_delta);
+        }
+        *events = remaining;
+        needs_render
+    }
+
+    fn before_render(&self, app: &mut App, root: &mut WidgetNode, theme: &Theme) -> bool {
+        let (cols, rows) = app.screen_size();
+        let viewport = MessageViewport::from_rows(rows);
+        let outcome = self.state.borrow_mut().poll_stream_and_take_changed();
+        let mut needs_rebuild = false;
+
+        if outcome.streamed_tokens > 0 {
+            self.scroll_to_bottom(app, theme, viewport);
+            needs_rebuild = true;
+        }
+
+        if outcome.state_changed {
+            self.clamp_current_scroll(app, theme, viewport);
+            needs_rebuild = true;
+        } else if self.clamp_current_scroll(app, theme, viewport) {
             needs_rebuild = true;
         }
 
         if needs_rebuild {
-            root = build_ui(
-                &factory,
-                &theme,
-                &state,
-                scroll_y.read_only(),
-                cols,
-                rows,
-                UiMetrics {
-                    fps: frames.fps(),
-                    last_frame_us: frames.last_frame_us(),
-                },
-            );
+            *root = self.build_ui(theme, cols, rows);
         }
 
-        if first || needs_rebuild || step.should_render {
-            let render_result = app.render_widget_tree(&root, &theme, &mut backend)?;
-            frames.record(app.last_frame_stats(), render_result);
-            if first {
-                let _ = app.focus_next();
-            }
-            needs_rebuild = false;
-        }
-
-        first = false;
+        needs_rebuild
     }
 
-    input.shutdown();
-    backend.show_cursor()?;
-    backend.exit_alternate_screen()?;
-    println!("{}", frames.report());
-    Ok(())
+    fn is_streaming(&self) -> bool {
+        matches!(
+            self.state.borrow().chat().state(),
+            ConversationStatus::Streaming { .. }
+        )
+    }
+
+    fn is_error(&self) -> bool {
+        matches!(
+            self.state.borrow().chat().state(),
+            ConversationStatus::Error { .. }
+        )
+    }
+
+    fn move_scroll(
+        &self,
+        app: &mut App,
+        theme: &Theme,
+        viewport: MessageViewport,
+        delta: i32,
+    ) -> bool {
+        let line_count = self.line_count(theme);
+        let current = i32::from(self.scroll_y.get());
+        let next = i32_to_u16_saturating(current.saturating_add(delta));
+        self.set_scroll_y(app, clamp_scroll_y(next, line_count, viewport))
+    }
+
+    fn scroll_to_bottom(&self, app: &mut App, theme: &Theme, viewport: MessageViewport) -> bool {
+        let line_count = self.line_count(theme);
+        self.set_scroll_y(app, max_scroll_y(line_count, viewport))
+    }
+
+    fn clamp_current_scroll(
+        &self,
+        app: &mut App,
+        theme: &Theme,
+        viewport: MessageViewport,
+    ) -> bool {
+        let line_count = self.line_count(theme);
+        self.set_scroll_y(
+            app,
+            clamp_scroll_y(self.scroll_y.get(), line_count, viewport),
+        )
+    }
+
+    fn set_scroll_y(&self, app: &mut App, next: u16) -> bool {
+        let before = self.scroll_y.get();
+        if before == next {
+            return false;
+        }
+
+        app.update_signal(&self.scroll_y, next);
+        true
+    }
+
+    fn line_count(&self, theme: &Theme) -> usize {
+        let state = self.state.borrow();
+        let chat = state.chat();
+        estimate_line_count(chat.messages(), chat.state(), theme)
+    }
+
+    fn line_step(&self) -> i32 {
+        i32::from(self.scroll.line_step)
+    }
+
+    fn page_step(&self) -> i32 {
+        i32::from(self.scroll.page_step)
+    }
 }
 
-fn update_scroll<C: aster_application::ChatStreamPort>(
-    app: &mut App,
-    scroll_y: &Signal<u16>,
-    state: &Rc<RefCell<AppState<C>>>,
-    theme: &Theme,
-    rows: u16,
-    delta: i32,
-) {
-    let line_count = line_count_for_state(state, theme);
-    let next = if delta < 0 {
-        scroll_y.get().saturating_sub(delta.unsigned_abs() as u16)
-    } else {
-        scroll_y.get().saturating_add(delta as u16)
-    };
-    app.update_signal(scroll_y, clamp_scroll_y(next, line_count, rows));
+#[derive(Copy, Clone)]
+struct MessageViewport {
+    visible_rows: u16,
 }
 
-fn scroll_to_bottom<C: aster_application::ChatStreamPort>(
-    app: &mut App,
-    scroll_y: &Signal<u16>,
-    state: &Rc<RefCell<AppState<C>>>,
-    theme: &Theme,
-    rows: u16,
-) {
-    let line_count = line_count_for_state(state, theme);
-    app.update_signal(scroll_y, max_scroll_y(line_count, rows));
+impl MessageViewport {
+    fn from_rows(rows: u16) -> Self {
+        Self {
+            visible_rows: rows.saturating_sub(UI_CHROME_ROWS).max(1),
+        }
+    }
 }
 
-fn clamp_current_scroll<C: aster_application::ChatStreamPort>(
-    app: &mut App,
-    scroll_y: &Signal<u16>,
-    state: &Rc<RefCell<AppState<C>>>,
-    theme: &Theme,
-    rows: u16,
-) {
-    let line_count = line_count_for_state(state, theme);
-    app.update_signal(scroll_y, clamp_scroll_y(scroll_y.get(), line_count, rows));
+pub fn run() -> anyhow::Result<()> {
+    let theme = Theme::dark();
+    let client = DeepSeekClient::from_env().context("failed to create DeepSeek client")?;
+    run_with_client(client, theme)
 }
 
-fn line_count_for_state<C: aster_application::ChatStreamPort>(
-    state: &Rc<RefCell<AppState<C>>>,
-    theme: &Theme,
-) -> usize {
-    let borrowed = state.borrow();
-    let chat = borrowed.chat();
-    estimate_line_count(chat.messages(), chat.state(), theme)
+fn run_with_client(client: impl ChatStreamPort + 'static, theme: Theme) -> anyhow::Result<()> {
+    let runtime = AsterRuntime::new(client);
+
+    let build_runtime = runtime.clone();
+    let app = TerminalApp::with_builder(theme, move |cols, rows, active_theme| {
+        build_runtime.build_ui(active_theme, cols, rows)
+    });
+
+    let event_runtime = runtime.clone();
+    let app = app.before_events(move |app, active_theme, events| {
+        event_runtime.handle_events(app, active_theme, events)
+    });
+
+    let render_runtime = runtime;
+    let app = app.before_render(move |app, root, active_theme| {
+        render_runtime.before_render(app, root, active_theme)
+    });
+
+    run_crossterm_terminal_app(app)
 }
 
-fn clamp_scroll_y(scroll_y: u16, line_count: usize, rows: u16) -> u16 {
-    scroll_y.min(max_scroll_y(line_count, rows))
+fn clamp_scroll_y(scroll_y: u16, line_count: usize, viewport: MessageViewport) -> u16 {
+    scroll_y.min(max_scroll_y(line_count, viewport))
 }
 
-fn max_scroll_y(line_count: usize, rows: u16) -> u16 {
-    let visible_rows = visible_message_rows(rows) as usize;
-    line_count
-        .saturating_sub(visible_rows)
-        .min(u16::MAX as usize) as u16
+fn max_scroll_y(line_count: usize, viewport: MessageViewport) -> u16 {
+    let visible_rows = usize::from(viewport.visible_rows);
+    usize_to_u16_saturating(line_count.saturating_sub(visible_rows))
 }
 
-fn visible_message_rows(rows: u16) -> u16 {
-    rows.saturating_sub(7).max(1)
+fn usize_to_u16_saturating(value: usize) -> u16 {
+    value.min(usize::from(u16::MAX)) as u16
+}
+
+fn i32_to_u16_saturating(value: i32) -> u16 {
+    value.clamp(0, i32::from(u16::MAX)) as u16
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arbor_tui_domain::input::{KeyEventKind, Modifiers};
+    use aster_application::{ChatStreamError, StreamEvent, StreamReceiver};
+    use aster_domain::ChatMessage;
+    use std::sync::mpsc;
+
+    #[derive(Clone)]
+    struct FakeClient {
+        events: Vec<StreamEvent>,
+    }
+
+    impl ChatStreamPort for FakeClient {
+        fn start_stream(
+            &self,
+            _messages: &[ChatMessage],
+        ) -> Result<StreamReceiver, ChatStreamError> {
+            let (tx, rx) = mpsc::channel();
+            for event in self.events.clone() {
+                tx.send(event).unwrap();
+            }
+            Ok(StreamReceiver::new(rx))
+        }
+    }
 
     #[test]
     fn huge_scroll_is_clamped_when_content_fits_viewport() {
-        assert_eq!(clamp_scroll_y(u16::MAX, 3, 24), 0);
+        assert_eq!(
+            clamp_scroll_y(u16::MAX, 3, MessageViewport::from_rows(24)),
+            0
+        );
     }
 
     #[test]
     fn bottom_scroll_uses_content_minus_visible_rows() {
-        assert_eq!(max_scroll_y(30, 24), 13);
+        assert_eq!(max_scroll_y(30, MessageViewport::from_rows(24)), 13);
     }
 
     #[test]
     fn tiny_terminal_still_has_one_visible_message_row() {
-        assert_eq!(visible_message_rows(3), 1);
-        assert_eq!(max_scroll_y(5, 3), 4);
+        let viewport = MessageViewport::from_rows(3);
+
+        assert_eq!(viewport.visible_rows, 1);
+        assert_eq!(max_scroll_y(5, viewport), 4);
+    }
+
+    #[test]
+    fn huge_content_saturates_scroll_to_u16_max() {
+        assert_eq!(
+            max_scroll_y(usize::MAX, MessageViewport::from_rows(24)),
+            u16::MAX
+        );
+    }
+
+    #[test]
+    fn streaming_escape_cancels_stream_without_quitting() {
+        let runtime = AsterRuntime::new(FakeClient { events: vec![] });
+        runtime
+            .state
+            .borrow_mut()
+            .submit_message("hello".to_string());
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut events = vec![key_event(Key::Escape)];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert!(app.is_running());
+        assert_eq!(
+            runtime.state.borrow().chat().state(),
+            &ConversationStatus::Idle
+        );
+    }
+
+    #[test]
+    fn home_event_updates_scroll_before_widget_keymap() {
+        let runtime = AsterRuntime::new(FakeClient { events: vec![] });
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        app.update_signal(&runtime.scroll_y, 10);
+        let mut events = vec![key_event(Key::Home)];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert_eq!(runtime.scroll_y.get(), 0);
+    }
+
+    #[test]
+    fn scroll_keys_in_one_batch_are_coalesced() {
+        let runtime = AsterRuntime::new(FakeClient {
+            events: vec![StreamEvent::Token("line\n".repeat(40)), StreamEvent::Done],
+        });
+        runtime
+            .state
+            .borrow_mut()
+            .submit_message("hello".to_string());
+        runtime.state.borrow_mut().poll_stream_and_take_changed();
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut events = vec![
+            key_event(Key::ArrowDown),
+            key_event(Key::ArrowDown),
+            key_event(Key::PageDown),
+        ];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert_eq!(runtime.scroll_y.get(), 12);
+    }
+
+    #[test]
+    fn error_escape_dismisses_error_without_quitting() {
+        let runtime = AsterRuntime::new(FakeClient {
+            events: vec![StreamEvent::Error("network down".to_string())],
+        });
+        runtime
+            .state
+            .borrow_mut()
+            .submit_message("hello".to_string());
+        runtime.state.borrow_mut().poll_stream_and_take_changed();
+        assert!(matches!(
+            runtime.state.borrow().chat().state(),
+            ConversationStatus::Error { .. }
+        ));
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut events = vec![key_event(Key::Escape)];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert!(app.is_running());
+        assert_eq!(
+            runtime.state.borrow().chat().state(),
+            &ConversationStatus::Idle
+        );
+    }
+
+    fn key_event(key: Key) -> KeyEvent {
+        KeyEvent {
+            key,
+            modifiers: Modifiers::default(),
+            kind: KeyEventKind::Press,
+        }
     }
 }

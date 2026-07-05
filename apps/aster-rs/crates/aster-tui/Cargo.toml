@@ -18,12 +18,11 @@ aster-adapters.workspace = true
 aster-application.workspace = true
 aster-domain.workspace = true
 aster-markdown.workspace = true
-arbor-tui-adapters.workspace = true
 arbor-tui-application.workspace = true
 arbor-tui-domain.workspace = true
+arbor-tui-runtime.workspace = true
 arbor-tui-widgets.workspace = true
 anyhow.workspace = true
-crossterm = "0.28"
 
 [dev-dependencies]
 arbor-tui-testing.workspace = true

@@ -50,6 +50,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arbor-tui-runtime"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-adapters",
+ "arbor-tui-application",
+]
+
+[[package]]
 name = "arbor-tui-testing"
 version = "0.1.0"
 dependencies = [
@@ -107,16 +115,15 @@ name = "aster-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arbor-tui-adapters",
  "arbor-tui-application",
  "arbor-tui-domain",
+ "arbor-tui-runtime",
  "arbor-tui-testing",
  "arbor-tui-widgets",
  "aster-adapters",
  "aster-application",
  "aster-domain",
  "aster-markdown",
- "crossterm",
 ]
 
 [[package]]

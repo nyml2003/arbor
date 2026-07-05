@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::{bail, Context};
 use arbor_tui_domain::backend::{TerminalBackend, TerminalGuard};
 use arbor_tui_domain::focus::mount_tree;
-use arbor_tui_domain::input::InputReader;
+use arbor_tui_domain::input::{InputReader, KeyEvent};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::WidgetNode;
 
@@ -12,6 +12,7 @@ use crate::runtime::{runtime_step, RuntimeInput};
 use crate::terminal::install_panic_hook;
 
 pub type RebuildFn = Box<dyn FnMut(u16, u16, &Theme) -> WidgetNode>;
+pub type BeforeEventsFn = Box<dyn FnMut(&mut App, &Theme, &mut Vec<KeyEvent>) -> bool>;
 pub type BeforeRenderFn = Box<dyn FnMut(&mut App, &mut WidgetNode, &mut Theme) -> bool>;
 pub type TerminalAppResult<T> = anyhow::Result<T>;
 
@@ -19,6 +20,7 @@ pub struct TerminalApp {
     theme: Theme,
     root: Option<WidgetNode>,
     rebuild: Option<RebuildFn>,
+    before_events: Option<BeforeEventsFn>,
     before_render: Option<BeforeRenderFn>,
     poll_timeout: Duration,
 }
@@ -29,6 +31,7 @@ impl TerminalApp {
             theme,
             root: Some(root),
             rebuild: None,
+            before_events: None,
             before_render: None,
             poll_timeout: Duration::from_millis(100),
         }
@@ -42,6 +45,7 @@ impl TerminalApp {
             theme,
             root: None,
             rebuild: Some(Box::new(build)),
+            before_events: None,
             before_render: None,
             poll_timeout: Duration::from_millis(100),
         }
@@ -52,6 +56,14 @@ impl TerminalApp {
         rebuild: impl FnMut(u16, u16, &Theme) -> WidgetNode + 'static,
     ) -> Self {
         self.rebuild = Some(Box::new(rebuild));
+        self
+    }
+
+    pub fn before_events(
+        mut self,
+        callback: impl FnMut(&mut App, &Theme, &mut Vec<KeyEvent>) -> bool + 'static,
+    ) -> Self {
+        self.before_events = Some(Box::new(callback));
         self
     }
 
@@ -93,9 +105,7 @@ impl TerminalApp {
         })();
 
         input.shutdown();
-        if let Some(mut guard) = raw_mode.take() {
-            guard.restore();
-        }
+        drop(raw_mode.take());
 
         let show_cursor = if entered_terminal {
             backend.show_cursor().context("failed to show cursor")
@@ -138,7 +148,13 @@ impl TerminalApp {
         let mut first_frame = true;
         let mut needs_render = true;
         while app.is_running() {
-            let events = input.poll_timeout(self.poll_timeout);
+            let mut events = input.poll_timeout(self.poll_timeout);
+            if let Some(before_events) = self.before_events.as_mut() {
+                if before_events(&mut app, &self.theme, &mut events) {
+                    app.request_render();
+                    needs_render = true;
+                }
+            }
             let runtime_input = if first_frame {
                 RuntimeInput::first_frame_with_events(events)
             } else {
@@ -200,9 +216,14 @@ mod tests {
     use super::*;
     use arbor_tui_adapters::simulated_backend::SimulatedBackend;
     use arbor_tui_adapters::simulated_input::SimulatedInput;
+    use arbor_tui_domain::backend::BackendResult;
+    use arbor_tui_domain::diff::DirtyRegion;
     use arbor_tui_domain::input::{Key, KeyEvent, KeyEventKind, Modifiers};
+    use arbor_tui_domain::screen::VirtualScreen;
     use arbor_tui_widgets::text::Text;
     use arbor_tui_widgets::widget_factory::WidgetFactory;
+    use std::cell::Cell as StdCell;
+    use std::rc::Rc;
 
     #[test]
     fn terminal_app_renders_first_frame() {
@@ -264,6 +285,53 @@ mod tests {
         assert!(screen_contains(&backend, "light"));
     }
 
+    #[test]
+    fn terminal_app_before_events_can_filter_events() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let root = Text::new("events").build(&factory, &theme);
+        let mut backend = SimulatedBackend::new(20, 3);
+        let input = SimulatedInput::new();
+        input.push_batch([KeyEvent::char('x'), ctrl_char('c')]);
+        let filtered = Rc::new(StdCell::new(false));
+        let filtered_for_hook = Rc::clone(&filtered);
+
+        TerminalApp::new(root, theme)
+            .before_events(move |_app, _theme, events| {
+                let before = events.len();
+                events.retain(|event| event.key != Key::Char('x'));
+                let changed = events.len() != before;
+                filtered_for_hook.set(changed);
+                changed
+            })
+            .run(&mut backend, &input)
+            .expect("terminal app should run");
+
+        assert!(filtered.get());
+        assert!(screen_contains(&backend, "events"));
+    }
+
+    #[test]
+    fn terminal_app_normal_exit_drops_raw_guard_without_emergency_restore() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let root = Text::new("guard").build(&factory, &theme);
+        let restore_calls = Rc::new(StdCell::new(0));
+        let drop_calls = Rc::new(StdCell::new(0));
+        let mut backend = GuardProbeBackend::new(Rc::clone(&restore_calls), Rc::clone(&drop_calls));
+        let input = SimulatedInput::new();
+        input.push(ctrl_char('c'));
+
+        TerminalApp::new(root, theme)
+            .run(&mut backend, &input)
+            .expect("terminal app should run");
+
+        assert_eq!(restore_calls.get(), 0);
+        assert_eq!(drop_calls.get(), 1);
+        assert!(backend.show_cursor_called.get());
+        assert!(backend.exit_alternate_screen_called.get());
+    }
+
     fn ctrl_char(c: char) -> KeyEvent {
         KeyEvent {
             key: Key::Char(c),
@@ -290,5 +358,87 @@ mod tests {
             }
         }
         false
+    }
+
+    struct GuardProbeBackend {
+        screen: VirtualScreen,
+        restore_calls: Rc<StdCell<u32>>,
+        drop_calls: Rc<StdCell<u32>>,
+        show_cursor_called: Rc<StdCell<bool>>,
+        exit_alternate_screen_called: Rc<StdCell<bool>>,
+    }
+
+    impl GuardProbeBackend {
+        fn new(restore_calls: Rc<StdCell<u32>>, drop_calls: Rc<StdCell<u32>>) -> Self {
+            Self {
+                screen: VirtualScreen::new(20, 3),
+                restore_calls,
+                drop_calls,
+                show_cursor_called: Rc::new(StdCell::new(false)),
+                exit_alternate_screen_called: Rc::new(StdCell::new(false)),
+            }
+        }
+    }
+
+    impl TerminalBackend for GuardProbeBackend {
+        fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>> {
+            Ok(Box::new(GuardProbe {
+                restore_calls: Rc::clone(&self.restore_calls),
+                drop_calls: Rc::clone(&self.drop_calls),
+            }))
+        }
+
+        fn size(&self) -> BackendResult<(u16, u16)> {
+            Ok((self.screen.cols(), self.screen.rows()))
+        }
+
+        fn emit(&mut self, _regions: &[DirtyRegion], screen: &VirtualScreen) -> BackendResult<()> {
+            self.screen = screen.clone();
+            Ok(())
+        }
+
+        fn hide_cursor(&mut self) -> BackendResult<()> {
+            Ok(())
+        }
+
+        fn show_cursor(&mut self) -> BackendResult<()> {
+            self.show_cursor_called.set(true);
+            Ok(())
+        }
+
+        fn enter_alternate_screen(&mut self) -> BackendResult<()> {
+            Ok(())
+        }
+
+        fn exit_alternate_screen(&mut self) -> BackendResult<()> {
+            self.exit_alternate_screen_called.set(true);
+            Ok(())
+        }
+
+        fn clear(&mut self) -> BackendResult<()> {
+            Ok(())
+        }
+
+        fn flush(&mut self) -> BackendResult<()> {
+            Ok(())
+        }
+    }
+
+    struct GuardProbe {
+        restore_calls: Rc<StdCell<u32>>,
+        drop_calls: Rc<StdCell<u32>>,
+    }
+
+    impl TerminalGuard for GuardProbe {
+        fn restore(&mut self) {
+            self.restore_calls
+                .set(self.restore_calls.get().saturating_add(1));
+        }
+    }
+
+    impl Drop for GuardProbe {
+        fn drop(&mut self) {
+            self.drop_calls.set(self.drop_calls.get().saturating_add(1));
+        }
     }
 }

@@ -62,21 +62,33 @@ impl CrosstermBackend {
     }
 }
 
-struct CrosstermGuard;
+struct CrosstermGuard {
+    restored: bool,
+}
 
 impl TerminalGuard for CrosstermGuard {
     fn restore(&mut self) {
         // Best-effort restoration — we're already in a signal handler or
         // panic path. The RAII Drop provides a second layer of protection.
         let _ = disable_raw_mode();
+        self.restored = true;
         let _ = execute!(stdout(), LeaveAlternateScreen, Show, Clear(ClearType::All));
+    }
+}
+
+impl Drop for CrosstermGuard {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = disable_raw_mode();
+            self.restored = true;
+        }
     }
 }
 
 impl TerminalBackend for CrosstermBackend {
     fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>> {
         enable_raw_mode().map_err(|e| BackendError::with_source("failed to enter raw mode", e))?;
-        Ok(Box::new(CrosstermGuard))
+        Ok(Box::new(CrosstermGuard { restored: false }))
     }
 
     fn size(&self) -> BackendResult<(u16, u16)> {

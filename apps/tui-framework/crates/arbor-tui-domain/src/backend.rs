@@ -64,8 +64,7 @@ impl From<std::io::Error> for BackendError {
 /// ANSI escape code emission, cursor control.
 pub trait TerminalBackend {
     /// Enter raw mode and return a RAII guard.
-    /// The guard restores: raw mode, echo, canonical mode, cursor state,
-    /// and alternate screen on drop.
+    /// Dropping the guard restores raw terminal input mode.
     fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>>;
 
     /// Current terminal size in (cols, rows).
@@ -107,11 +106,11 @@ pub trait TerminalBackend {
 }
 
 /// RAII guard for terminal raw mode.
-///
-/// On drop, restores: echo, canonical mode, cursor visibility,
-/// and exits the alternate screen.
 pub trait TerminalGuard {
     /// Explicitly restore terminal state before drop.
-    /// Called by signal handlers (SIGTSTP) before suspending.
+    ///
+    /// This is for emergency paths such as panic or suspend handling.
+    /// Normal shutdown should drop the guard and let the app runtime restore
+    /// cursor and alternate-screen state through the backend.
     fn restore(&mut self);
 }

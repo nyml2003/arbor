@@ -1,6 +1,5 @@
 // Aster - AI chat TUI.
 
-mod frame_stats;
 mod runner;
 mod state;
 mod ui;

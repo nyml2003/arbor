@@ -13,15 +13,9 @@ use arbor_tui_widgets::scroll::Scroll;
 use arbor_tui_widgets::stack::Col;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
-use aster_application::ChatStreamPort;
 use aster_domain::{ChatMessage, ChatRole, ConversationStatus};
 
 use crate::state::AppState;
-
-pub struct UiMetrics {
-    pub fps: f64,
-    pub last_frame_us: u64,
-}
 
 pub fn estimate_line_count(
     messages: &[ChatMessage],
@@ -46,14 +40,13 @@ pub fn estimate_line_count(
     total_lines
 }
 
-pub fn build_ui<C: ChatStreamPort + 'static>(
+pub fn build_ui(
     factory: &WidgetFactory,
     theme: &Theme,
-    state: &Rc<RefCell<AppState<C>>>,
+    state: &Rc<RefCell<AppState>>,
     scroll_y: ReadSignal<u16>,
     cols: u16,
     rows: u16,
-    metrics: UiMetrics,
 ) -> WidgetNode {
     let borrowed = state.borrow();
     let chat = borrowed.chat();
@@ -84,11 +77,11 @@ pub fn build_ui<C: ChatStreamPort + 'static>(
     let message_scroll = Scroll::new()
         .flex(1.0)
         .scroll_y(scroll_y)
-        .content_h(line_count.max(1) as u16)
+        .content_h(usize_to_u16_saturating(line_count.max(1)))
         .child(message_stack)
         .build(factory, theme);
 
-    let footer = Text::new(footer_text(line_count, metrics))
+    let footer = Text::new(footer_text(line_count))
         .fg(theme.text_dim())
         .bg(panel_bg)
         .padding(RectOffset {
@@ -139,17 +132,8 @@ fn title_color(state: &ConversationStatus, theme: &Theme) -> arbor_tui_domain::c
     }
 }
 
-fn footer_text(line_count: usize, metrics: UiMetrics) -> String {
-    let frame = if metrics.last_frame_us < 1000 {
-        format!("{} us", metrics.last_frame_us)
-    } else {
-        format!("{:.1} ms", metrics.last_frame_us as f64 / 1000.0)
-    };
-
-    format!(
-        "{line_count} lines | FPS: {fps:.0} frame: {frame} | Up/Down: scroll Enter: send Esc/Ctrl+C: quit",
-        fps = metrics.fps,
-    )
+fn footer_text(line_count: usize) -> String {
+    format!("{line_count} lines | Up/Down: scroll Enter: send Esc/Ctrl+C: quit")
 }
 
 fn build_message_blocks(
@@ -355,6 +339,10 @@ fn estimate_content_lines(content: &str, theme: &Theme) -> usize {
         .sum()
 }
 
+fn usize_to_u16_saturating(value: usize) -> u16 {
+    value.min(usize::from(u16::MAX)) as u16
+}
+
 fn indent_lines(lines: Vec<Vec<Span>>, theme: &Theme) -> Vec<Vec<Span>> {
     lines
         .into_iter()
@@ -393,7 +381,7 @@ mod tests {
     use super::*;
     use arbor_tui_domain::signal::Signal;
     use arbor_tui_testing::WidgetHarness;
-    use aster_application::{ChatStreamError, StreamReceiver};
+    use aster_application::{ChatStreamError, ChatStreamPort, StreamReceiver};
     use aster_domain::ChatMessage;
 
     #[derive(Clone)]
@@ -410,7 +398,7 @@ mod tests {
             for event in self.events.clone() {
                 tx.send(event).unwrap();
             }
-            Ok(rx)
+            Ok(StreamReceiver::new(rx))
         }
     }
 
@@ -421,18 +409,7 @@ mod tests {
         let state = Rc::new(RefCell::new(AppState::new(FakeClient { events: vec![] })));
         let scroll = Signal::new(0u16);
 
-        let root = build_ui(
-            &factory,
-            &theme,
-            &state,
-            scroll.read_only(),
-            80,
-            24,
-            UiMetrics {
-                fps: 0.0,
-                last_frame_us: 0,
-            },
-        );
+        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 80, 24);
         let harness = WidgetHarness::render(&root, 80, 24, &theme);
 
         assert!(harness.find_text("Welcome to Aster").len() > 0);
@@ -450,21 +427,10 @@ mod tests {
             ],
         })));
         state.borrow_mut().submit_message("hello".to_string());
-        state.borrow_mut().poll_stream();
+        state.borrow_mut().poll_stream_and_take_changed();
         let scroll = Signal::new(0u16);
 
-        let root = build_ui(
-            &factory,
-            &theme,
-            &state,
-            scroll.read_only(),
-            80,
-            24,
-            UiMetrics {
-                fps: 0.0,
-                last_frame_us: 0,
-            },
-        );
+        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 80, 24);
         let harness = WidgetHarness::render(&root, 80, 24, &theme);
 
         assert!(harness.find_text("visible reply").len() > 0);

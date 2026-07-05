@@ -2,7 +2,9 @@ use std::io::{BufRead, BufReader, Read};
 use std::sync::mpsc;
 use std::thread;
 
-use aster_application::{ChatStreamError, ChatStreamPort, StreamEvent, StreamReceiver};
+use aster_application::{
+    ChatStreamError, ChatStreamPort, StreamCancelToken, StreamEvent, StreamReceiver,
+};
 use aster_domain::ChatMessage;
 use serde::{Deserialize, Serialize};
 
@@ -105,12 +107,17 @@ impl ChatStreamPort for DeepSeekClient {
 
         let url = format!("{}/v1/chat/completions", self.base_url);
         let api_key = self.api_key.clone();
+        let cancel = StreamCancelToken::new();
+        let cancel_for_thread = cancel.clone();
         let (tx, rx) = mpsc::channel();
 
         thread::Builder::new()
             .name("aster-api".into())
             .spawn(move || {
-                let result = stream_sse(&url, &api_key, &request, &tx);
+                let result = stream_sse(&url, &api_key, &request, &tx, &cancel_for_thread);
+                if cancel_for_thread.is_cancelled() {
+                    return;
+                }
                 match result {
                     Ok(()) => {
                         let _ = tx.send(StreamEvent::Done);
@@ -122,7 +129,7 @@ impl ChatStreamPort for DeepSeekClient {
             })
             .map_err(|error| ChatStreamError::new(error.to_string()))?;
 
-        Ok(rx)
+        Ok(StreamReceiver::with_cancel(rx, cancel))
     }
 }
 
@@ -131,6 +138,7 @@ fn stream_sse(
     api_key: &str,
     request: &ChatRequest,
     tx: &mpsc::Sender<StreamEvent>,
+    cancel: &StreamCancelToken,
 ) -> Result<(), ChatStreamError> {
     let response = ureq::post(url)
         .header("Authorization", &format!("Bearer {api_key}"))
@@ -142,11 +150,17 @@ fn stream_sse(
     let buf = BufReader::new(reader);
 
     for line in buf.lines() {
+        if cancel.is_cancelled() {
+            return Ok(());
+        }
         let line = line.map_err(|error| ChatStreamError::new(error.to_string()))?;
         if let Some(event) = parse_sse_data_line(&line)? {
             match event {
                 StreamEvent::Done => break,
                 StreamEvent::Token(_) | StreamEvent::Error(_) => {
+                    if cancel.is_cancelled() {
+                        return Ok(());
+                    }
                     if tx.send(event).is_err() {
                         return Ok(());
                     }
