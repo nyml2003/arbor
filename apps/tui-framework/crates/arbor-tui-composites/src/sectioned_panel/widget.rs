@@ -87,10 +87,7 @@ impl Widget for SectionedPanelWidget {
             .map(SectionedPanelSection::max_content_width)
             .max()
             .unwrap_or(0);
-        let intrinsic_w = content_w
-            .saturating_add(4)
-            .saturating_add(self.props.padding.horizontal())
-            .max(4);
+        let intrinsic_w = content_w.saturating_add(4).max(4);
         let content_h = self
             .sections
             .iter()
@@ -100,7 +97,6 @@ impl Widget for SectionedPanelWidget {
         let intrinsic_h = content_h
             .saturating_add(separator_h)
             .saturating_add(2)
-            .saturating_add(self.props.padding.vertical())
             .max(2);
 
         SizeConstraint::fixed(

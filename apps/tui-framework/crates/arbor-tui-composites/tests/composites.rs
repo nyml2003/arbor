@@ -260,6 +260,22 @@ fn sectioned_panel_draws_connected_sections() {
 }
 
 #[test]
+fn sectioned_panel_respects_layout_padding_once() {
+    let (factory, theme) = wm_and_theme();
+    let root = SectionedPanel::new([SectionedPanelSection::new("Meta").line("ready")])
+        .padding(RectOffset::all(1))
+        .bg(theme.surface_alt())
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 14, 5, &theme);
+
+    assert_eq!(harness.cell_at(0, 0).ch, ' ');
+    assert_eq!(harness.cell_at(1, 1).ch, '╭');
+    assert_eq!(harness.cell_at(12, 1).ch, '╮');
+    assert_eq!(harness.cell_at(1, 4).ch, ' ');
+}
+
+#[test]
 fn prompt_bar_renders_placeholder_inside_border() {
     let (factory, theme) = wm_and_theme();
     let root = PromptBar::new()
