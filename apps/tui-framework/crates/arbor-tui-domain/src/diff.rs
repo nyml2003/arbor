@@ -4,7 +4,7 @@
 use crate::screen::VirtualScreen;
 
 /// A dirty (changed) region within a single row.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct DirtyRegion {
     pub row: u16,
     pub start_col: u16,
@@ -87,7 +87,7 @@ pub fn merge_regions(regions: &mut Vec<DirtyRegion>) {
     regions.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
 
     let mut merged = Vec::with_capacity(regions.len());
-    let mut current = regions[0].clone();
+    let mut current = regions[0];
 
     for next in &regions[1..] {
         if next.row == current.row && next.start_col <= current.end_col {
@@ -95,7 +95,7 @@ pub fn merge_regions(regions: &mut Vec<DirtyRegion>) {
             current.end_col = current.end_col.max(next.end_col);
         } else {
             merged.push(current);
-            current = next.clone();
+            current = *next;
         }
     }
     merged.push(current);

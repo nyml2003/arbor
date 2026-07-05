@@ -69,7 +69,7 @@ pub struct Attrs {
 /// `true_color` is excluded from equality — only `palette` matters for
 /// determining whether a cell has changed.
 /// `phantom` is excluded from equality — it only affects backend emission.
-#[derive(Clone, Eq, Debug)]
+#[derive(Copy, Clone, Eq, Debug)]
 pub struct Cell {
     pub ch: char,
     pub fg: AnsiColor,
@@ -197,6 +197,13 @@ impl Span {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_copy<T: Copy>() {}
+
+    #[test]
+    fn cell_is_copy_value_type() {
+        assert_copy::<Cell>();
+    }
 
     #[test]
     fn default_cell_is_blank() {

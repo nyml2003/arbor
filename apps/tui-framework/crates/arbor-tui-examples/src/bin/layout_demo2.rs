@@ -186,7 +186,7 @@ fn build_ui(
         .title(" Nav ")
         .child(
             RichText::new()
-                .bg(panel_cell.clone())
+                .bg(panel_cell)
                 .line(vec![Span::new(
                     "  Home",
                     t.text(),
@@ -239,7 +239,7 @@ fn build_ui(
         .title(" Content ")
         .child(
             RichText::new()
-                .bg(panel_cell.clone())
+                .bg(panel_cell)
                 .padding(RectOffset::all(1))
                 .line(vec![Span::new(
                     "═══ Welcome ═══",
@@ -286,7 +286,7 @@ fn build_ui(
         .title(" Info ")
         .child(
             RichText::new()
-                .bg(panel_cell.clone())
+                .bg(panel_cell)
                 .line(vec![Span::new(
                     format!(" {cols}x{rows}"),
                     t.text(),

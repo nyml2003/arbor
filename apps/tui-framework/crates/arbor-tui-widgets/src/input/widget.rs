@@ -216,7 +216,7 @@ fn visible_slice_around_cursor(display: &str, cursor: usize, content_w: u16) -> 
     let mut col = 0u16;
 
     for ch in display.chars() {
-        let ch_w = text::measure_width(&ch.to_string());
+        let ch_w = text::char_width(ch);
         let next_col = col.saturating_add(ch_w);
         if col >= start_col && next_col <= end_col {
             visible.push(ch);

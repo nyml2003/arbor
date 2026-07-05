@@ -9,7 +9,7 @@ use arbor_tui_domain::diff::DirtyRegion;
 use arbor_tui_domain::focus::mount_tree;
 use arbor_tui_domain::input::{Key, KeyEvent, KeyEventKind, Modifiers};
 use arbor_tui_domain::screen::VirtualScreen;
-use arbor_tui_domain::text::measure_width;
+use arbor_tui_domain::text::char_width;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{WidgetId, WidgetNode};
 
@@ -228,7 +228,7 @@ impl AnsiTerminal {
             }
         }
 
-        let width = measure_width(&ch.to_string()).max(1);
+        let width = char_width(ch).max(1);
         if self.cursor_col.saturating_add(width) > self.screen.cols() {
             return;
         }
@@ -252,7 +252,7 @@ impl AnsiTerminal {
                 .screen
                 .cell_at_mut(self.cursor_col + offset, self.cursor_row)
             {
-                *cell = phantom.clone();
+                *cell = phantom;
             }
         }
 
@@ -264,7 +264,7 @@ impl AnsiTerminal {
         for row in y..y.saturating_add(h).min(self.screen.rows()) {
             for col in x..x.saturating_add(w).min(self.screen.cols()) {
                 if let Some(target) = self.screen.cell_at_mut(col, row) {
-                    *target = cell.clone();
+                    *target = cell;
                 }
             }
         }

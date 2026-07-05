@@ -12,13 +12,15 @@ pub fn measure_width(text: &str) -> u16 {
     text.width() as u16
 }
 
+/// Measure one character in terminal columns.
+pub fn char_width(ch: char) -> u16 {
+    unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16
+}
+
 /// Column offset after the first `n` characters of `text`.
 /// CJK-aware — a CJK char contributes 2 columns.
 pub fn column_offset(text: &str, n: usize) -> u16 {
-    text.chars()
-        .take(n)
-        .map(|ch| unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16)
-        .sum()
+    text.chars().take(n).map(char_width).sum()
 }
 
 /// Expand `\t` to spaces, aligning to the next tab stop (multiples of 4).
@@ -36,7 +38,7 @@ pub fn expand_tabs(text: &str) -> String {
             }
             col += spaces;
         } else {
-            let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+            let w = char_width(ch);
             col += w;
             result.push(ch);
         }
@@ -80,7 +82,7 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
             let mut result = String::with_capacity(max_width as usize);
             let mut w: u16 = 0;
             for ch in text.chars() {
-                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+                let cw = char_width(ch);
                 if w + cw > avail {
                     break;
                 }
@@ -103,7 +105,7 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
             let mut left = String::new();
             let mut w: u16 = 0;
             for ch in text.chars() {
-                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+                let cw = char_width(ch);
                 if w + cw > left_w {
                     break;
                 }
@@ -114,7 +116,7 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
             let mut right = String::new();
             let mut w: u16 = 0;
             for ch in text.chars().rev() {
-                let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+                let cw = char_width(ch);
                 if w + cw > right_w {
                     break;
                 }
@@ -165,7 +167,7 @@ fn wrap_char(text: &str, max_width: u16) -> Vec<String> {
     let mut current_w: u16 = 0;
 
     for ch in text.chars() {
-        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+        let cw = char_width(ch);
 
         if current_w + cw > max_width && !current.is_empty() {
             lines.push(std::mem::take(&mut current));
@@ -237,6 +239,13 @@ mod tests {
     #[test]
     fn measure_mixed() {
         assert_eq!(measure_width("hello你好"), 9);
+    }
+
+    #[test]
+    fn char_width_measures_single_terminal_cell_width() {
+        assert_eq!(char_width('a'), 1);
+        assert_eq!(char_width('你'), 2);
+        assert_eq!(char_width('\u{0301}'), 0);
     }
 
     #[test]

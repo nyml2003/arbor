@@ -38,7 +38,7 @@ impl VirtualScreen {
             return Cell::default();
         }
         let idx = row as usize * self.cols as usize + col as usize;
-        self.cells.get(idx).cloned().unwrap_or_default()
+        self.cells.get(idx).copied().unwrap_or_default()
     }
 
     /// Borrow a cell at (col, row). Returns None for out-of-bounds access.
@@ -134,38 +134,38 @@ impl VirtualScreen {
 
     /// Fill a rectangular region with a single cell.
     pub fn fill_rect(&mut self, rect: Rect, cell: &Cell) {
-        for row in rect.y..rect.y.saturating_add(rect.h) {
-            if row >= self.rows {
-                break;
-            }
-            for col in rect.x..rect.x.saturating_add(rect.w) {
-                if col >= self.cols {
-                    break;
-                }
-                if let Some(target) = self.cell_at_mut(col, row) {
-                    *target = cell.clone();
-                }
-            }
+        let x0 = rect.x.min(self.cols);
+        let y0 = rect.y.min(self.rows);
+        let x1 = rect.x.saturating_add(rect.w).min(self.cols);
+        let y1 = rect.y.saturating_add(rect.h).min(self.rows);
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
+
+        let row_len = self.cols as usize;
+        for row in y0..y1 {
+            let start = row as usize * row_len + x0 as usize;
+            let end = row as usize * row_len + x1 as usize;
+            self.cells[start..end].fill(*cell);
         }
     }
 
     /// Blit (copy) a smaller VirtualScreen into a region of this one.
     pub fn blit(&mut self, dest: Rect, source: &VirtualScreen) {
-        for row in 0..source.rows {
-            let dest_row = dest.y + row;
-            if dest_row >= self.rows {
-                break;
-            }
-            for col in 0..source.cols {
-                let dest_col = dest.x + col;
-                if dest_col >= self.cols {
-                    break;
-                }
-                let src_idx = row as usize * source.cols as usize + col as usize;
-                if let Some(dest_cell) = self.cell_at_mut(dest_col, dest_row) {
-                    *dest_cell = source.cells[src_idx].clone();
-                }
-            }
+        if dest.x >= self.cols || dest.y >= self.rows {
+            return;
+        }
+
+        let copy_cols = source.cols.min(self.cols - dest.x) as usize;
+        let copy_rows = source.rows.min(self.rows - dest.y);
+        let source_row_len = source.cols as usize;
+        let dest_row_len = self.cols as usize;
+
+        for row in 0..copy_rows {
+            let source_start = row as usize * source_row_len;
+            let dest_start = (dest.y + row) as usize * dest_row_len + dest.x as usize;
+            self.cells[dest_start..dest_start + copy_cols]
+                .copy_from_slice(&source.cells[source_start..source_start + copy_cols]);
         }
     }
 
@@ -178,12 +178,14 @@ impl VirtualScreen {
         let mut new_screen = VirtualScreen::new(cols, rows);
         let copy_cols = self.cols.min(cols);
         let copy_rows = self.rows.min(rows);
+        let old_row_len = self.cols as usize;
+        let new_row_len = cols as usize;
+        let copy_cols_usize = copy_cols as usize;
         for row in 0..copy_rows {
-            for col in 0..copy_cols {
-                let old_idx = row as usize * self.cols as usize + col as usize;
-                let new_idx = row as usize * cols as usize + col as usize;
-                new_screen.cells[new_idx] = self.cells[old_idx].clone();
-            }
+            let old_start = row as usize * old_row_len;
+            let new_start = row as usize * new_row_len;
+            new_screen.cells[new_start..new_start + copy_cols_usize]
+                .copy_from_slice(&self.cells[old_start..old_start + copy_cols_usize]);
         }
         *self = new_screen;
     }
@@ -228,6 +230,45 @@ mod tests {
     fn oob_write_is_noop() {
         let mut s = VirtualScreen::new(10, 5);
         assert!(s.cell_at_mut(100, 100).is_none());
+    }
+
+    #[test]
+    fn fill_rect_clips_to_screen_edges() {
+        let mut s = VirtualScreen::new(4, 3);
+        let fill = Cell {
+            ch: 'x',
+            bg: AnsiColor::from_palette(4),
+            ..Default::default()
+        };
+
+        s.fill_rect(Rect::new(2, 1, 5, 5), &fill);
+
+        assert_eq!(s.cell_at(1, 1).ch, ' ');
+        assert_eq!(s.cell_at(2, 1).ch, 'x');
+        assert_eq!(s.cell_at(3, 1).ch, 'x');
+        assert_eq!(s.cell_at(2, 2).ch, 'x');
+        assert_eq!(s.cell_at(3, 2).bg, AnsiColor::from_palette(4));
+    }
+
+    #[test]
+    fn blit_clips_to_destination_edges() {
+        let mut dest = VirtualScreen::new(4, 2);
+        let mut source = VirtualScreen::new(4, 3);
+        source.write_str(
+            0,
+            0,
+            "abcd",
+            AnsiColor::from_palette(1),
+            AnsiColor::from_palette(2),
+            Attrs::default(),
+        );
+
+        dest.blit(Rect::new(2, 1, 4, 3), &source);
+
+        assert_eq!(dest.cell_at(1, 1).ch, ' ');
+        assert_eq!(dest.cell_at(2, 1).ch, 'a');
+        assert_eq!(dest.cell_at(3, 1).ch, 'b');
+        assert_eq!(dest.cell_at(2, 1).fg, AnsiColor::from_palette(1));
     }
 
     #[test]

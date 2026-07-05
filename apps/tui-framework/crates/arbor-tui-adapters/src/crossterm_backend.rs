@@ -291,21 +291,30 @@ fn emit_regions_to_with_stats<W: Write>(
 }
 
 fn expand_to_full_rows(regions: &[DirtyRegion], screen: &VirtualScreen) -> Vec<DirtyRegion> {
-    let mut rows: Vec<u16> = regions
-        .iter()
-        .filter(|region| region.row < screen.rows())
-        .map(|region| region.row)
-        .collect();
-    rows.sort_unstable();
-    rows.dedup();
+    if regions.is_empty() || screen.rows() == 0 || screen.cols() == 0 {
+        return Vec::new();
+    }
 
-    rows.into_iter()
-        .map(|row| DirtyRegion {
-            row,
-            start_col: 0,
-            end_col: screen.cols(),
-        })
-        .collect()
+    let mut dirty_rows = vec![false; screen.rows() as usize];
+    let mut dirty_count = 0usize;
+    for region in regions {
+        if region.row < screen.rows() && !dirty_rows[region.row as usize] {
+            dirty_rows[region.row as usize] = true;
+            dirty_count += 1;
+        }
+    }
+
+    let mut expanded = Vec::with_capacity(dirty_count);
+    for (row, is_dirty) in dirty_rows.into_iter().enumerate() {
+        if is_dirty {
+            expanded.push(DirtyRegion {
+                row: row as u16,
+                start_col: 0,
+                end_col: screen.cols(),
+            });
+        }
+    }
+    expanded
 }
 
 #[cfg(any(test, feature = "simulated"))]
