@@ -50,13 +50,19 @@ name = "arbor-tui-examples"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arbor-tui-adapters",
- "arbor-tui-application",
  "arbor-tui-composites",
  "arbor-tui-domain",
+ "arbor-tui-runtime",
  "arbor-tui-testing",
  "arbor-tui-widgets",
- "crossterm",
+]
+
+[[package]]
+name = "arbor-tui-runtime"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-adapters",
+ "arbor-tui-application",
 ]
 
 [[package]]

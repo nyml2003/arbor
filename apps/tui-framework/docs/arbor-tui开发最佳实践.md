@@ -14,6 +14,7 @@
 | runtime step、focus、dirty、resize、render 调度 | `arbor-tui-application` | widgets、adapters |
 | crossterm 输出、真实输入、模拟后端、ANSI 编码 | `arbor-tui-adapters` | domain、widgets |
 | Text/Input/List/Table/Tabs/Border/Stack 等内置组件 | `arbor-tui-widgets` | application、adapters |
+| 高层启动入口，组合 application 和 adapters | `arbor-tui-runtime` | domain、application、adapters |
 | E2E driver、ANSI replay、WidgetHarness、断言工具 | `arbor-tui-testing` | examples、production crates |
 | demo 和手动验证入口 | `arbor-tui-examples` | core crates |
 
@@ -23,11 +24,13 @@
 domain <- application
 domain <- adapters
 domain <- widgets
+application/adapters <- runtime
 domain/application/adapters/widgets <- testing
-application/adapters/widgets <- examples
+runtime/domain/widgets/composites <- examples
 ```
 
 `application` 不能正式依赖 `adapters` 或 `widgets`。测试里可以用。
+`adapters` 也不能正式依赖 `application`。需要一行启动真实终端时，放到 `arbor-tui-runtime`。
 
 ## 修改前先补测试入口
 

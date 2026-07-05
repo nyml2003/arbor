@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crossterm::event::{read, Event, KeyCode, KeyModifiers};
+use crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
 
 use arbor_tui_domain::input::{InputReader, Key, KeyEvent, KeyEventKind, Modifiers};
 
@@ -40,19 +40,25 @@ impl StdinReader {
                     break;
                 }
 
-                // Blocking read — crossterm handles timeout internally
-                match read() {
-                    Ok(event) => {
-                        let key_event = map_crossterm_event(event);
-                        if let Some(ke) = key_event {
-                            // Bounded channel (256): drop event if buffer is full.
-                            // Main thread polls every 100ms, so buffer never fills
-                            // under normal human input rates.
-                            let _ = event_tx.try_send(vec![ke]);
+                match poll(Duration::from_millis(50)) {
+                    Ok(true) => match read() {
+                        Ok(event) => {
+                            let key_event = map_crossterm_event(event);
+                            if let Some(ke) = key_event {
+                                // Bounded channel (256): drop event if buffer is full.
+                                // Main thread polls every 100ms, so buffer never fills
+                                // under normal human input rates.
+                                let _ = event_tx.try_send(vec![ke]);
+                            }
                         }
-                    }
+                        Err(_) => {
+                            // Read error — break the loop
+                            break;
+                        }
+                    },
+                    Ok(false) => {}
                     Err(_) => {
-                        // Read error — break the loop
+                        // Poll error — break the loop
                         break;
                     }
                 }

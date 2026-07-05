@@ -14,12 +14,10 @@ name = "layout_demo2"
 path = "src/bin/layout_demo2.rs"
 
 [dependencies]
-arbor-tui-application = { path = "../arbor-tui-application" }
 arbor-tui-domain = { path = "../arbor-tui-domain" }
-arbor-tui-adapters = { path = "../arbor-tui-adapters" }
 arbor-tui-widgets = { path = "../arbor-tui-widgets" }
 arbor-tui-composites = { path = "../arbor-tui-composites" }
-crossterm = "0.28"
+arbor-tui-runtime = { path = "../arbor-tui-runtime" }
 anyhow = "1"
 
 [dev-dependencies]

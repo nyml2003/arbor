@@ -3,120 +3,69 @@
 // Type in the center fuzzy panel to filter files. ^C/q exits.
 
 use std::cell::{Cell as StdCell, RefCell};
-use std::io::stdout;
 use std::rc::Rc;
-use std::time::Duration;
-
-use crossterm::execute;
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell, Span};
-use arbor_tui_domain::input::InputReader;
 use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::theme::{Theme, ThemeVariant};
 use arbor_tui_domain::widget::WidgetNode;
 
-use arbor_tui_adapters::crossterm_backend::CrosstermBackend;
-use arbor_tui_adapters::stdin_reader::StdinReader;
-use arbor_tui_application::app::App;
-use arbor_tui_application::runtime::{runtime_step, RuntimeInput};
-use arbor_tui_application::TerminalBackend;
 use arbor_tui_composites::{FuzzyPanel, Panel, PromptBar, StatusLine};
+use arbor_tui_runtime::{run_crossterm_terminal_app, TerminalApp};
 use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 fn main() {
     if let Err(e) = run() {
-        let _ = execute!(stdout(), LeaveAlternateScreen);
         eprintln!("[layout_demo] {e:?}");
         std::process::exit(1);
     }
 }
 
 fn run() -> anyhow::Result<()> {
-    let mut backend = CrosstermBackend::new();
-    execute!(stdout(), EnterAlternateScreen)?;
-    backend.hide_cursor()?;
-    backend.clear()?;
-
-    let _guard = backend.enter_raw_mode()?;
-    let input = StdinReader::new();
     let theme = Rc::new(RefCell::new(Theme::dark()));
     let theme_changed = Rc::new(StdCell::new(false));
-    let (mut cols, mut rows) = backend.size()?;
-    let mut app = App::new(cols, rows);
-    let factory = WidgetFactory::new();
-    let mut root = build_ui(
-        &factory,
-        &theme.borrow(),
-        cols,
-        rows,
-        &theme_changed,
-        &theme,
-    );
-    let mut needs_rebuild = true;
-    let mut first = true;
-    app.run();
+    let factory = Rc::new(WidgetFactory::new());
+    let initial_theme = theme.borrow().clone();
 
-    while app.is_running() {
-        let events = input.poll_timeout(Duration::from_millis(100));
-        let runtime_input = if first {
-            RuntimeInput::first_frame_with_events(events)
-        } else {
-            RuntimeInput::new(events)
-        };
-        let step = runtime_step(&mut app, &mut root, &backend, runtime_input)?;
+    let build_factory = Rc::clone(&factory);
+    let build_theme_changed = Rc::clone(&theme_changed);
+    let build_theme = Rc::clone(&theme);
+    let app = TerminalApp::with_builder(initial_theme, move |cols, rows, active_theme| {
+        build_ui(
+            &build_factory,
+            active_theme,
+            cols,
+            rows,
+            &build_theme_changed,
+            &build_theme,
+        )
+    });
 
-        if step.resized {
-            (cols, rows) = app.screen_size();
-            root = build_ui(
-                &factory,
-                &theme.borrow(),
-                cols,
-                rows,
-                &theme_changed,
-                &theme,
-            );
-            needs_rebuild = true;
+    let update_factory = Rc::clone(&factory);
+    let update_theme_changed = Rc::clone(&theme_changed);
+    let update_theme = Rc::clone(&theme);
+    let app = app.before_render(move |app, root, active_theme| {
+        if !update_theme_changed.get() {
+            return false;
         }
 
-        if step.should_clear {
-            backend.clear()?;
-        }
+        update_theme_changed.set(false);
+        *active_theme = update_theme.borrow().clone();
+        let (cols, rows) = app.screen_size();
+        *root = build_ui(
+            &update_factory,
+            active_theme,
+            cols,
+            rows,
+            &update_theme_changed,
+            &update_theme,
+        );
+        true
+    });
 
-        if theme_changed.get() {
-            theme_changed.set(false);
-            root = build_ui(
-                &factory,
-                &theme.borrow(),
-                cols,
-                rows,
-                &theme_changed,
-                &theme,
-            );
-            needs_rebuild = true;
-        }
-
-        if needs_rebuild || step.should_render {
-            if let Err(e) = app.render_widget_tree(&root, &theme.borrow(), &mut backend) {
-                eprintln!("[layout_demo] render: {e:?}");
-                break;
-            }
-            needs_rebuild = false;
-            if first {
-                let _ = app.focus_next();
-            }
-        }
-
-        first = false;
-        if step.should_quit {
-            break;
-        }
-    }
-
-    execute!(stdout(), LeaveAlternateScreen)?;
-    Ok(())
+    run_crossterm_terminal_app(app)
 }
 
 fn build_ui(

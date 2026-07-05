@@ -96,6 +96,10 @@ impl App {
         self.dirty_tracker.drain().into_iter().collect()
     }
 
+    pub fn request_render(&mut self) {
+        self.dirty_tracker.force_render();
+    }
+
     pub(crate) fn rebuild_focus(&mut self, root: &WidgetNode) {
         self.focus_manager.rebuild(root);
     }

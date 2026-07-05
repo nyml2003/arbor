@@ -6,6 +6,7 @@ members = [
     "crates/arbor-tui-widgets",
     "crates/arbor-tui-composites",
     "crates/arbor-tui-testing",
+    "crates/arbor-tui-runtime",
     "crates/arbor-tui-examples",
 ]
 resolver = "2"
