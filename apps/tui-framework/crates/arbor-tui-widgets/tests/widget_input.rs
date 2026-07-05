@@ -401,6 +401,28 @@ fn focused_shows_cursor_highlight() {
 }
 
 #[test]
+fn focused_long_text_keeps_cursor_visible_at_right_edge() {
+    let (wm, t) = wm_and_theme();
+    let mut input = Input::new().build(&wm, &t);
+    for ch in "abcdefghij".chars() {
+        input.perform(&WidgetAction::TypeChar(ch));
+    }
+
+    let h = WidgetHarness::render_with_focus(&input, 8, 1, &t, Some(input.id()));
+
+    assert_eq!(
+        h.cell_at(6, 0).ch,
+        'j',
+        "rightmost visible text cell should show the end of the input"
+    );
+    assert_eq!(
+        h.cell_at(7, 0).bg.palette,
+        t.primary().palette,
+        "cursor should remain visible in the final input cell"
+    );
+}
+
+#[test]
 fn unfocused_has_no_cursor_highlight() {
     let (wm, t) = wm_and_theme();
     let mut input = Input::new().placeholder("x").build(&wm, &t);

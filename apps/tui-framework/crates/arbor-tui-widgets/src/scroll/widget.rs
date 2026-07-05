@@ -66,6 +66,26 @@ impl Widget for ScrollViewWidget {
     }
 
     fn render(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
+        self.render_viewport(rect, theme, None)
+    }
+
+    fn render_with_focus(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
+        self.render_viewport(rect, theme, focused)
+    }
+}
+
+impl ScrollViewWidget {
+    fn render_viewport(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
         let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
 
         // 先用背景色填充整个视口，避免子组件比视口小时 Cell::default() 黑底覆盖父组件。
@@ -82,7 +102,7 @@ impl Widget for ScrollViewWidget {
         let child_size = Size::new(child_rect.w, child_rect.h);
         let constraints = measure_tree(child, child_size);
         let child_screen = match layout_tree(child_rect, child, &constraints) {
-            Ok(layout) => render_tree((child_rect.w, child_rect.h), child, &layout, theme, None),
+            Ok(layout) => render_tree((child_rect.w, child_rect.h), child, &layout, theme, focused),
             Err(_) => child.render(child_rect, theme),
         };
 

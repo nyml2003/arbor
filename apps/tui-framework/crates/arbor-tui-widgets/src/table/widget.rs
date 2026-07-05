@@ -77,11 +77,12 @@ impl Widget for TableWidget {
         if rect.h == 0 {
             return screen;
         }
+        let col_widths = resolve_col_widths(rect.w, &self.columns);
 
         // Header row
         let mut col_x: u16 = 0;
         for (ci, col) in self.columns.iter().enumerate() {
-            let col_w = resolve_col_width(col.width, rect.w, &self.columns, ci);
+            let col_w = col_widths[ci];
             let header_text = text::truncate(&col.header, col_w, TruncateStrategy::End);
             let hdr_cell = Cell {
                 bg: header_bg,
@@ -123,10 +124,16 @@ impl Widget for TableWidget {
             let is_selected = self.selected == Some(row_idx);
             let row_bg = if is_selected { accent } else { bg };
             let row_fg = if is_selected { theme.surface() } else { text };
+            if is_selected {
+                let row_cell = Cell {
+                    bg: row_bg,
+                    ..Default::default()
+                };
+                screen.fill_rect(Rect::new(0, screen_row, rect.w, 1), &row_cell);
+            }
 
             let mut cx: u16 = 0;
-            for ci in 0..self.columns.len() {
-                let col_w = resolve_col_width(self.columns[ci].width, rect.w, &self.columns, ci);
+            for (ci, col_w) in col_widths.iter().copied().enumerate() {
                 let cell_text = if let Some(ref render) = self.render_cell {
                     render(row_idx, ci)
                 } else if ci < self.cells.get(row_idx).map_or(0, |r| r.len()) {
@@ -190,27 +197,47 @@ impl TableWidget {
     }
 }
 
-fn resolve_col_width(col: ColumnWidth, total_w: u16, all_cols: &[ColumnDef], _idx: usize) -> u16 {
-    match col {
-        ColumnWidth::Fixed(w) => w,
-        ColumnWidth::Flex(_) => {
-            let fixed_total: u16 = all_cols
-                .iter()
-                .filter_map(|c| match c.width {
-                    ColumnWidth::Fixed(w) => Some(w),
-                    _ => None,
-                })
-                .sum();
-            let flex_count = all_cols
-                .iter()
-                .filter(|c| matches!(c.width, ColumnWidth::Flex(_)))
-                .count() as u16;
-            let remaining = total_w.saturating_sub(fixed_total);
-            if flex_count > 0 {
-                remaining / flex_count
-            } else {
-                0
+fn resolve_col_widths(total_w: u16, all_cols: &[ColumnDef]) -> Vec<u16> {
+    let mut widths = vec![0; all_cols.len()];
+    let fixed_total: u16 = all_cols
+        .iter()
+        .filter_map(|c| match c.width {
+            ColumnWidth::Fixed(w) => Some(w),
+            ColumnWidth::Flex(_) => None,
+        })
+        .sum();
+    let remaining = total_w.saturating_sub(fixed_total);
+    let flex_weight_total: f32 = all_cols
+        .iter()
+        .filter_map(|c| match c.width {
+            ColumnWidth::Fixed(_) => None,
+            ColumnWidth::Flex(weight) => Some(weight.max(0.0)),
+        })
+        .sum();
+
+    let mut assigned_flex = 0u16;
+    let mut fractions = Vec::new();
+    for (idx, col) in all_cols.iter().enumerate() {
+        match col.width {
+            ColumnWidth::Fixed(w) => widths[idx] = w,
+            ColumnWidth::Flex(weight) if flex_weight_total > 0.0 => {
+                let exact = remaining as f32 * weight.max(0.0) / flex_weight_total;
+                let base = exact.floor() as u16;
+                widths[idx] = base;
+                assigned_flex = assigned_flex.saturating_add(base);
+                fractions.push((idx, exact - base as f32));
             }
+            ColumnWidth::Flex(_) => {}
         }
     }
+
+    fractions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    for (idx, _) in fractions
+        .into_iter()
+        .take(remaining.saturating_sub(assigned_flex) as usize)
+    {
+        widths[idx] = widths[idx].saturating_add(1);
+    }
+
+    widths
 }

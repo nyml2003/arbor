@@ -57,6 +57,24 @@ pub trait Widget {
         self.render(rect, theme)
     }
 
+    /// Render with tree-level focus context.
+    ///
+    /// Most widgets only care whether they are the focused node. Widgets that
+    /// render their own child subtree, such as scroll containers, forward this
+    /// context to that internal render pass.
+    fn render_with_focus(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
+        if focused == Some(self.id()) {
+            self.render_focused(rect, theme)
+        } else {
+            self.render(rect, theme)
+        }
+    }
+
     fn is_transparent(&self) -> bool {
         false
     }
@@ -138,6 +156,14 @@ impl WidgetNode {
     }
     pub fn render_focused(&self, rect: Rect, theme: &Theme) -> VirtualScreen {
         self.0.render_focused(rect, theme)
+    }
+    pub fn render_with_focus(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
+        self.0.render_with_focus(rect, theme, focused)
     }
     pub fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         self.0.perform(action)

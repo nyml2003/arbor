@@ -24,31 +24,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
-name = "arbor-tui"
+name = "arbor-tui-adapters"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "arbor-tui-backend",
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
- "arbor-tui-widgets",
- "libc",
-]
-
-[[package]]
-name = "arbor-tui-backend"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
- "arbor-tui-render",
+ "arbor-tui-domain",
  "crossterm",
  "thiserror",
 ]
 
 [[package]]
-name = "arbor-tui-primitives"
+name = "arbor-tui-application"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arbor-tui-domain",
+ "libc",
+]
+
+[[package]]
+name = "arbor-tui-domain"
 version = "0.1.0"
 dependencies = [
  "thiserror",
@@ -56,58 +50,73 @@ dependencies = [
 ]
 
 [[package]]
-name = "arbor-tui-reactive"
+name = "arbor-tui-testing"
 version = "0.1.0"
 dependencies = [
- "arbor-tui-primitives",
-]
-
-[[package]]
-name = "arbor-tui-render"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
- "unicode-width",
-]
-
-[[package]]
-name = "arbor-tui-widget"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "thiserror",
+ "anyhow",
+ "arbor-tui-adapters",
+ "arbor-tui-application",
+ "arbor-tui-domain",
+ "arbor-tui-widgets",
 ]
 
 [[package]]
 name = "arbor-tui-widgets"
 version = "0.1.0"
 dependencies = [
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
+ "arbor-tui-domain",
 ]
 
 [[package]]
-name = "aster-rs"
+name = "aster-adapters"
+version = "0.1.0"
+dependencies = [
+ "aster-application",
+ "aster-domain",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "aster-application"
+version = "0.1.0"
+dependencies = [
+ "aster-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "aster-domain"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "aster-markdown"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-domain",
+ "pulldown-cmark",
+ "syntect",
+]
+
+[[package]]
+name = "aster-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arbor-tui",
- "arbor-tui-backend",
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
+ "arbor-tui-adapters",
+ "arbor-tui-application",
+ "arbor-tui-domain",
+ "arbor-tui-testing",
  "arbor-tui-widgets",
+ "aster-adapters",
+ "aster-application",
+ "aster-domain",
+ "aster-markdown",
  "crossterm",
- "pulldown-cmark",
- "serde",
- "serde_json",
- "syntect",
- "ureq",
 ]
 
 [[package]]

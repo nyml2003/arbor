@@ -4,6 +4,7 @@ use arbor_tui_domain::input::Key;
 use arbor_tui_domain::signal::Signal;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_widgets::border::Border;
+use arbor_tui_widgets::input::Input;
 use arbor_tui_widgets::list::List;
 use arbor_tui_widgets::scroll::Scroll;
 use arbor_tui_widgets::stack::Col;
@@ -114,6 +115,28 @@ fn scroll_renders_transparent_column_child() {
 }
 
 #[test]
+fn scroll_preserves_focused_child_cursor_rendering() {
+    let theme = Theme::dark();
+    let factory = WidgetFactory::new();
+    let root = Scroll::new()
+        .content_h(1)
+        .child(Input::new().placeholder("cmd").build(&factory, &theme))
+        .build(&factory, &theme);
+    let mut driver = mounted(root, 24, 1, theme.clone());
+
+    driver.focus_next().unwrap();
+    driver.send_chars("go").unwrap();
+
+    let (text_col, row) = driver.find_text("go")[0];
+    let cursor_col = text_col + 2;
+    assert_eq!(
+        driver.cell_at(cursor_col, row).bg,
+        theme.primary(),
+        "focused input inside scroll should render its cursor"
+    );
+}
+
+#[test]
 fn list_arrow_down_selects_first_item() {
     let theme = Theme::dark();
     let factory = WidgetFactory::new();
@@ -187,6 +210,11 @@ fn table_arrow_down_selects_first_row() {
     assert_has_text(&driver, "row 00");
     let (col, row) = driver.find_text("row 00")[0];
     assert_eq!(driver.cell_at(col, row).bg, Theme::dark().accent());
+    assert_eq!(
+        driver.cell_at(19, row).bg,
+        Theme::dark().accent(),
+        "selected table row should fill trailing cells with selection background"
+    );
 }
 
 #[test]

@@ -54,23 +54,3 @@ fn render_subtree(
         }
     }
 }
-
-// Extend WidgetNode with a focus-aware render method.
-// This avoids changing the Widget trait signature while allowing
-// individual widgets to check focus.
-impl WidgetNode {
-    fn render_with_focus(
-        &self,
-        rect: Rect,
-        theme: &Theme,
-        focused: Option<WidgetId>,
-    ) -> VirtualScreen {
-        // Check if this node is the focused one, and use a specialized
-        // render path for widgets that support focus indication.
-        if focused == Some(self.id()) {
-            self.inner().render_focused(rect, theme)
-        } else {
-            self.render(rect, theme)
-        }
-    }
-}

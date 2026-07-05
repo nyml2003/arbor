@@ -67,13 +67,7 @@ impl Widget for InputWidget {
         let content_start: u16 = 2;
         let content_w = rect.w.saturating_sub(content_start);
 
-        let display = if self.password && !self.buffer.is_empty() {
-            "●".repeat(self.buffer.chars().count())
-        } else if self.buffer.is_empty() {
-            self.placeholder.clone()
-        } else {
-            self.buffer.clone()
-        };
+        let display = self.display_text();
 
         let truncated = text::truncate(&display, content_w, TruncateStrategy::End);
         screen.write_str(content_start, 0, &truncated, text_fg, bg, Attrs::default());
@@ -100,19 +94,13 @@ impl Widget for InputWidget {
         let content_start: u16 = 2;
         let content_w = rect.w.saturating_sub(content_start);
 
-        let display = if self.password && !self.buffer.is_empty() {
-            "●".repeat(self.buffer.chars().count())
-        } else if self.buffer.is_empty() {
-            self.placeholder.clone()
-        } else {
-            self.buffer.clone()
-        };
-
-        let truncated = text::truncate(&display, content_w, TruncateStrategy::End);
-        screen.write_str(content_start, 0, &truncated, text_fg, bg, Attrs::default());
+        let display = self.display_text();
+        let (visible, cursor_offset) =
+            visible_slice_around_cursor(&display, self.cursor, content_w);
+        screen.write_str(content_start, 0, &visible, text_fg, bg, Attrs::default());
 
         // Cursor position in columns (chars may be CJK = 2 cols wide)
-        let cursor_col = content_start + text::column_offset(&display, self.cursor);
+        let cursor_col = content_start + cursor_offset;
         if cursor_col < rect.w {
             let cursor_ch = display.chars().nth(self.cursor).unwrap_or(' ');
             if let Some(cell) = screen.cell_at_mut(cursor_col, 0) {
@@ -201,6 +189,43 @@ impl Widget for InputWidget {
             _ => KeyHandleResult::Bubble,
         }
     }
+}
+
+impl InputWidget {
+    fn display_text(&self) -> String {
+        if self.password && !self.buffer.is_empty() {
+            "●".repeat(self.buffer.chars().count())
+        } else if self.buffer.is_empty() {
+            self.placeholder.clone()
+        } else {
+            self.buffer.clone()
+        }
+    }
+}
+
+fn visible_slice_around_cursor(display: &str, cursor: usize, content_w: u16) -> (String, u16) {
+    if content_w == 0 {
+        return (String::new(), 0);
+    }
+
+    let cursor_col = text::column_offset(display, cursor);
+    let max_cursor_col = content_w.saturating_sub(1);
+    let start_col = cursor_col.saturating_sub(max_cursor_col);
+    let end_col = start_col + content_w;
+    let mut visible = String::new();
+    let mut col = 0u16;
+
+    for ch in display.chars() {
+        let ch_w = text::measure_width(&ch.to_string());
+        let next_col = col.saturating_add(ch_w);
+        if col >= start_col && next_col <= end_col {
+            visible.push(ch);
+        }
+        col = next_col;
+    }
+
+    let cursor_offset = cursor_col.saturating_sub(start_col).min(max_cursor_col);
+    (visible, cursor_offset)
 }
 
 impl Drop for InputWidget {
