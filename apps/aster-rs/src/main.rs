@@ -1,36 +1,41 @@
 // Aster — AI chat TUI.
 // DeepSeek API streaming chat, built on arbor-tui.
 //
-// ↑↓/jk:滚动历史  Enter:发送  ^C/q:退出
+// ↑↓/jk:滚动历史  Enter:发送  Esc/^C:退出
 
 mod api;
 mod chat;
 mod markdown;
 
+use std::cell::{Cell, RefCell};
 use std::io::stdout;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
 use arbor_tui::app::{App, AppConfig, FrameStats, RenderResult};
+use arbor_tui::event_loop::default_keymap;
 use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
 use arbor_tui_primitives::cell::Attrs;
 use arbor_tui_primitives::input::{InputReader, Key};
 use arbor_tui_primitives::layout::RectOffset;
+use arbor_tui_reactive::signal::{ReadSignal, Signal};
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::WidgetNode;
-use arbor_tui_widgets::border::builder::Border;
-use arbor_tui_widgets::container::builder::Col;
-use arbor_tui_widgets::rich_text::builder::RichText;
-use arbor_tui_widgets::text::builder::Text;
+use arbor_tui_widgets::border::Border;
+use arbor_tui_widgets::container::{Col, Row};
+use arbor_tui_widgets::input::Input;
+use arbor_tui_widgets::rich_text::RichText;
+use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_manager::WidgetManager;
 
 use chat::{Chat, ChatState};
 
-// ── Accumulator (copied from table_demo, for per-frame perf tracking) ──
+// ── Frame accumulator ───────────────────────────────────────────────
 
 struct FrameAccumulator {
     rendered_frames: u64,
@@ -68,76 +73,73 @@ impl FrameAccumulator {
             start_time: Instant::now(),
         }
     }
-
-    fn record(&mut self, stats: &FrameStats, result: RenderResult) {
-        match result {
+    fn record(&mut self, s: &FrameStats, r: RenderResult) {
+        match r {
             RenderResult::Rendered => {
                 self.rendered_frames += 1;
-                self.total_layout_us += stats.layout_us;
-                self.total_render_us += stats.render_us;
-                self.total_diff_us += stats.diff_us;
-                self.total_emit_us += stats.emit_us;
-                self.total_emit_queue_us += stats.emit_queue_us;
-                self.total_emit_flush_us += stats.emit_flush_us;
-                self.total_total_us += stats.total_us;
-                self.min_frame_us = self.min_frame_us.min(stats.total_us);
-                self.max_frame_us = self.max_frame_us.max(stats.total_us);
-                self.last_frame_us = stats.total_us;
+                self.total_layout_us += s.layout_us;
+                self.total_render_us += s.render_us;
+                self.total_diff_us += s.diff_us;
+                self.total_emit_us += s.emit_us;
+                self.total_emit_queue_us += s.emit_queue_us;
+                self.total_emit_flush_us += s.emit_flush_us;
+                self.total_total_us += s.total_us;
+                self.min_frame_us = self.min_frame_us.min(s.total_us);
+                self.max_frame_us = self.max_frame_us.max(s.total_us);
+                self.last_frame_us = s.total_us;
             }
             RenderResult::Throttled => self.throttled_frames += 1,
             RenderResult::NothingChanged => self.idle_frames += 1,
         }
     }
-
     fn fps(&self) -> f64 {
-        let elapsed = self.start_time.elapsed().as_secs_f64();
-        if elapsed > 0.0 { self.rendered_frames as f64 / elapsed } else { 0.0 }
+        let e = self.start_time.elapsed().as_secs_f64();
+        if e > 0.0 {
+            self.rendered_frames as f64 / e
+        } else {
+            0.0
+        }
     }
-
     fn report(&self) -> String {
-        let elapsed = self.start_time.elapsed().as_secs_f64();
+        let e = self.start_time.elapsed().as_secs_f64();
         let n = self.rendered_frames.max(1);
-        let avg = |total: u64| -> f64 { total as f64 / n as f64 };
-        let fmt_time = |us: u64| -> String {
-            if us < 1000 { format!("{:>4} µs", us) }
-            else if us < 1_000_000 { format!("{:>5.1} ms", us as f64 / 1000.0) }
-            else { format!("{:>5.2} s", us as f64 / 1_000_000.0) }
+        let a = |t: u64| -> f64 { t as f64 / n as f64 };
+        let ft = |us: u64| -> String {
+            if us < 1000 {
+                format!("{:>4} µs", us)
+            } else if us < 1_000_000 {
+                format!("{:>5.1} ms", us as f64 / 1000.0)
+            } else {
+                format!("{:>5.2} s", us as f64 / 1_000_000.0)
+            }
         };
-
         let sep = "═══════════════════════════════════════════";
         format!(
             "\n{sep}\n Aster — Performance Report\n{sep}\n\
-             Elapsed:              {elapsed:>10.3} s\n\
-             Frames rendered:      {rendered:>10}\n\
-             Throttled (16ms cap): {throttled:>10}\n\
-             Idle (no change):     {idle:>10}\n\
-             Avg FPS:              {fps:>10.1}\n\
-             \n Per-frame timing (n={n}):\n\
-               Layout:      avg {avg_layout}\n\
-               Render:      avg {avg_render}\n\
-               Diff:        avg {avg_diff}\n\
-               Emit queue:  avg {avg_emit_queue}\n\
-               Emit flush:  avg {avg_emit_flush}\n\
-               Emit total:  avg {avg_emit}\n\
-               ─────────────────────────────\n\
-               Total:       avg {avg_total}   min {min_total}   max {max_total}\n\
-             {sep}\n",
+            Elapsed:{e:>17.3} s\n  Frames rendered:{ren:>10}\n\
+            Throttled (16ms):{thr:>10}\n  Idle (no change):{idl:>10}\n\
+            Avg FPS:{fps:>17.1}\n\n  Per-frame timing (n={n}):\n\
+            Layout:      avg {al}\n  Render:      avg {ar}\n\
+            Diff:        avg {ad}\n  Emit queue:  avg {aeq}\n\
+            Emit flush:  avg {aef}\n  Emit total:  avg {ae}\n\
+            ─────────────────────────────\n\
+            Total:       avg {at}   min {min}   max {max}\n{sep}\n",
             sep = sep,
-            elapsed = elapsed,
-            rendered = self.rendered_frames,
-            throttled = self.throttled_frames,
-            idle = self.idle_frames,
+            e = e,
+            ren = self.rendered_frames,
+            thr = self.throttled_frames,
+            idl = self.idle_frames,
             fps = self.fps(),
             n = n,
-            avg_layout = fmt_time(avg(self.total_layout_us) as u64),
-            avg_render = fmt_time(avg(self.total_render_us) as u64),
-            avg_diff = fmt_time(avg(self.total_diff_us) as u64),
-            avg_emit_queue = fmt_time(avg(self.total_emit_queue_us) as u64),
-            avg_emit_flush = fmt_time(avg(self.total_emit_flush_us) as u64),
-            avg_emit = fmt_time(avg(self.total_emit_us) as u64),
-            avg_total = fmt_time(avg(self.total_total_us) as u64),
-            min_total = fmt_time(if n > 0 { self.min_frame_us } else { 0 }),
-            max_total = fmt_time(self.max_frame_us),
+            al = ft(a(self.total_layout_us) as u64),
+            ar = ft(a(self.total_render_us) as u64),
+            ad = ft(a(self.total_diff_us) as u64),
+            aeq = ft(a(self.total_emit_queue_us) as u64),
+            aef = ft(a(self.total_emit_flush_us) as u64),
+            ae = ft(a(self.total_emit_us) as u64),
+            at = ft(a(self.total_total_us) as u64),
+            min = ft(if n > 0 { self.min_frame_us } else { 0 }),
+            max = ft(self.max_frame_us)
         )
     }
 }
@@ -153,115 +155,161 @@ fn main() {
 }
 
 fn run() -> anyhow::Result<()> {
-    // ── Terminal setup ──
     let mut backend = CrosstermBackend::new();
     execute!(stdout(), EnterAlternateScreen)?;
     backend.hide_cursor()?;
     backend.clear()?;
-
     let _guard = backend.enter_raw_mode()?;
     let input = StdinReader::new();
-    let theme = Theme::dark();
-    let (cols, rows) = backend.size()?;
+    let theme = Rc::new(RefCell::new(Theme::dark()));
+    let (mut cols, mut rows) = backend.size()?;
     let mut app = App::new(cols, rows, AppConfig::default());
     let wm = WidgetManager::new();
 
-    // ── Chat setup ──
-    let client = api::DeepSeekClient::from_env()
-        .map_err(|e| {
-            execute!(stdout(), LeaveAlternateScreen).ok();
-            e
-        })?;
-    let mut chat = Chat::new(client);
-    let mut input_buffer = String::new();
-    let mut scroll_offset: usize = 0;
+    let client = api::DeepSeekClient::from_env().map_err(|e| {
+        execute!(stdout(), LeaveAlternateScreen).ok();
+        e
+    })?;
+    let chat = Rc::new(RefCell::new(Chat::new(client)));
+    let scroll_sig = Rc::new(Signal::new(0u16));
+    let total_lines = Rc::new(Cell::new(0usize));
+    let needs_rebuild = Rc::new(Cell::new(true));
     let mut accumulator = FrameAccumulator::new();
 
-    // ── Event loop ──
+    let mut root = build_ui(
+        &wm,
+        &theme.borrow(),
+        &chat.borrow(),
+        scroll_sig.read_only(),
+        &total_lines,
+        cols,
+        rows,
+        accumulator.fps(),
+        accumulator.last_frame_us,
+        &chat,
+        &scroll_sig,
+        &needs_rebuild,
+    );
+
     loop {
-        // Poll keyboard + streaming tokens
-        let events = input.poll_timeout(Duration::from_millis(16));
-        let tokens = chat.poll(); // non-blocking — drains any new tokens from the stream
-        let tokens_arrived = tokens.map_or(0, |n| n);
-        let should_render = tokens_arrived > 0 || !events.is_empty();
-
-        let mut should_quit = false;
-
-        // ── Input handling ──
-        for event in &events {
-            if event.modifiers.ctrl && matches!(event.key, Key::Char('c')) {
-                should_quit = true;
-            }
-            match &event.key {
-                Key::Escape => {
-                    // Only quit on Escape when NOT streaming
-                    if !matches!(chat.state(), ChatState::Streaming { .. }) {
-                        should_quit = true;
-                    }
-                }
-                // ── Scrolling ──
-                Key::ArrowUp | Key::Char('k') => {
-                    scroll_offset = scroll_offset.saturating_add(1);
-                }
-                Key::ArrowDown | Key::Char('j') => {
-                    scroll_offset = scroll_offset.saturating_sub(1);
-                }
-                Key::PageUp => scroll_offset += 10,
-                Key::PageDown => scroll_offset = scroll_offset.saturating_sub(10),
-                Key::Home => scroll_offset = usize::MAX / 2, // max
-                Key::End => scroll_offset = 0,
-                // ── Input ──
-                Key::Char(c) => {
-                    if !event.modifiers.ctrl {
-                        input_buffer.push(*c);
-                    }
-                }
-                Key::Backspace => {
-                    input_buffer.pop();
-                }
-                Key::Enter => {
-                    if matches!(chat.state(), ChatState::Idle) {
-                        let msg = std::mem::take(&mut input_buffer);
-                        if let Err(e) = chat.send(msg) {
-                            eprintln!("[aster] send error: {e}");
-                        }
-                        scroll_offset = 0; // scroll to bottom
-                    }
-                }
-                _ => {}
+        let (nc, nr) = backend.size()?;
+        if nc != cols || nr != rows {
+            if app.check_resize(nc, nr, 50) {
+                cols = nc;
+                rows = nr;
+                backend.clear()?;
+                root = build_ui(
+                    &wm,
+                    &theme.borrow(),
+                    &chat.borrow(),
+                    scroll_sig.read_only(),
+                    &total_lines,
+                    cols,
+                    rows,
+                    accumulator.fps(),
+                    accumulator.last_frame_us,
+                    &chat,
+                    &scroll_sig,
+                    &needs_rebuild,
+                );
             }
         }
 
-        if should_quit {
-            break;
+        let tokens = chat.borrow_mut().poll().map_or(0, |n| n);
+        if tokens > 0 {
+            scroll_sig.set(u16::MAX, &mut app.dirty_tracker); // auto-scroll to bottom (clamped by layout, &mut app.dirty_tracker)
+            needs_rebuild.set(true);
         }
 
-        // Auto-scroll to bottom when streaming new tokens
-        if tokens_arrived > 0 {
-            scroll_offset = 0;
-        }
-
-        // Only rebuild UI when something changed
-        if should_render || matches!(chat.state(), ChatState::Streaming { .. }) {
-            let root = build_ui(
+        let was_rebuilt = needs_rebuild.get();
+        if was_rebuilt {
+            needs_rebuild.set(false);
+            root = build_ui(
                 &wm,
-                &theme,
-                &chat,
-                &input_buffer,
-                scroll_offset,
+                &theme.borrow(),
+                &chat.borrow(),
+                scroll_sig.read_only(),
+                &total_lines,
                 cols,
                 rows,
                 accumulator.fps(),
                 accumulator.last_frame_us,
+                &chat,
+                &scroll_sig,
+                &needs_rebuild,
             );
+        }
 
-            match app.render_widget_tree(&root, &theme, &mut backend) {
-                Ok(result) => accumulator.record(&app.last_frame_stats, result),
+        if was_rebuilt || !app.dirty_tracker.is_empty() {
+            match app.render_widget_tree(&root, &theme.borrow(), &mut backend) {
+                Ok(r) => accumulator.record(&app.last_frame_stats, r),
                 Err(e) => {
-                    eprintln!("[aster] render error: {e:?}");
+                    eprintln!("[aster] render: {e:?}");
                     break;
                 }
             }
+            if was_rebuilt {
+                let _ = app.focus_next();
+            }
+        }
+
+        let events = input.poll_timeout(Duration::from_millis(100));
+        let mut should_quit = false;
+        for event in &events {
+            if event.modifiers.ctrl && matches!(event.key, Key::Char('z')) {
+                should_quit = true;
+            }
+            match &event.key {
+                Key::Escape => {
+                    if !matches!(chat.borrow().state(), ChatState::Streaming { .. }) {
+                        should_quit = true;
+                    }
+                }
+                // Scroll keys
+                Key::ArrowUp => {
+                    let v = scroll_sig.read_only().get().saturating_add(1);
+                    scroll_sig.set(v, &mut app.dirty_tracker);
+                    needs_rebuild.set(true);
+                }
+                Key::ArrowDown => {
+                    let v = scroll_sig.read_only().get().saturating_sub(1);
+                    scroll_sig.set(v, &mut app.dirty_tracker);
+                    needs_rebuild.set(true);
+                }
+                Key::PageUp => {
+                    scroll_sig.set(scroll_sig.read_only().get() + 10, &mut app.dirty_tracker);
+                    needs_rebuild.set(true);
+                }
+                Key::PageDown => {
+                    scroll_sig.set(
+                        scroll_sig.read_only().get().saturating_sub(10),
+                        &mut app.dirty_tracker,
+                    );
+                    needs_rebuild.set(true);
+                }
+                Key::Home => {
+                    scroll_sig.set(u16::MAX, &mut app.dirty_tracker);
+                    needs_rebuild.set(true);
+                }
+                Key::End => {
+                    scroll_sig.set(0, &mut app.dirty_tracker);
+                    needs_rebuild.set(true);
+                }
+                Key::Tab if event.modifiers.shift => {
+                    let _ = app.focus_prev();
+                }
+                Key::Tab => {
+                    let _ = app.focus_next();
+                }
+                _ => {
+                    if let Some(a) = default_keymap(event) {
+                        app.dispatch_action(&mut root, &a);
+                    }
+                }
+            }
+        }
+        if should_quit {
+            break;
         }
     }
 
@@ -274,157 +322,219 @@ fn run() -> anyhow::Result<()> {
 
 fn build_ui(
     wm: &WidgetManager,
-    theme: &Theme,
+    t: &Theme,
     chat: &Chat,
-    input_buffer: &str,
-    scroll_offset: usize,
+    scroll_read: ReadSignal<u16>,
+    total_lines_out: &Cell<usize>,
     cols: u16,
     rows: u16,
     fps: f64,
     last_frame_us: u64,
+    chat_rc: &Rc<RefCell<Chat>>,
+    scroll_sig: &Rc<Signal<u16>>,
+    rebuild_flag: &Rc<Cell<bool>>,
 ) -> WidgetNode {
-    // ── Title ──
     let title = match chat.state() {
         ChatState::Idle => " Aster — Chat ".to_string(),
         ChatState::Streaming { token_count } => format!(" Aster — {token_count} tokens "),
         ChatState::Error { .. } => " Aster — Error ".to_string(),
     };
 
-    // ── Messages viewport ──
-    let all_spans = build_messages_spans(chat, theme);
-    // overhead: border(2) + separator(1) + input(1) + footer(1) + message padding(2)
-    let overhead: u16 = 7;
-    let visible_rows = rows.saturating_sub(overhead).max(1) as usize;
-    let total_lines = all_spans.len();
-    let max_scroll = total_lines.saturating_sub(visible_rows);
-    let scroll = scroll_offset.min(max_scroll);
-    let end = total_lines.saturating_sub(scroll);
-    let start = end.saturating_sub(visible_rows);
-    let visible_spans = all_spans[start..end].to_vec();
+    // ── Messages: per-message blocks with Border for code ──
+    let msg_width = cols.saturating_sub(6); // outer border(2) + msg padding(2) + code border(2)
+    let (msg_widgets, line_count) = build_message_blocks(chat, t, wm, msg_width as usize);
+    total_lines_out.set(line_count);
 
     // ── Input ──
-    let placeholder = match chat.state() {
-        ChatState::Streaming { .. } => "Waiting for response…",
-        ChatState::Error { .. } => "Press any key to dismiss error…",
-        ChatState::Idle => "Type a message…",
-    };
+    let c = chat_rc.clone();
+    let s = scroll_sig.clone();
+    let r = rebuild_flag.clone();
 
     // ── Footer ──
-    let frame_display = if last_frame_us < 1000 {
+    let fd = if last_frame_us < 1000 {
         format!("{} µs", last_frame_us)
     } else {
         format!("{:.1} ms", last_frame_us as f64 / 1000.0)
     };
-    let scroll_pct = if total_lines <= visible_rows {
-        String::new()
-    } else {
-        format!(" [{}%]", (scroll * 100) / max_scroll.max(1))
-    };
     let footer_text = format!(
-        "{}/{} lines{}  |  FPS: {:.0}  frame: {}  |  ↑↓/jk:scroll  Enter:send  Esc/^C:quit",
-        total_lines, visible_rows, scroll_pct, fps, frame_display,
+        "{} lines  |  FPS: {:.0}  frame: {}  |  ↑↓/jk:scroll  Enter:send  Esc/^C:quit",
+        line_count, fps, fd,
     );
 
-    // ── Inner content (inside border) ──
+    // ── Layout ──
     let inner = Col::new()
+        .flex(1.0)
         .children([
-            // Messages
-            RichText::new()
-                .lines(visible_spans)
-                .flex(1.0)
-                .padding(RectOffset { top: 1, bottom: 1, left: 1, right: 1 })
-                .build(wm, theme),
-            // Separator
-            Text::new(format!("├{}┤", "─".repeat(cols.saturating_sub(6) as usize)))
-                .fg(theme.border()).bg(theme.surface())
-                .build(wm, theme),
-            // Input
-            wm.wrap(|id| arbor_tui_widgets::input::widget::InputWidget {
-                id,
-                props: arbor_tui_primitives::layout::LayoutProps {
-                    padding: RectOffset { left: 1, ..Default::default() },
-                    ..Default::default()
-                },
-                buffer: input_buffer.to_string(),
-                cursor: input_buffer.chars().count(),
-                placeholder: placeholder.to_string(),
-                password: false,
-                on_change: None,
-                on_submit: None,
-            }),
-            // Footer
+            Col::new().flex(1.0).children(msg_widgets).build(wm, t),
+            Border::new()
+                .fg(t.border())
+                .bg(t.surface())
+                .child(
+                    Input::new()
+                        .placeholder("Type a message…")
+                        .on_submit(move |msg| {
+                            if matches!(c.borrow().state(), ChatState::Idle) {
+                                if c.borrow_mut().send(msg).is_err() {}
+                                // scroll handled by event loop r.set(true);
+                            }
+                        })
+                        .build(wm, t),
+                )
+                .build(wm, t),
             Text::new(footer_text)
-                .fg(theme.text_dim()).bg(theme.surface())
-                .padding(RectOffset { left: 1, ..Default::default() })
-                .build(wm, theme),
+                .fg(t.text_dim())
+                .bg(t.surface())
+                .padding(RectOffset {
+                    left: 1,
+                    ..Default::default()
+                })
+                .build(wm, t),
         ])
-        .build(wm, theme);
+        .build(wm, t);
 
-    // ── Wrapped in rounded border ──
     Border::new()
         .title(title)
         .rounded()
-        .fg(theme.accent())
-        .bg(theme.surface())
+        .padding(RectOffset {
+            top: 1,
+            bottom: 1,
+            left: 1,
+            right: 1,
+        })
+        .fg(t.accent())
+        .bg(t.surface())
         .child(inner)
-        .build(wm, theme)
+        .build(wm, t)
 }
 
-/// Format chat messages into styled spans for RichTextWidget.
-fn build_messages_spans(chat: &Chat, theme: &Theme) -> Vec<Vec<arbor_tui_primitives::cell::Span>> {
+// ── Message blocks → widget nodes ──────────────────────────────────
+
+fn build_message_blocks(
+    chat: &Chat,
+    t: &Theme,
+    wm: &WidgetManager,
+    width: usize,
+) -> (Vec<WidgetNode>, usize) {
     use arbor_tui_primitives::cell::Span;
+    let plain = |s: &str| Span::new(s.to_string(), t.text(), t.surface(), Attrs::default());
 
     let messages = chat.messages();
     if messages.is_empty() {
-        return vec![vec![Span::plain("  Welcome to Aster. Type a message and press Enter.")]];
+        let spans = vec![vec![plain(
+            "  Welcome to Aster. Type a message and press Enter.",
+        )]];
+        let w = RichText::new().lines(spans).build(wm, t);
+        return (vec![w], 1);
     }
 
-    let mut lines: Vec<Vec<Span>> = Vec::new();
+    let mut widgets: Vec<WidgetNode> = Vec::new();
+    let mut total = 0usize;
 
     for msg in messages {
-        // Role label
-        let (label, label_color) = match msg.role.as_str() {
-            "user" => ("You", theme.accent()),
-            "assistant" => ("Aster", theme.primary()),
-            other => (other, theme.text()),
+        let (label, color) = match msg.role.as_str() {
+            "user" => ("You", t.accent()),
+            "assistant" => ("Aster", t.primary()),
+            other => (other, t.text()),
         };
 
-        lines.push(vec![
-            Span::plain("  "),
+        // Label line
+        let label_spans = vec![vec![
+            plain("  "),
             Span::new(
                 format!("{label}: "),
-                label_color,
-                theme.surface(),
-                Attrs { bold: true, ..Default::default() },
+                color,
+                t.surface(),
+                Attrs {
+                    bold: true,
+                    ..Default::default()
+                },
             ),
-        ]);
+        ]];
+        widgets.push(RichText::new().lines(label_spans).build(wm, t));
+        total += 1;
 
-        // Content — render through markdown
         if msg.content.is_empty() {
-            lines.push(vec![Span::plain("")]);
-        } else {
-            let rendered = markdown::render_message(&msg.content, theme);
-            for mut span_line in rendered {
-                // Indent each content line
-                span_line.insert(0, Span::plain("    "));
-                lines.push(span_line);
+            total += 1;
+            widgets.push(RichText::new().lines(vec![vec![plain("")]]).build(wm, t));
+            continue;
+        }
+
+        let blocks = markdown::parse_blocks(&msg.content, t);
+        for block in blocks {
+            match block {
+                markdown::Block::Text(spans) => {
+                    let text_spans: Vec<Vec<Span>> = spans
+                        .into_iter()
+                        .map(|mut line| {
+                            let indent_bg = line.first().map(|s| s.bg).unwrap_or(t.surface());
+                            line.insert(
+                                0,
+                                Span::new(
+                                    "    ".to_string(),
+                                    t.text(),
+                                    indent_bg,
+                                    Attrs::default(),
+                                ),
+                            );
+                            line
+                        })
+                        .collect();
+                    let h = text_spans.len();
+                    widgets.push(RichText::new().lines(text_spans).build(wm, t));
+                    total += h;
+                }
+                markdown::Block::Code {
+                    lang,
+                    lines: code_lines,
+                } => {
+                    let code_spans: Vec<Vec<Span>> = code_lines;
+                    let h = code_spans.len();
+                    // Wrap code in Border widget
+                    let label = if lang.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {} ", lang)
+                    };
+                    let code_widget = Border::new()
+                        .title(label)
+                        .fg(t.border())
+                        .child(
+                            RichText::new()
+                                .lines(code_spans)
+                                .padding(RectOffset {
+                                    left: 1,
+                                    right: 1,
+                                    top: 1,
+                                    bottom: 1,
+                                })
+                                .build(wm, t),
+                        )
+                        .build(wm, t);
+                    widgets.push(code_widget);
+                    total += h + 4; // code lines + border top/bottom
+                }
             }
         }
 
-        // Blank line between messages
-        lines.push(vec![Span::plain("")]);
+        // Gap between messages
+        widgets.push(RichText::new().lines(vec![vec![plain("")]]).build(wm, t));
+        total += 1;
     }
 
     // Error state
     if let ChatState::Error { message } = chat.state() {
-        lines.push(vec![Span::new(
-            format!("  ⚠ Error: {message}"),
-            theme.danger(),
-            theme.surface(),
-            Attrs::default(),
-        )]);
-        lines.push(vec![Span::plain("  Press any key to dismiss.")]);
+        let err_spans = vec![
+            vec![Span::new(
+                format!("  ⚠ Error: {message}"),
+                t.danger(),
+                t.surface(),
+                Attrs::default(),
+            )],
+            vec![plain("  Press any key to dismiss.")],
+        ];
+        widgets.push(RichText::new().lines(err_spans).build(wm, t));
+        total += 2;
     }
 
-    lines
+    (widgets, total)
 }
