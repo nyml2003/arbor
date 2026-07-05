@@ -60,44 +60,6 @@ impl CrosstermBackend {
             Color::AnsiValue(color.palette.0)
         }
     }
-
-    /// Write a single cell to the current cursor position, propagating errors.
-    fn write_cell(
-        &mut self,
-        ch: char,
-        fg: &AnsiColor,
-        bg: &AnsiColor,
-        attrs: &Attrs,
-    ) -> BackendResult<()> {
-        if !self.no_color {
-            queue!(
-                self.stdout,
-                SetForegroundColor(Self::to_color(fg)),
-                SetBackgroundColor(Self::to_color(bg)),
-            )?;
-        }
-
-        if attrs.bold {
-            queue!(self.stdout, SetAttribute(Attribute::Bold))?;
-        }
-        if attrs.dim {
-            queue!(self.stdout, SetAttribute(Attribute::Dim))?;
-        }
-        if attrs.italic {
-            queue!(self.stdout, SetAttribute(Attribute::Italic))?;
-        }
-        if attrs.underline {
-            queue!(self.stdout, SetAttribute(Attribute::Underlined))?;
-        }
-        if attrs.reverse {
-            queue!(self.stdout, SetAttribute(Attribute::Reverse))?;
-        }
-
-        queue!(self.stdout, Print(ch))?;
-        // Reset attributes after each cell to avoid leaking styles
-        queue!(self.stdout, SetAttribute(Attribute::Reset))?;
-        Ok(())
-    }
 }
 
 struct CrosstermGuard;
@@ -131,39 +93,7 @@ impl TerminalBackend for CrosstermBackend {
 
         let t0 = Instant::now();
 
-        let mut sorted: Vec<_> = regions.to_vec();
-        sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
-
-        let merged = merge_adjacent(&sorted);
-
-        let mut current_row: Option<u16> = None;
-        let mut current_col: Option<u16> = None;
-        let region_count = merged.len();
-
-        for (i, region) in merged.iter().enumerate() {
-            // Move cursor if row changed OR col is not contiguous
-            if current_row != Some(region.row) || current_col != Some(region.start_col) {
-                queue!(self.stdout, MoveTo(region.start_col, region.row))?;
-                current_row = Some(region.row);
-            }
-
-            for col in region.start_col..region.end_col {
-                let cell = screen.cell_at(col, region.row);
-                if cell.phantom {
-                    continue;
-                }
-                self.write_cell(cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
-            }
-            current_col = Some(region.end_col);
-
-            // Clear to end of line after the LAST region on each row.
-            // Prevents stale content from persisting after resize or when
-            // new content is shorter than old content on the same row.
-            let is_last_on_row = i + 1 >= region_count || merged[i + 1].row != region.row;
-            if is_last_on_row {
-                queue!(self.stdout, Clear(ClearType::UntilNewLine))?;
-            }
-        }
+        emit_regions_to(&mut self.stdout, self.no_color, regions, screen)?;
 
         self.last_queue_us = t0.elapsed().as_micros() as u64;
 
@@ -224,6 +154,77 @@ impl TerminalBackend for CrosstermBackend {
     }
 }
 
+fn write_cell_to<W: Write>(
+    writer: &mut W,
+    no_color: bool,
+    ch: char,
+    fg: &AnsiColor,
+    bg: &AnsiColor,
+    attrs: &Attrs,
+) -> BackendResult<()> {
+    if !no_color {
+        queue!(
+            writer,
+            SetForegroundColor(CrosstermBackend::to_color(fg)),
+            SetBackgroundColor(CrosstermBackend::to_color(bg)),
+        )?;
+    }
+
+    if attrs.bold {
+        queue!(writer, SetAttribute(Attribute::Bold))?;
+    }
+    if attrs.dim {
+        queue!(writer, SetAttribute(Attribute::Dim))?;
+    }
+    if attrs.italic {
+        queue!(writer, SetAttribute(Attribute::Italic))?;
+    }
+    if attrs.underline {
+        queue!(writer, SetAttribute(Attribute::Underlined))?;
+    }
+    if attrs.reverse {
+        queue!(writer, SetAttribute(Attribute::Reverse))?;
+    }
+
+    queue!(writer, Print(ch))?;
+    // Reset attributes after each cell so styles never leak into the next cell.
+    queue!(writer, SetAttribute(Attribute::Reset))?;
+    Ok(())
+}
+
+fn emit_regions_to<W: Write>(
+    writer: &mut W,
+    no_color: bool,
+    regions: &[DirtyRegion],
+    screen: &VirtualScreen,
+) -> BackendResult<()> {
+    let mut sorted: Vec<_> = regions.to_vec();
+    sorted.sort_by(|a, b| a.row.cmp(&b.row).then(a.start_col.cmp(&b.start_col)));
+
+    let merged = merge_adjacent(&sorted);
+
+    let mut current_row: Option<u16> = None;
+    let mut current_col: Option<u16> = None;
+
+    for region in &merged {
+        if current_row != Some(region.row) || current_col != Some(region.start_col) {
+            queue!(writer, MoveTo(region.start_col, region.row))?;
+            current_row = Some(region.row);
+        }
+
+        for col in region.start_col..region.end_col {
+            let cell = screen.cell_at(col, region.row);
+            if cell.phantom {
+                continue;
+            }
+            write_cell_to(writer, no_color, cell.ch, &cell.fg, &cell.bg, &cell.attrs)?;
+        }
+        current_col = Some(region.end_col);
+    }
+
+    Ok(())
+}
+
 /// Merge adjacent dirty regions on the same row.
 fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
     if regions.is_empty() {
@@ -244,4 +245,65 @@ fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
     }
 
     merged
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arbor_tui_domain::cell::Cell;
+
+    #[test]
+    fn emit_sets_foreground_and_background_for_each_visible_cell() {
+        let mut screen = VirtualScreen::new(2, 1);
+        *screen.cell_at_mut(0, 0).unwrap() = Cell {
+            ch: 'A',
+            fg: AnsiColor::from_palette(2),
+            bg: AnsiColor::from_palette(3),
+            ..Default::default()
+        };
+        *screen.cell_at_mut(1, 0).unwrap() = Cell {
+            ch: 'B',
+            fg: AnsiColor::from_palette(4),
+            bg: AnsiColor::from_palette(5),
+            ..Default::default()
+        };
+        let regions = [DirtyRegion {
+            row: 0,
+            start_col: 0,
+            end_col: 2,
+        }];
+        let mut out = Vec::new();
+
+        emit_regions_to(&mut out, false, &regions, &screen).unwrap();
+        let ansi = String::from_utf8_lossy(&out);
+
+        assert!(ansi.contains("\x1b[38;5;2m"));
+        assert!(ansi.contains("\x1b[48;5;3m"));
+        assert!(ansi.contains("\x1b[38;5;4m"));
+        assert!(ansi.contains("\x1b[48;5;5m"));
+    }
+
+    #[test]
+    fn emit_partial_region_does_not_clear_rest_of_line_with_terminal_default() {
+        let mut screen = VirtualScreen::new(6, 1);
+        *screen.cell_at_mut(2, 0).unwrap() = Cell {
+            ch: 'X',
+            fg: AnsiColor::from_palette(10),
+            bg: AnsiColor::from_palette(11),
+            ..Default::default()
+        };
+        let regions = [DirtyRegion {
+            row: 0,
+            start_col: 2,
+            end_col: 3,
+        }];
+        let mut out = Vec::new();
+
+        emit_regions_to(&mut out, false, &regions, &screen).unwrap();
+        let ansi = String::from_utf8_lossy(&out);
+
+        assert!(!ansi.contains("\x1b[K"));
+        assert!(!ansi.contains("\x1b[0K"));
+        assert!(ansi.contains("\x1b[48;5;11m"));
+    }
 }
