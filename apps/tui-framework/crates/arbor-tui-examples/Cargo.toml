@@ -20,3 +20,6 @@ arbor-tui-adapters = { path = "../arbor-tui-adapters" }
 arbor-tui-widgets = { path = "../arbor-tui-widgets" }
 crossterm = "0.28"
 anyhow = "1"
+
+[dev-dependencies]
+arbor-tui-testing = { path = "../arbor-tui-testing" }

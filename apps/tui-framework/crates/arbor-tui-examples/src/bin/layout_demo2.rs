@@ -2,7 +2,7 @@
 // Type "/theme dark" or "/theme light" in the footer input and press Enter.
 // PgUp/PgDn 切换中间栏内容，^C/q 退出。
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell as StdCell, RefCell};
 use std::io::stdout;
 use std::rc::Rc;
 use std::time::Duration;
@@ -10,10 +10,10 @@ use std::time::Duration;
 use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
-use arbor_tui_domain::cell::{Attrs, Span};
+use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell, Span};
 use arbor_tui_domain::input::InputReader;
 use arbor_tui_domain::layout::RectOffset;
-use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::theme::{Theme, ThemeVariant};
 use arbor_tui_domain::widget::WidgetNode;
 
 use arbor_tui_adapters::crossterm_backend::CrosstermBackend;
@@ -45,7 +45,7 @@ fn run() -> anyhow::Result<()> {
     let _guard = backend.enter_raw_mode()?;
     let input = StdinReader::new();
     let theme = Rc::new(RefCell::new(Theme::dark()));
-    let theme_changed = Rc::new(Cell::new(false));
+    let theme_changed = Rc::new(StdCell::new(false));
     let (mut cols, mut rows) = backend.size()?;
     let mut app = App::new(cols, rows);
     let factory = WidgetFactory::new();
@@ -126,25 +126,29 @@ fn build_ui(
     t: &Theme,
     cols: u16,
     rows: u16,
-    theme_changed: &Rc<Cell<bool>>,
+    theme_changed: &Rc<StdCell<bool>>,
     theme_rc: &Rc<RefCell<Theme>>,
 ) -> WidgetNode {
     let left_w = cols / 5;
     let right_w = cols / 4;
+    let panel_bg = demo_panel_bg(t);
+    let panel_cell = demo_panel_cell(t);
 
     // ── Header ─────────────────────────────────────────────────
     let theme_name = match t.variant {
-        arbor_tui_domain::theme::ThemeVariant::Dark => "dark",
-        arbor_tui_domain::theme::ThemeVariant::Light => "light",
-        arbor_tui_domain::theme::ThemeVariant::HighContrast => "hc",
+        ThemeVariant::Dark => "dark",
+        ThemeVariant::Light => "light",
+        ThemeVariant::HighContrast => "hc",
     };
     let header = Border::new()
         .rounded()
-        .fg(t.accent())
+        .fg(demo_border_fg(t, t.accent()))
+        .bg(panel_bg)
         .title(" Arbor TUI ")
         .child(
             Text::new(format!("Theme: {theme_name}  |  ^C/q to quit"))
                 .fg(t.text_dim())
+                .bg(panel_bg)
                 .build(factory, t),
         )
         .build(factory, t);
@@ -154,7 +158,8 @@ fn build_ui(
     let changed = theme_changed.clone();
     let footer = Border::new()
         .rounded()
-        .fg(t.accent())
+        .fg(demo_border_fg(t, t.accent()))
+        .bg(panel_bg)
         .title(" Commands ")
         .child(
             Input::new()
@@ -175,33 +180,35 @@ fn build_ui(
     // ── Body: 3 columns ────────────────────────────────────────
     let left = Border::new()
         .rounded()
-        .fg(t.primary())
+        .fg(demo_border_fg(t, t.primary()))
+        .bg(panel_bg)
         .title(" Nav ")
         .child(
             RichText::new()
+                .bg(panel_cell.clone())
                 .line(vec![Span::new(
                     "  Home",
                     t.text(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     "  Projects",
                     t.text(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     "  Settings",
                     t.text(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![])
                 .line(vec![Span::new(
                     " Status:",
                     t.text_dim(),
-                    t.surface(),
+                    panel_bg,
                     Attrs {
                         italic: true,
                         ..Default::default()
@@ -210,13 +217,13 @@ fn build_ui(
                 .line(vec![Span::new(
                     "  CPU  12%",
                     t.text_dim(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     "  RAM  3.2G",
                     t.text_dim(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .build(factory, t),
@@ -226,15 +233,17 @@ fn build_ui(
     let center = Border::new()
         .rounded()
         .flex(1.0)
-        .fg(t.accent())
+        .fg(demo_border_fg(t, t.accent()))
+        .bg(panel_bg)
         .title(" Content ")
         .child(
             RichText::new()
+                .bg(panel_cell.clone())
                 .padding(RectOffset::all(1))
                 .line(vec![Span::new(
                     "═══ Welcome ═══",
                     t.primary(),
-                    t.surface(),
+                    panel_bg,
                     Attrs {
                         bold: true,
                         ..Default::default()
@@ -244,82 +253,73 @@ fn build_ui(
                 .line(vec![Span::new(
                     "3-column layout with rounded borders.",
                     t.text(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![])
                 .line(vec![Span::new(
-                    format!("Left: {left_w} cols  |  Right: {right_w} cols  |  Center: flex"),
+                    format!("Left {left_w} | Center flex | Right {right_w}"),
                     t.text_dim(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![])
-                .line(vec![
-                    Span::new(
-                        "Type /theme dark or /theme light",
-                        t.success(),
-                        t.surface(),
-                        Attrs {
-                            italic: true,
-                            ..Default::default()
-                        },
-                    ),
-                    Span::new(
-                        " in the footer and press Enter.",
-                        t.text_dim(),
-                        t.surface(),
-                        Attrs {
-                            italic: true,
-                            ..Default::default()
-                        },
-                    ),
-                ])
+                .line(vec![Span::new(
+                    "Use footer: /theme dark | /theme light",
+                    t.success(),
+                    panel_bg,
+                    Attrs {
+                        italic: true,
+                        ..Default::default()
+                    },
+                )])
                 .build(factory, t),
         )
         .build(factory, t);
 
     let right = Border::new()
         .rounded()
-        .fg(t.success())
+        .fg(demo_border_fg(t, t.success()))
+        .bg(panel_bg)
         .title(" Info ")
         .child(
             RichText::new()
+                .bg(panel_cell.clone())
                 .line(vec![Span::new(
                     format!(" {cols}x{rows}"),
                     t.text(),
-                    t.surface(),
+                    panel_bg,
                     Attrs::default(),
                 )])
                 .line(vec![])
                 .line(vec![Span::new(
                     " accent",
                     t.accent(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     " primary",
                     t.primary(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     " success",
                     t.success(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     " danger",
                     t.danger(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .line(vec![Span::new(
                     " warning",
                     t.warning(),
-                    t.surface(),
+                    panel_bg,
                     Default::default(),
                 )])
                 .build(factory, t),
@@ -329,9 +329,12 @@ fn build_ui(
     let body = Row::new()
         .flex(1.0)
         .children([
-            left,
+            Col::new().width(left_w).children([left]).build(factory, t),
             Col::new().flex(1.0).children([center]).build(factory, t),
-            right,
+            Col::new()
+                .width(right_w)
+                .children([right])
+                .build(factory, t),
         ])
         .build(factory, t);
 
@@ -345,4 +348,90 @@ fn build_ui(
         })
         .children([header, body, footer])
         .build(factory, t)
+}
+
+fn demo_panel_bg(t: &Theme) -> AnsiColor {
+    match t.variant {
+        ThemeVariant::Light => t.surface_alt(),
+        ThemeVariant::Dark | ThemeVariant::HighContrast => t.surface(),
+    }
+}
+
+fn demo_border_fg(t: &Theme, fallback: AnsiColor) -> AnsiColor {
+    match t.variant {
+        ThemeVariant::Light => t.border(),
+        ThemeVariant::Dark | ThemeVariant::HighContrast => fallback,
+    }
+}
+
+fn demo_panel_cell(t: &Theme) -> Cell {
+    Cell {
+        bg: demo_panel_bg(t),
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arbor_tui_testing::WidgetHarness;
+
+    #[test]
+    fn light_theme_demo_uses_panel_background_for_content() {
+        let cols = 80;
+        let rows = 18;
+        let factory = WidgetFactory::new();
+        let theme = Theme::light();
+        let theme_changed = Rc::new(StdCell::new(false));
+        let theme_rc = Rc::new(RefCell::new(theme.clone()));
+        let root = build_ui(&factory, &theme, cols, rows, &theme_changed, &theme_rc);
+        let harness = WidgetHarness::render(&root, cols, rows, &theme);
+        let panel_bg = demo_panel_bg(&theme);
+
+        harness.assert_no_black_bg_on_text().unwrap();
+        for text in [
+            "Arbor TUI".to_string(),
+            "Home".to_string(),
+            "Welcome".to_string(),
+            format!("{cols}x{rows}"),
+        ] {
+            let (col, row) = harness
+                .find_text(&text)
+                .first()
+                .copied()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "expected demo screen to contain {text:?}\n{}",
+                        screen_text(&harness)
+                    )
+                });
+            assert_eq!(
+                harness.cell_at(col, row).bg,
+                panel_bg,
+                "{text:?} should use the light panel background"
+            );
+        }
+
+        let (title_col, title_row) = harness.find_text("Arbor TUI")[0];
+        assert_eq!(harness.cell_at(title_col, title_row).fg, theme.border());
+
+        let (input_col, input_row) = harness.find_text("type /theme dark")[0];
+        assert_eq!(
+            harness.cell_at(input_col, input_row).bg,
+            theme.surface_alt()
+        );
+    }
+
+    fn screen_text(harness: &WidgetHarness) -> String {
+        let mut text = String::new();
+        for row in 0..harness.rows() {
+            for col in 0..harness.cols() {
+                text.push(harness.cell_at(col, row).ch);
+            }
+            if row + 1 < harness.rows() {
+                text.push('\n');
+            }
+        }
+        text
+    }
 }

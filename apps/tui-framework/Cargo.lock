@@ -44,6 +44,7 @@ dependencies = [
  "arbor-tui-adapters",
  "arbor-tui-application",
  "arbor-tui-domain",
+ "arbor-tui-testing",
  "arbor-tui-widgets",
  "crossterm",
 ]

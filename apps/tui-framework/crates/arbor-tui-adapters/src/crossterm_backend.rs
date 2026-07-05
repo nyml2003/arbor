@@ -225,6 +225,17 @@ fn emit_regions_to<W: Write>(
     Ok(())
 }
 
+#[cfg(any(test, feature = "simulated"))]
+pub fn encode_regions_for_testing(
+    regions: &[DirtyRegion],
+    screen: &VirtualScreen,
+    no_color: bool,
+) -> BackendResult<Vec<u8>> {
+    let mut output = Vec::new();
+    emit_regions_to(&mut output, no_color, regions, screen)?;
+    Ok(output)
+}
+
 /// Merge adjacent dirty regions on the same row.
 fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
     if regions.is_empty() {
