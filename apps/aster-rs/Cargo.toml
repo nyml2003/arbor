@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ofsh",
     "crates/aster-domain",
     "crates/aster-application",
     "crates/aster-adapters",
@@ -18,6 +19,7 @@ publish = false
 aster-domain = { path = "crates/aster-domain" }
 aster-application = { path = "crates/aster-application" }
 aster-adapters = { path = "crates/aster-adapters" }
+ofsh = { path = "crates/ofsh" }
 
 arbor-tui-domain = { path = "../tui-framework/crates/arbor-tui-domain" }
 arbor-tui-application = { path = "../tui-framework/crates/arbor-tui-application" }
