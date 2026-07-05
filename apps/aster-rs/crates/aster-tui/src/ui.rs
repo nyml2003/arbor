@@ -17,11 +17,13 @@ pub fn build_ui(
     state: &AppState,
     scroll_y: ReadSignal<u16>,
     loading_phase: usize,
+    line_count: usize,
 ) -> Node<AsterAction> {
-    ui.component(AsterPage::new(
-        UiSnapshot::from_state(state),
+    ui.component(AsterPage::from_state(
+        state,
         scroll_y,
         loading_phase,
+        line_count,
     ))
 }
 
@@ -30,17 +32,41 @@ struct AsterPage {
 }
 
 struct AsterPageProps {
-    snapshot: UiSnapshot,
+    messages: Vec<ChatMessage>,
+    conversation_state: ConversationStatus,
+    draft: String,
+    palette: Option<PaletteSnapshot>,
+    model: String,
+    theme_name: String,
+    status_message: Option<String>,
+    is_streaming: bool,
     scroll_y: ReadSignal<u16>,
     loading_phase: usize,
+    line_count: usize,
 }
 
 impl AsterPage {
-    fn new(snapshot: UiSnapshot, scroll_y: ReadSignal<u16>, loading_phase: usize) -> Self {
+    fn from_state(
+        state: &AppState,
+        scroll_y: ReadSignal<u16>,
+        loading_phase: usize,
+        line_count: usize,
+    ) -> Self {
+        let chat = state.chat();
+        let conversation_state = chat.state().clone();
+        let is_streaming = matches!(conversation_state, ConversationStatus::Streaming { .. });
         Self::from_props(AsterPageProps {
-            snapshot,
+            messages: chat.messages().to_vec(),
+            conversation_state,
+            draft: state.draft().to_string(),
+            palette: state.palette().map(PaletteSnapshot::from),
+            model: state.active_model().to_string(),
+            theme_name: state.active_theme().name().to_string(),
+            status_message: state.status_message().map(str::to_string),
+            is_streaming,
             scroll_y,
             loading_phase,
+            line_count,
         })
     }
 }
@@ -61,34 +87,33 @@ impl UiComponent<AsterAction> for AsterPage {
     fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
         let theme = ui.theme();
         let panel_bg = theme.surface();
-        let snapshot = self.props.snapshot;
-        let title = title_for(&snapshot.conversation_state);
-        let line_count =
-            estimate_line_count(&snapshot.messages, &snapshot.conversation_state, theme);
+        let props = self.props;
+        let title = title_for(&props.conversation_state);
+        let line_count = props.line_count;
 
         let mut body = Col::new()
             .fill()
             .child(TranscriptPane::new(
-                snapshot.messages.clone(),
-                snapshot.conversation_state.clone(),
-                self.props.scroll_y,
+                props.messages,
+                props.conversation_state.clone(),
+                props.scroll_y,
             ))
             .child(ChatInputPanel::new(
-                snapshot.draft.clone(),
-                snapshot.is_streaming,
-                self.props.loading_phase,
+                props.draft,
+                props.is_streaming,
+                props.loading_phase,
             ));
 
-        if let Some(palette) = snapshot.palette.clone() {
+        if let Some(palette) = props.palette {
             body = body.child(CommandPalettePanel::new(palette));
         }
 
         body = body.child(FooterLine::new(
             line_count,
-            snapshot.theme_name,
-            snapshot.model,
-            snapshot.status_message,
-            snapshot.is_streaming,
+            props.theme_name,
+            props.model,
+            props.status_message,
+            props.is_streaming,
         ));
 
         ui.component(
@@ -102,7 +127,7 @@ impl UiComponent<AsterAction> for AsterPage {
                     left: 1,
                     right: 1,
                 })
-                .fg(title_color(&snapshot.conversation_state, theme))
+                .fg(title_color(&props.conversation_state, theme))
                 .bg(panel_bg),
         )
     }
@@ -325,39 +350,10 @@ impl UiComponent<AsterAction> for FooterLine {
 }
 
 #[derive(Clone)]
-struct UiSnapshot {
-    messages: Vec<ChatMessage>,
-    conversation_state: ConversationStatus,
-    draft: String,
-    palette: Option<PaletteSnapshot>,
-    model: String,
-    theme_name: String,
-    status_message: Option<String>,
-    is_streaming: bool,
-}
-
-#[derive(Clone)]
 struct PaletteSnapshot {
     query: String,
     selected: usize,
     items: Vec<String>,
-}
-
-impl UiSnapshot {
-    fn from_state(state: &AppState) -> Self {
-        let chat = state.chat();
-        let conversation_state = chat.state().clone();
-        Self {
-            messages: chat.messages().to_vec(),
-            is_streaming: matches!(conversation_state, ConversationStatus::Streaming { .. }),
-            conversation_state,
-            draft: state.draft().to_string(),
-            palette: state.palette().map(PaletteSnapshot::from),
-            model: state.active_model().to_string(),
-            theme_name: state.active_theme().name().to_string(),
-            status_message: state.status_message().map(str::to_string),
-        }
-    }
 }
 
 impl From<&CommandPalette> for PaletteSnapshot {
@@ -528,6 +524,7 @@ mod tests {
                         state.chat().state(),
                         ConversationStatus::Streaming { .. }
                     )),
+                    estimate_line_count(state.chat().messages(), state.chat().state(), ui.theme()),
                 )
             },
         )

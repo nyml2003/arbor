@@ -20,6 +20,12 @@ aster-domain.workspace = true
 arbor-tui.workspace = true
 anyhow.workspace = true
 ofsh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+bench-log = []
 
 [dev-dependencies]
 arbor-tui-testing.workspace = true

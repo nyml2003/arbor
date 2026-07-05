@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
 use anyhow::Context;
@@ -22,11 +23,12 @@ pub(crate) enum AsterAction {
     AcceptPaletteValue(String),
 }
 
-struct AsterState {
-    app: AppState,
-    scroll_y: Rc<Signal<u16>>,
-    loading_phase: Rc<Signal<usize>>,
+pub(crate) struct AsterState {
+    pub(crate) app: AppState,
+    pub(crate) scroll_y: Rc<Signal<u16>>,
+    pub(crate) loading_phase: Rc<Signal<usize>>,
     scroll: ScrollConfig,
+    line_count_cache: LineCountCache,
 }
 
 impl AsterState {
@@ -35,16 +37,20 @@ impl AsterState {
         Self::with_model(client, "deepseek-chat")
     }
 
-    fn with_model(client: impl ChatStreamPort + 'static, model: impl Into<String>) -> Self {
+    pub(crate) fn with_model(
+        client: impl ChatStreamPort + 'static,
+        model: impl Into<String>,
+    ) -> Self {
         Self {
             app: AppState::with_model(client, model),
             scroll_y: Rc::new(Signal::new(0)),
             loading_phase: Rc::new(Signal::new(0)),
             scroll: ScrollConfig::default(),
+            line_count_cache: LineCountCache::default(),
         }
     }
 
-    fn apply(&mut self, action: AsterAction) -> Option<Theme> {
+    pub(crate) fn apply(&mut self, action: AsterAction) -> Option<Theme> {
         let before_theme = self.app.active_theme();
         match action {
             AsterAction::DraftChanged(draft) => self.app.update_draft(draft),
@@ -60,6 +66,7 @@ impl AsterState {
             }
         }
 
+        self.line_count_cache.invalidate();
         (self.app.active_theme() != before_theme).then(|| self.app.active_theme().to_theme())
     }
 
@@ -72,6 +79,39 @@ impl AsterState {
 
     fn is_error(&self) -> bool {
         matches!(self.app.chat().state(), ConversationStatus::Error { .. })
+    }
+
+    pub(crate) fn line_count(&self, theme: &Theme) -> usize {
+        self.line_count_cache.get_or_compute(|| {
+            let chat = self.app.chat();
+            estimate_line_count(chat.messages(), chat.state(), theme)
+        })
+    }
+
+    pub(crate) fn invalidate_line_count(&self) {
+        self.line_count_cache.invalidate();
+    }
+}
+
+#[derive(Default)]
+struct LineCountCache {
+    value: Cell<Option<usize>>,
+}
+
+impl LineCountCache {
+    fn get_or_compute(&self, compute: impl FnOnce() -> usize) -> usize {
+        match self.value.get() {
+            Some(value) => value,
+            None => {
+                let value = compute();
+                self.value.set(Some(value));
+                value
+            }
+        }
+    }
+
+    fn invalidate(&self) {
+        self.value.set(None);
     }
 }
 
@@ -124,22 +164,27 @@ fn run_with_client(
         .run()
 }
 
-fn update(state: &mut AsterState, action: AsterAction, ctx: &mut AppContext<AsterAction>) {
+pub(crate) fn update(
+    state: &mut AsterState,
+    action: AsterAction,
+    ctx: &mut AppContext<AsterAction>,
+) {
     if let Some(theme) = state.apply(action) {
         ctx.set_theme(theme);
     }
 }
 
-fn view(state: &AsterState, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+pub(crate) fn view(state: &AsterState, ui: &Ui<AsterAction>) -> Node<AsterAction> {
     build_ui(
         ui,
         &state.app,
         state.scroll_y.read_only(),
         state.loading_phase.get(),
+        state.line_count(ui.theme()),
     )
 }
 
-fn before_events(
+pub(crate) fn before_events(
     state: &mut AsterState,
     ctx: &mut AppContext<AsterAction>,
     app: &mut App,
@@ -153,7 +198,7 @@ fn before_events(
     outcome.needs_render
 }
 
-fn before_render(
+pub(crate) fn before_render(
     state: &mut AsterState,
     _ctx: &mut AppContext<AsterAction>,
     app: &mut App,
@@ -162,12 +207,12 @@ fn before_render(
     render_tick(state, app, theme)
 }
 
-struct EventOutcome {
+pub(crate) struct EventOutcome {
     needs_render: bool,
     actions: Vec<AsterAction>,
 }
 
-fn handle_events(
+pub(crate) fn handle_events(
     state: &mut AsterState,
     app: &mut App,
     theme: &Theme,
@@ -266,10 +311,13 @@ fn handle_events(
     }
 }
 
-fn render_tick(state: &mut AsterState, app: &mut App, theme: &Theme) -> bool {
+pub(crate) fn render_tick(state: &mut AsterState, app: &mut App, theme: &Theme) -> bool {
     let viewport = MessageViewport::from_rows(app.screen_size().1);
     let outcome = state.app.poll_stream_and_take_changed();
     let mut needs_rebuild = outcome.streamed_tokens > 0 || outcome.state_changed;
+    if needs_rebuild {
+        state.invalidate_line_count();
+    }
 
     if state.is_streaming() {
         needs_rebuild |= advance_loading_phase(state, app);
@@ -343,8 +391,7 @@ fn reset_loading_phase(state: &mut AsterState, app: &mut App) -> bool {
 }
 
 fn line_count(state: &AsterState, theme: &Theme) -> usize {
-    let chat = state.app.chat();
-    estimate_line_count(chat.messages(), chat.state(), theme)
+    state.line_count(theme)
 }
 
 fn clamp_scroll_y(scroll_y: u16, line_count: usize, viewport: MessageViewport) -> u16 {
@@ -495,6 +542,25 @@ mod tests {
 
         assert!(needs_render);
         assert_eq!(state.loading_phase.get(), 1);
+    }
+
+    #[test]
+    fn line_count_cache_reuses_value_until_state_changes() {
+        let mut state = AsterState::new(FakeClient {
+            events: vec![StreamEvent::Token("line\n".repeat(40)), StreamEvent::Done],
+        });
+        state.app.submit_input("hello".to_string());
+        state.app.poll_stream_and_take_changed();
+        let theme = Theme::dark();
+
+        let before = state.line_count(&theme);
+        assert_eq!(state.line_count_cache.value.get(), Some(before));
+        state.line_count_cache.value.set(Some(123));
+
+        assert_eq!(state.line_count(&theme), 123);
+
+        state.apply(AsterAction::DismissError);
+        assert_eq!(state.line_count_cache.value.get(), None);
     }
 
     #[test]

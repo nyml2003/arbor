@@ -143,6 +143,8 @@ dependencies = [
  "aster-application",
  "aster-domain",
  "ofsh",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
