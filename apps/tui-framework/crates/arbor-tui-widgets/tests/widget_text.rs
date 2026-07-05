@@ -5,12 +5,12 @@ use arbor_tui_primitives::cell::Span;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::rich_text::RichText;
-use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 // ── Text ──────────────────────────────────────────────────────────
@@ -36,8 +36,7 @@ fn text_multiline() {
 #[test]
 fn text_truncates_overflow() {
     let (wm, t) = wm_and_theme();
-    let root = Text::new("very long text that exceeds available width")
-        .build(&wm, &t);
+    let root = Text::new("very long text that exceeds available width").build(&wm, &t);
     let h = WidgetHarness::render(&root, 10, 3, &t);
     // Should render but be clipped
     assert_eq!(h.cols(), 10);
@@ -89,10 +88,7 @@ fn rich_text_renders_multiline() {
 fn rich_text_inline_styles() {
     let (wm, t) = wm_and_theme();
     let root = RichText::new()
-        .line(vec![
-            Span::plain("normal "),
-            Span::bold("bold"),
-        ])
+        .line(vec![Span::plain("normal "), Span::bold("bold")])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 40, 3, &t);
     assert!(!h.find_text("normal").is_empty());
@@ -133,7 +129,12 @@ fn rich_text_unfilled_area_uses_widget_bg_dark() {
     let (wm, t) = wm_and_theme();
     // Single short span — the rest of the row should use the widget's bg fill
     let root = RichText::new()
-        .line(vec![Span::new("x", t.text(), t.surface(), Default::default())])
+        .line(vec![Span::new(
+            "x",
+            t.text(),
+            t.surface(),
+            Default::default(),
+        )])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 40, 3, &t);
     // The text cell bg should match theme surface
@@ -194,7 +195,12 @@ fn richtext_inside_border_light_theme_no_black_bg() {
 fn span_explicit_bg_is_respected() {
     let (wm, t) = wm_and_theme();
     let root = RichText::new()
-        .line(vec![Span::new("colored", t.text(), t.primary(), Default::default())])
+        .line(vec![Span::new(
+            "colored",
+            t.text(),
+            t.primary(),
+            Default::default(),
+        )])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 40, 3, &t);
     let (col, row) = h.find_text("colored")[0];

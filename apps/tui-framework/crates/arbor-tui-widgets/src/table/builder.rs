@@ -1,7 +1,7 @@
 use arbor_tui_primitives::layout::{LayoutProps, RectOffset};
 use arbor_tui_widget::widget::WidgetNode;
 use super::widget::{ColumnDef, TableWidget};
-use crate::widget_manager::WidgetManager;
+use crate::widget_factory::WidgetFactory;
 
 pub struct Table {
     columns: Vec<ColumnDef>,
@@ -16,7 +16,7 @@ impl Table {
     pub fn cells(mut self, c: Vec<Vec<String>>) -> Self { self.cells = c; self }
     pub fn padding(mut self, p: RectOffset) -> Self { self.padding = p; self }
     pub fn flex(mut self, f: f32) -> Self { self.flex = f; self }
-    pub fn build(self, wm: &WidgetManager, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+    pub fn build(self, wm: &WidgetFactory, _t: &arbor_tui_render::theme::Theme) -> WidgetNode {
         wm.wrap(|id| TableWidget { id, props: LayoutProps { padding: self.padding, flex: self.flex, ..Default::default() }, columns: self.columns, cells: self.cells, selected: None, scroll_offset: 0, on_select: None, on_scroll: None, render_cell: None })
     }
 }

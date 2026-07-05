@@ -5,8 +5,8 @@
 
 use arbor_tui_primitives::cell::Cell;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_reactive::signal::ReadSignal;
+use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
 
@@ -25,14 +25,24 @@ pub struct ScrollViewWidget {
 }
 
 impl Widget for ScrollViewWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
 
-    fn children(&self) -> &[WidgetNode] { std::slice::from_ref(&*self.child) }
-    fn children_mut(&mut self) -> &mut [WidgetNode] { std::slice::from_mut(&mut *self.child) }
+    fn children(&self) -> &[WidgetNode] {
+        std::slice::from_ref(&*self.child)
+    }
+    fn children_mut(&mut self) -> &mut [WidgetNode] {
+        std::slice::from_mut(&mut *self.child)
+    }
 
     /// ScrollView renders its own child (for clipping).
-    fn renders_children(&self) -> bool { true }
+    fn renders_children(&self) -> bool {
+        true
+    }
 
     fn on_mount(&mut self) {
         self.scroll_x.subscribe(self.id);
@@ -57,7 +67,10 @@ impl Widget for ScrollViewWidget {
         let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
 
         // 先用背景色填充整个视口，避免子组件比视口小时 Cell::default() 黑底覆盖父组件。
-        let fill = Cell { bg: _theme.surface(), ..Default::default() };
+        let fill = Cell {
+            bg: _theme.surface(),
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
 
         // Render child at its full natural size (larger than viewport)
@@ -66,12 +79,17 @@ impl Widget for ScrollViewWidget {
         let child_screen = self.child.render(child_rect, _theme);
 
         // Copy visible viewport
-        let copy_w = rect.w.min(child_screen.cols().saturating_sub(self.scroll_x.get()));
-        let copy_h = rect.h.min(child_screen.rows().saturating_sub(self.scroll_y.get()));
+        let copy_w = rect
+            .w
+            .min(child_screen.cols().saturating_sub(self.scroll_x.get()));
+        let copy_h = rect
+            .h
+            .min(child_screen.rows().saturating_sub(self.scroll_y.get()));
 
         for row in 0..copy_h {
             for col in 0..copy_w {
-                let src_cell = child_screen.cell_at(self.scroll_x.get() + col, self.scroll_y.get() + row);
+                let src_cell =
+                    child_screen.cell_at(self.scroll_x.get() + col, self.scroll_y.get() + row);
                 if let Some(dest) = screen.cell_at_mut(col, row) {
                     *dest = src_cell;
                 }

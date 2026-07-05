@@ -42,17 +42,17 @@ impl Theme {
         Self {
             variant: ThemeVariant::Dark,
             colors: ThemeColors {
-                surface:     PaletteColor(0),   // pure black (matches Cell::default)
+                surface: PaletteColor(0),       // pure black (matches Cell::default)
                 surface_alt: PaletteColor(234), // #1c1c1c charcoal card bg
-                text:        PaletteColor(252), // #d0d0d0 soft white
-                text_dim:    PaletteColor(243), // #767676 muted gray
-                primary:     PaletteColor(68),  // #5f87d7 soft blue
-                secondary:   PaletteColor(240), // #585858 medium gray
-                danger:      PaletteColor(167), // #d75f5f muted red
-                success:     PaletteColor(71),  // #5faf5f muted green
-                warning:     PaletteColor(179), // #d7af5f gold
-                border:      PaletteColor(59),  // #5f5f5f visible border
-                accent:      PaletteColor(73),  // #5fafaf teal
+                text: PaletteColor(252),        // #d0d0d0 soft white
+                text_dim: PaletteColor(243),    // #767676 muted gray
+                primary: PaletteColor(68),      // #5f87d7 soft blue
+                secondary: PaletteColor(240),   // #585858 medium gray
+                danger: PaletteColor(167),      // #d75f5f muted red
+                success: PaletteColor(71),      // #5faf5f muted green
+                warning: PaletteColor(179),     // #d7af5f gold
+                border: PaletteColor(59),       // #5f5f5f visible border
+                accent: PaletteColor(73),       // #5fafaf teal
             },
         }
     }
@@ -68,11 +68,11 @@ impl Theme {
                 text_dim: PaletteColor(8),     // dark gray
                 primary: PaletteColor(4),      // dark blue
                 secondary: PaletteColor(8),
-                danger: PaletteColor(1),       // red
-                success: PaletteColor(2),      // green
-                warning: PaletteColor(3),      // yellow
+                danger: PaletteColor(1),  // red
+                success: PaletteColor(2), // green
+                warning: PaletteColor(3), // yellow
                 border: PaletteColor(8),
-                accent: PaletteColor(6),       // cyan
+                accent: PaletteColor(6), // cyan
             },
         }
     }
@@ -84,13 +84,13 @@ impl Theme {
             colors: ThemeColors {
                 surface: PaletteColor(0),
                 surface_alt: PaletteColor(0),
-                text: PaletteColor(15),        // bright white
-                text_dim: PaletteColor(7),     // white
-                primary: PaletteColor(12),     // bright blue
+                text: PaletteColor(15),    // bright white
+                text_dim: PaletteColor(7), // white
+                primary: PaletteColor(12), // bright blue
                 secondary: PaletteColor(7),
-                danger: PaletteColor(9),       // bright red
-                success: PaletteColor(10),     // bright green
-                warning: PaletteColor(11),     // bright yellow
+                danger: PaletteColor(9),   // bright red
+                success: PaletteColor(10), // bright green
+                warning: PaletteColor(11), // bright yellow
                 border: PaletteColor(7),
                 accent: PaletteColor(14),
             },
@@ -100,47 +100,80 @@ impl Theme {
     // Semantic color accessors
 
     pub fn surface(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.surface, true_color: None }
+        AnsiColor {
+            palette: self.colors.surface,
+            true_color: None,
+        }
     }
 
     pub fn surface_alt(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.surface_alt, true_color: None }
+        AnsiColor {
+            palette: self.colors.surface_alt,
+            true_color: None,
+        }
     }
 
     pub fn text(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.text, true_color: None }
+        AnsiColor {
+            palette: self.colors.text,
+            true_color: None,
+        }
     }
 
     pub fn text_dim(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.text_dim, true_color: None }
+        AnsiColor {
+            palette: self.colors.text_dim,
+            true_color: None,
+        }
     }
 
     pub fn primary(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.primary, true_color: None }
+        AnsiColor {
+            palette: self.colors.primary,
+            true_color: None,
+        }
     }
 
     pub fn danger(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.danger, true_color: None }
+        AnsiColor {
+            palette: self.colors.danger,
+            true_color: None,
+        }
     }
 
     pub fn success(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.success, true_color: None }
+        AnsiColor {
+            palette: self.colors.success,
+            true_color: None,
+        }
     }
 
     pub fn warning(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.warning, true_color: None }
+        AnsiColor {
+            palette: self.colors.warning,
+            true_color: None,
+        }
     }
 
     pub fn secondary(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.secondary, true_color: None }
+        AnsiColor {
+            palette: self.colors.secondary,
+            true_color: None,
+        }
     }
 
     pub fn border(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.border, true_color: None }
+        AnsiColor {
+            palette: self.colors.border,
+            true_color: None,
+        }
     }
 
     pub fn accent(&self) -> AnsiColor {
-        AnsiColor { palette: self.colors.accent, true_color: None }
+        AnsiColor {
+            palette: self.colors.accent,
+            true_color: None,
+        }
     }
 }
 

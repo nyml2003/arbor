@@ -37,6 +37,10 @@ impl SimulatedBackend {
     pub fn screen(&self) -> &VirtualScreen {
         &self.screen
     }
+
+    pub fn resize(&mut self, cols: u16, rows: u16) {
+        self.screen = VirtualScreen::new(cols, rows);
+    }
 }
 
 struct SimulatedGuard;

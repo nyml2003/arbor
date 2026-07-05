@@ -8,18 +8,18 @@
 use arbor_tui_primitives::cell::{AnsiColor, PaletteColor, Span};
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::container::{Col, Row};
 use arbor_tui_widgets::rich_text::RichText;
-use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 /// The bug: in light theme, cells not explicitly written by a widget
 /// retain Cell::default() background (palette 0 = black), creating dark
-/// blotches inside containers that use a lighter background.
+/// blotches inside stacks that use a lighter background.
 #[test]
 fn light_theme_no_black_bg_anywhere() {
-    let wm = WidgetManager::new();
+    let wm = WidgetFactory::new();
     let t = Theme::light();
 
     // Build a realistic nested layout similar to layout_demo2
@@ -51,16 +51,17 @@ fn light_theme_no_black_bg_anywhere() {
         .children([left, Col::new().flex(1.0).children([center]).build(&wm, &t)])
         .build(&wm, &t);
 
-    let root = Col::new()
-        .children([body])
-        .build(&wm, &t);
+    let root = Col::new().children([body]).build(&wm, &t);
 
     // Render with light theme
     let harness = WidgetHarness::render(&root, 80, 24, &t);
 
     // Sanity: text content is present
     let positions = harness.find_text("Hello from the test harness!");
-    assert!(!positions.is_empty(), "text widget content should appear on screen");
+    assert!(
+        !positions.is_empty(),
+        "text widget content should appear on screen"
+    );
 
     // The critical assertion: no visible character should have black background
     if let Err(offenders) = harness.assert_no_black_bg_on_text() {
@@ -75,7 +76,7 @@ fn light_theme_no_black_bg_anywhere() {
 /// Border + Text nesting: the border interior should match the text background.
 #[test]
 fn border_interior_matches_text_bg_in_light_theme() {
-    let wm = WidgetManager::new();
+    let wm = WidgetFactory::new();
     let t = Theme::light();
 
     let root = Border::new()
@@ -105,12 +106,10 @@ fn border_interior_matches_text_bg_in_light_theme() {
 fn input_no_black_bg_in_light_theme() {
     use arbor_tui_widgets::input::Input;
 
-    let wm = WidgetManager::new();
+    let wm = WidgetFactory::new();
     let t = Theme::light();
 
-    let root = Input::new()
-        .placeholder("type here")
-        .build(&wm, &t);
+    let root = Input::new().placeholder("type here").build(&wm, &t);
 
     let harness = WidgetHarness::render(&root, 40, 1, &t);
 
@@ -129,7 +128,7 @@ fn input_no_black_bg_in_light_theme() {
 /// color (palette 7 = white), not black (palette 0).
 #[test]
 fn light_theme_surface_is_dominant_bg() {
-    let wm = WidgetManager::new();
+    let wm = WidgetFactory::new();
     let t = Theme::light();
 
     // Build a full layout
@@ -147,16 +146,16 @@ fn light_theme_surface_is_dominant_bg() {
             Border::new()
                 .flex(1.0)
                 .title(" Center ")
-                .child(RichText::new()
-                    .line(vec![Span::plain("content goes here")])
-                    .build(&wm, &t))
+                .child(
+                    RichText::new()
+                        .line(vec![Span::plain("content goes here")])
+                        .build(&wm, &t),
+                )
                 .build(&wm, &t),
         ])
         .build(&wm, &t);
 
-    let root = Col::new()
-        .children([header, body])
-        .build(&wm, &t);
+    let root = Col::new().children([header, body]).build(&wm, &t);
 
     let harness = WidgetHarness::render(&root, 80, 20, &t);
 

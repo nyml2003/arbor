@@ -4,12 +4,12 @@ use arbor_tui_render::theme::Theme;
 use arbor_tui_widgets::button::{Button, ButtonStyle};
 use arbor_tui_widgets::list::List;
 use arbor_tui_widgets::tabs::{TabDef, Tabs};
-use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 // ── Button ────────────────────────────────────────────────────────
@@ -45,7 +45,12 @@ fn button_danger_style() {
 fn button_all_styles_no_black_bg() {
     let (wm, _) = wm_and_theme();
     let t = Theme::light();
-    for style in [ButtonStyle::Primary, ButtonStyle::Secondary, ButtonStyle::Danger, ButtonStyle::Default] {
+    for style in [
+        ButtonStyle::Primary,
+        ButtonStyle::Secondary,
+        ButtonStyle::Danger,
+        ButtonStyle::Default,
+    ] {
         let root = Button::new("btn").style(style).build(&wm, &t);
         let h = WidgetHarness::render(&root, 20, 1, &t);
         h.assert_no_black_bg_on_text().unwrap();
@@ -104,8 +109,14 @@ fn tabs_renders_headers() {
     let (wm, t) = wm_and_theme();
     let root = Tabs::new(0)
         .tabs(vec![
-            TabDef { label: "General".into(), content: Text::new("general content").build(&wm, &t) },
-            TabDef { label: "Advanced".into(), content: Text::new("advanced content").build(&wm, &t) },
+            TabDef {
+                label: "General".into(),
+                content: Text::new("general content").build(&wm, &t),
+            },
+            TabDef {
+                label: "Advanced".into(),
+                content: Text::new("advanced content").build(&wm, &t),
+            },
         ])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 60, 10, &t);
@@ -121,9 +132,10 @@ fn tabs_light_theme_no_black_bg() {
     let (wm, _) = wm_and_theme();
     let t = Theme::light();
     let root = Tabs::new(0)
-        .tabs(vec![
-            TabDef { label: "Tab1".into(), content: Text::new("content").fg(t.text()).build(&wm, &t) },
-        ])
+        .tabs(vec![TabDef {
+            label: "Tab1".into(),
+            content: Text::new("content").fg(t.text()).build(&wm, &t),
+        }])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 60, 10, &t);
     h.assert_no_black_bg_on_text().unwrap();

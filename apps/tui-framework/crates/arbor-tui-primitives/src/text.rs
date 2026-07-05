@@ -122,7 +122,12 @@ pub fn truncate(text: &str, max_width: u16, strategy: TruncateStrategy) -> Strin
                 w += cw;
             }
 
-            format!("{}{}{}", left, ellipsis, right.chars().rev().collect::<String>())
+            format!(
+                "{}{}{}",
+                left,
+                ellipsis,
+                right.chars().rev().collect::<String>()
+            )
         }
     }
 }

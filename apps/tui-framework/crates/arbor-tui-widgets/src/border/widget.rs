@@ -90,63 +90,79 @@ impl Widget for BorderWidget {
         let v_line = '\u{2502}'; // │
 
         // Top border
-        if let Some(c) = screen.cell_at_mut(0, 0) { *c = Cell {
+        if let Some(c) = screen.cell_at_mut(0, 0) {
+            *c = Cell {
                 ch: tl,
                 fg: self.fg,
                 bg: self.bg,
                 ..Default::default()
-            }; }
-        if let Some(c) = screen.cell_at_mut(w - 1, 0) { *c = Cell {
+            };
+        }
+        if let Some(c) = screen.cell_at_mut(w - 1, 0) {
+            *c = Cell {
                 ch: tr,
                 fg: self.fg,
                 bg: self.bg,
                 ..Default::default()
-            }; }
+            };
+        }
         for x in 1..w - 1 {
-            if let Some(c) = screen.cell_at_mut(x, 0) { *c = Cell {
+            if let Some(c) = screen.cell_at_mut(x, 0) {
+                *c = Cell {
                     ch: h_line,
                     fg: self.fg,
                     bg: self.bg,
                     ..Default::default()
-                }; }
+                };
+            }
         }
 
         // Bottom border
-        if let Some(c) = screen.cell_at_mut(0, h - 1) { *c = Cell {
+        if let Some(c) = screen.cell_at_mut(0, h - 1) {
+            *c = Cell {
                 ch: bl,
                 fg: self.fg,
                 bg: self.bg,
                 ..Default::default()
-            }; }
-        if let Some(c) = screen.cell_at_mut(w - 1, h - 1) { *c = Cell {
+            };
+        }
+        if let Some(c) = screen.cell_at_mut(w - 1, h - 1) {
+            *c = Cell {
                 ch: br,
                 fg: self.fg,
                 bg: self.bg,
                 ..Default::default()
-            }; }
+            };
+        }
         for x in 1..w - 1 {
-            if let Some(c) = screen.cell_at_mut(x, h - 1) { *c = Cell {
+            if let Some(c) = screen.cell_at_mut(x, h - 1) {
+                *c = Cell {
                     ch: h_line,
                     fg: self.fg,
                     bg: self.bg,
                     ..Default::default()
-                }; }
+                };
+            }
         }
 
         // Side borders
         for y in 1..h - 1 {
-            if let Some(c) = screen.cell_at_mut(0, y) { *c = Cell {
+            if let Some(c) = screen.cell_at_mut(0, y) {
+                *c = Cell {
                     ch: v_line,
                     fg: self.fg,
                     bg: self.bg,
                     ..Default::default()
-                }; }
-            if let Some(c) = screen.cell_at_mut(w - 1, y) { *c = Cell {
+                };
+            }
+            if let Some(c) = screen.cell_at_mut(w - 1, y) {
+                *c = Cell {
                     ch: v_line,
                     fg: self.fg,
                     bg: self.bg,
                     ..Default::default()
-                }; }
+                };
+            }
         }
 
         // Title in top border

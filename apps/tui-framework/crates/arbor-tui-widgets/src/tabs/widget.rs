@@ -3,8 +3,8 @@
 use arbor_tui_primitives::cell::Cell;
 use arbor_tui_primitives::input::KeyHandleResult;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_primitives::text::{self};
+use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
 
@@ -24,9 +24,15 @@ pub struct TabDef {
 }
 
 impl Widget for TabsWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
-    fn focusable(&self) -> bool { true }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
+    fn focusable(&self) -> bool {
+        true
+    }
 
     fn children(&self) -> &[WidgetNode] {
         if self.tabs.is_empty() {
@@ -88,7 +94,10 @@ impl Widget for TabsWidget {
         let active_text = theme.surface();
 
         // 先用背景色填充整个区域（含子组件区域），避免 Cell::default() 黑底覆盖父组件。
-        let fill = Cell { bg: theme.surface(), ..Default::default() };
+        let fill = Cell {
+            bg: theme.surface(),
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
 
         // Tab headers
@@ -97,16 +106,26 @@ impl Widget for TabsWidget {
             let label = format!(" {} ", tab.label);
             let label_w = text::measure_width(&label);
             let is_active = i == self.active;
-            let (fg, row_bg) = if is_active { (active_text, active_bg) } else { (text, tab_bg) };
+            let (fg, row_bg) = if is_active {
+                (active_text, active_bg)
+            } else {
+                (text, tab_bg)
+            };
 
-            let cell = Cell { bg: row_bg, ..Default::default() };
+            let cell = Cell {
+                bg: row_bg,
+                ..Default::default()
+            };
             screen.fill_rect(Rect::new(cx, 0, label_w, 1), &cell);
             screen.write_str(cx, 0, &label, fg, row_bg, Default::default());
             cx += label_w;
         }
 
         // Separator
-        let sep_cell = Cell { bg: theme.border(), ..Default::default() };
+        let sep_cell = Cell {
+            bg: theme.border(),
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 1, rect.w, 1), &sep_cell);
 
         screen
@@ -119,12 +138,18 @@ impl Widget for TabsWidget {
                 self.active = (old + 1) % self.tabs.len().max(1);
             }
             WidgetAction::NavigateLeft => {
-                self.active = if old == 0 { self.tabs.len().saturating_sub(1) } else { old - 1 };
+                self.active = if old == 0 {
+                    self.tabs.len().saturating_sub(1)
+                } else {
+                    old - 1
+                };
             }
             _ => return KeyHandleResult::Bubble,
         }
         if self.active != old {
-            if let Some(ref cb) = self.on_switch { cb(self.active); }
+            if let Some(ref cb) = self.on_switch {
+                cb(self.active);
+            }
         }
         KeyHandleResult::Handled
     }

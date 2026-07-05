@@ -6,12 +6,17 @@ use std::io::{stdout, Stdout, Write};
 use std::time::Instant;
 
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::style::{
+    Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
+};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
+    LeaveAlternateScreen,
+};
 use crossterm::{execute, queue};
 
-use arbor_tui_render::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};
 use arbor_tui_primitives::cell::{AnsiColor, Attrs};
+use arbor_tui_render::backend::{BackendError, BackendResult, TerminalBackend, TerminalGuard};
 use arbor_tui_render::diff::DirtyRegion;
 use arbor_tui_render::screen::VirtualScreen;
 
@@ -46,14 +51,24 @@ impl CrosstermBackend {
     /// Convert framework AnsiColor to crossterm Color.
     fn to_color(color: &AnsiColor) -> Color {
         if let Some(rgb) = &color.true_color {
-            Color::Rgb { r: rgb.0, g: rgb.1, b: rgb.2 }
+            Color::Rgb {
+                r: rgb.0,
+                g: rgb.1,
+                b: rgb.2,
+            }
         } else {
             Color::AnsiValue(color.palette.0)
         }
     }
 
     /// Write a single cell to the current cursor position, propagating errors.
-    fn write_cell(&mut self, ch: char, fg: &AnsiColor, bg: &AnsiColor, attrs: &Attrs) -> BackendResult<()> {
+    fn write_cell(
+        &mut self,
+        ch: char,
+        fg: &AnsiColor,
+        bg: &AnsiColor,
+        attrs: &Attrs,
+    ) -> BackendResult<()> {
         if !self.no_color {
             queue!(
                 self.stdout,
@@ -62,11 +77,21 @@ impl CrosstermBackend {
             )?;
         }
 
-        if attrs.bold   { queue!(self.stdout, SetAttribute(Attribute::Bold))?; }
-        if attrs.dim    { queue!(self.stdout, SetAttribute(Attribute::Dim))?; }
-        if attrs.italic { queue!(self.stdout, SetAttribute(Attribute::Italic))?; }
-        if attrs.underline { queue!(self.stdout, SetAttribute(Attribute::Underlined))?; }
-        if attrs.reverse { queue!(self.stdout, SetAttribute(Attribute::Reverse))?; }
+        if attrs.bold {
+            queue!(self.stdout, SetAttribute(Attribute::Bold))?;
+        }
+        if attrs.dim {
+            queue!(self.stdout, SetAttribute(Attribute::Dim))?;
+        }
+        if attrs.italic {
+            queue!(self.stdout, SetAttribute(Attribute::Italic))?;
+        }
+        if attrs.underline {
+            queue!(self.stdout, SetAttribute(Attribute::Underlined))?;
+        }
+        if attrs.reverse {
+            queue!(self.stdout, SetAttribute(Attribute::Reverse))?;
+        }
 
         queue!(self.stdout, Print(ch))?;
         // Reset attributes after each cell to avoid leaking styles
@@ -88,8 +113,7 @@ impl TerminalGuard for CrosstermGuard {
 
 impl TerminalBackend for CrosstermBackend {
     fn enter_raw_mode(&self) -> BackendResult<Box<dyn TerminalGuard>> {
-        enable_raw_mode()
-            .map_err(|e| BackendError::with_source("failed to enter raw mode", e))?;
+        enable_raw_mode().map_err(|e| BackendError::with_source("failed to enter raw mode", e))?;
         Ok(Box::new(CrosstermGuard))
     }
 
@@ -135,8 +159,7 @@ impl TerminalBackend for CrosstermBackend {
             // Clear to end of line after the LAST region on each row.
             // Prevents stale content from persisting after resize or when
             // new content is shorter than old content on the same row.
-            let is_last_on_row = i + 1 >= region_count
-                || merged[i + 1].row != region.row;
+            let is_last_on_row = i + 1 >= region_count || merged[i + 1].row != region.row;
             if is_last_on_row {
                 queue!(self.stdout, Clear(ClearType::UntilNewLine))?;
             }
@@ -193,8 +216,12 @@ impl TerminalBackend for CrosstermBackend {
         Ok(())
     }
 
-    fn last_emit_queue_us(&self) -> u64 { self.last_queue_us }
-    fn last_emit_flush_us(&self) -> u64 { self.last_flush_us }
+    fn last_emit_queue_us(&self) -> u64 {
+        self.last_queue_us
+    }
+    fn last_emit_flush_us(&self) -> u64 {
+        self.last_flush_us
+    }
 }
 
 /// Merge adjacent dirty regions on the same row.
@@ -206,7 +233,9 @@ fn merge_adjacent(regions: &[DirtyRegion]) -> Vec<DirtyRegion> {
     let mut merged: Vec<DirtyRegion> = vec![regions[0].clone()];
 
     for next in &regions[1..] {
-        let last = merged.last_mut().expect("merged must be non-empty after initial push");
+        let last = merged
+            .last_mut()
+            .expect("merged must be non-empty after initial push");
         if next.row == last.row && next.start_col <= last.end_col {
             last.end_col = last.end_col.max(next.end_col);
         } else {

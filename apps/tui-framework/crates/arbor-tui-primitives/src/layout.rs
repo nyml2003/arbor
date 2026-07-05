@@ -39,7 +39,12 @@ pub struct RectOffset {
 
 impl RectOffset {
     pub const fn all(v: u16) -> Self {
-        Self { top: v, right: v, bottom: v, left: v }
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
     }
 
     pub const fn horizontal(&self) -> u16 {

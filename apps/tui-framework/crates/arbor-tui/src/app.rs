@@ -6,15 +6,15 @@ use std::time::Instant;
 
 use anyhow::Context;
 
+use arbor_tui_primitives::layout::{Rect, Size};
+use arbor_tui_reactive::dirty::DirtyTracker;
 use arbor_tui_render::backend::TerminalBackend;
 use arbor_tui_render::diff::{diff, merge_regions};
-use arbor_tui_reactive::dirty::DirtyTracker;
-use arbor_tui_widget::focus::{find_widget_mut, FocusManager};
-use arbor_tui_primitives::layout::{Rect, Size};
-use arbor_tui_widget::layout_engine::{layout_tree, measure_tree};
-use arbor_tui_widget::render::render_tree;
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
+use arbor_tui_widget::focus::{find_widget_mut, FocusManager};
+use arbor_tui_widget::layout_engine::{layout_tree, measure_tree};
+use arbor_tui_widget::render::render_tree;
 use arbor_tui_widget::widget::{WidgetAction, WidgetId, WidgetNode};
 
 /// Frame rate cap — 60fps = ~16.67ms minimum interval.
@@ -53,7 +53,9 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { theme: Theme::dark() }
+        Self {
+            theme: Theme::dark(),
+        }
     }
 }
 
@@ -98,6 +100,10 @@ impl App {
 
     pub fn screen_size(&self) -> (u16, u16) {
         (self.screen.cols(), self.screen.rows())
+    }
+
+    pub fn screen(&self) -> &VirtualScreen {
+        &self.screen
     }
 
     /// Notify of a potential terminal size change.
@@ -149,7 +155,7 @@ impl App {
         let force = !self.dirty_tracker.is_empty();
         let dirty_count = self.dirty_tracker.drain().len();
 
-        if !force {
+        if self.frame_seq > 0 && !force {
             let elapsed = self.last_frame_time.elapsed();
             if elapsed.as_millis() < MIN_FRAME_INTERVAL_MS as u128 {
                 return Ok(RenderResult::Throttled);
@@ -167,7 +173,13 @@ impl App {
         let layout_us = t0.elapsed().as_micros() as u64;
 
         let t1 = Instant::now();
-        let new_screen = render_tree((cols, rows), root, &layout, theme, self.focus_manager.current());
+        let new_screen = render_tree(
+            (cols, rows),
+            root,
+            &layout,
+            theme,
+            self.focus_manager.current(),
+        );
         let render_us = t1.elapsed().as_micros() as u64;
 
         let t2 = Instant::now();
@@ -182,7 +194,8 @@ impl App {
         }
 
         let t3 = Instant::now();
-        backend.emit(&regions, &new_screen)
+        backend
+            .emit(&regions, &new_screen)
             .context("backend emit failed")?;
         let emit_us = t3.elapsed().as_micros() as u64;
 
@@ -217,11 +230,17 @@ impl App {
     /// Move focus to the next focusable widget (Tab).
     pub fn focus_next(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.focus_next()
+        let new = self
+            .focus_manager
+            .focus_next()
             .context("focus_next failed")?;
         if old != new {
-            if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }
-            if let Some(id) = new { self.dirty_tracker.mark_dirty(id); }
+            if let Some(id) = old {
+                self.dirty_tracker.mark_dirty(id);
+            }
+            if let Some(id) = new {
+                self.dirty_tracker.mark_dirty(id);
+            }
         }
         Ok(())
     }
@@ -229,11 +248,17 @@ impl App {
     /// Move focus to the previous focusable widget (Shift+Tab).
     pub fn focus_prev(&mut self) -> anyhow::Result<()> {
         let old = self.focus_manager.current();
-        let new = self.focus_manager.focus_prev()
+        let new = self
+            .focus_manager
+            .focus_prev()
             .context("focus_prev failed")?;
         if old != new {
-            if let Some(id) = old { self.dirty_tracker.mark_dirty(id); }
-            if let Some(id) = new { self.dirty_tracker.mark_dirty(id); }
+            if let Some(id) = old {
+                self.dirty_tracker.mark_dirty(id);
+            }
+            if let Some(id) = new {
+                self.dirty_tracker.mark_dirty(id);
+            }
         }
         Ok(())
     }
@@ -243,11 +268,7 @@ impl App {
     }
 
     /// Dispatch a key event to the currently focused widget, with event bubbling.
-    pub fn dispatch_action(
-        &mut self,
-        root: &mut WidgetNode,
-        action: &WidgetAction,
-    ) {
+    pub fn dispatch_action(&mut self, root: &mut WidgetNode, action: &WidgetAction) {
         let target = match self.focus_manager.current() {
             Some(id) => id,
             None => return,
@@ -259,7 +280,10 @@ impl App {
         for widget_id in &chain {
             if let Some(widget) = find_widget_mut(root, *widget_id) {
                 let result = widget.perform(action);
-                if matches!(result, arbor_tui_primitives::input::KeyHandleResult::Handled) {
+                if matches!(
+                    result,
+                    arbor_tui_primitives::input::KeyHandleResult::Handled
+                ) {
                     self.dirty_tracker.mark_dirty(*widget_id);
                     return;
                 }
@@ -267,7 +291,7 @@ impl App {
         }
     }
 
-    pub fn run(&mut self, _backend: &mut dyn TerminalBackend) {
+    pub fn run(&mut self) {
         self.running = true;
     }
 }

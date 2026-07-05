@@ -14,7 +14,7 @@ pub fn install_panic_hook() {
         let mut stdout = std::io::stdout();
         // Best-effort — we're already panicking, so silently ignore write errors.
         let _ = write!(stdout, "\x1b[?1049l"); // exit alternate screen
-        let _ = write!(stdout, "\x1b[?25h");   // show cursor
+        let _ = write!(stdout, "\x1b[?25h"); // show cursor
         let _ = stdout.flush();
         eprintln!("[arbor-tui] PANIC: {info}");
     }));

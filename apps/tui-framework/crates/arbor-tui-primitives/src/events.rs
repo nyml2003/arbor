@@ -8,22 +8,47 @@ use crate::widget_id::WidgetId;
 #[derive(Clone, Debug)]
 pub enum FrameworkEvent {
     // ── Render pipeline ──
-    FrameStart { seq: u64 },
-    LayoutStart { widget_count: usize },
-    LayoutEnd { duration_us: u64 },
-    DiffStart { screen_size: (u16, u16) },
-    DiffEnd { duration_us: u64, dirty_regions: usize, dirty_cells: usize },
-    EmitStart { region_count: usize },
-    EmitEnd { duration_us: u64 },
+    FrameStart {
+        seq: u64,
+    },
+    LayoutStart {
+        widget_count: usize,
+    },
+    LayoutEnd {
+        duration_us: u64,
+    },
+    DiffStart {
+        screen_size: (u16, u16),
+    },
+    DiffEnd {
+        duration_us: u64,
+        dirty_regions: usize,
+        dirty_cells: usize,
+    },
+    EmitStart {
+        region_count: usize,
+    },
+    EmitEnd {
+        duration_us: u64,
+    },
     FrameEnd(FrameStats),
 
     // ── Input ──
     InputReceived(KeyEvent),
-    InputMerged { before: usize, after: usize },
-    FocusChanged { from: Option<WidgetId>, to: Option<WidgetId> },
+    InputMerged {
+        before: usize,
+        after: usize,
+    },
+    FocusChanged {
+        from: Option<WidgetId>,
+        to: Option<WidgetId>,
+    },
 
     // ── Signal ──
-    SignalSet { widget_id: WidgetId, generation: u64 },
+    SignalSet {
+        widget_id: WidgetId,
+        generation: u64,
+    },
 
     // ── Lifecycle ──
     WidgetMounted(WidgetId),
@@ -32,8 +57,13 @@ pub enum FrameworkEvent {
     AppQuit,
 
     // ── Errors / warnings ──
-    Warning { widget_id: Option<WidgetId>, message: String },
-    Error { message: String },
+    Warning {
+        widget_id: Option<WidgetId>,
+        message: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// Per-frame performance statistics.

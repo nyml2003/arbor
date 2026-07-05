@@ -2,12 +2,12 @@
 // Zero per-type dispatch. Each widget's render() method handles its own visuals.
 // Focus info is passed through so widgets can show cursor/selection.
 
+use crate::widget::WidgetNode;
 use arbor_tui_primitives::cell::Cell;
 use arbor_tui_primitives::layout::Rect;
 use arbor_tui_primitives::widget_id::{WidgetId, WidgetLayoutInfo};
 use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
-use crate::widget::WidgetNode;
 
 use std::collections::HashMap;
 
@@ -20,7 +20,10 @@ pub fn render_tree(
     focused: Option<WidgetId>,
 ) -> VirtualScreen {
     let mut screen = VirtualScreen::new(screen_size.0, screen_size.1);
-    let bg_cell = Cell { bg: theme.surface(), ..Default::default() };
+    let bg_cell = Cell {
+        bg: theme.surface(),
+        ..Default::default()
+    };
     screen.fill_rect(Rect::new(0, 0, screen_size.0, screen_size.1), &bg_cell);
     render_subtree(root, layout, theme, focused, &mut screen);
     screen
@@ -56,7 +59,12 @@ fn render_subtree(
 // This avoids changing the Widget trait signature while allowing
 // individual widgets to check focus.
 impl WidgetNode {
-    fn render_with_focus(&self, rect: Rect, theme: &Theme, focused: Option<WidgetId>) -> VirtualScreen {
+    fn render_with_focus(
+        &self,
+        rect: Rect,
+        theme: &Theme,
+        focused: Option<WidgetId>,
+    ) -> VirtualScreen {
         // Check if this node is the focused one, and use a specialized
         // render path for widgets that support focus indication.
         if focused == Some(self.id()) {

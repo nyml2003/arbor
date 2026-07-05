@@ -2,8 +2,10 @@
 
 pub mod app;
 pub mod event_loop;
+pub mod runtime;
 pub mod signal_manager;
 pub mod terminal;
+pub mod testing;
 
 // Re-export common types for single-import convenience
 pub use arbor_tui_backend::crossterm_backend::CrosstermBackend;

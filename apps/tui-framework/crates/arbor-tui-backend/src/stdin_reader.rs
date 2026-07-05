@@ -2,8 +2,8 @@
 // Runs a dedicated thread for blocking stdin reads, sends KeyEvents via mpsc.
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError};
-use std::time::Duration;
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 
@@ -100,7 +100,11 @@ impl InputReader for StdinReader {
                 }
                 Err(_) => {
                     // Channel disconnected — return a dummy event
-                    return KeyEvent { key: Key::Char(' '), modifiers: Modifiers::default(), kind: KeyEventKind::Press };
+                    return KeyEvent {
+                        key: Key::Char(' '),
+                        modifiers: Modifiers::default(),
+                        kind: KeyEventKind::Press,
+                    };
                 }
             }
         }
@@ -160,7 +164,11 @@ fn map_crossterm_event(event: Event) -> Option<KeyEvent> {
                 shift: key.modifiers.contains(KeyModifiers::SHIFT),
             };
 
-            Some(KeyEvent { key: k, modifiers, kind })
+            Some(KeyEvent {
+                key: k,
+                modifiers,
+                kind,
+            })
         }
         Event::Resize(w, h) => {
             // Resize events are handled separately via the SignalManager.
@@ -178,7 +186,8 @@ mod tests {
 
     #[test]
     fn map_char_event() {
-        let crossterm_key = crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
+        let crossterm_key =
+            crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty());
         let result = map_crossterm_event(Event::Key(crossterm_key));
         assert!(result.is_some());
         let ke = result.unwrap();
@@ -188,10 +197,8 @@ mod tests {
 
     #[test]
     fn map_ctrl_c() {
-        let crossterm_key = crossterm::event::KeyEvent::new(
-            KeyCode::Char('c'),
-            KeyModifiers::CONTROL,
-        );
+        let crossterm_key =
+            crossterm::event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         let result = map_crossterm_event(Event::Key(crossterm_key));
         assert!(result.is_some());
         let ke = result.unwrap();

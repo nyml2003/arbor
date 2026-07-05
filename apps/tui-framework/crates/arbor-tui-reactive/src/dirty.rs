@@ -1,8 +1,8 @@
 // DirtyTracker — tracks which widgets need re-rendering.
 // Owned by the App context, NOT a global static.
 
-use std::collections::HashSet;
 use arbor_tui_primitives::widget_id::WidgetId;
+use std::collections::HashSet;
 
 /// Accumulates dirty widget IDs during an event processing cycle.
 /// At the end of the cycle, `drain()` is called to get the set and clear it.
@@ -84,7 +84,10 @@ mod tests {
         dt.force_render();
         assert!(!dt.is_empty(), "force should make is_empty() return false");
         let drained = dt.drain();
-        assert!(drained.is_empty(), "drain with force should return empty set");
+        assert!(
+            drained.is_empty(),
+            "drain with force should return empty set"
+        );
         assert!(dt.is_empty(), "after drain, force should be cleared");
     }
 }

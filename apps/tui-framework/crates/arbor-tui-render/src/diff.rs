@@ -146,12 +146,31 @@ mod tests {
     #[test]
     fn merge_adjacent_regions() {
         let mut regions = vec![
-            DirtyRegion { row: 0, start_col: 0, end_col: 2 },
-            DirtyRegion { row: 0, start_col: 2, end_col: 5 },
-            DirtyRegion { row: 1, start_col: 3, end_col: 4 },
+            DirtyRegion {
+                row: 0,
+                start_col: 0,
+                end_col: 2,
+            },
+            DirtyRegion {
+                row: 0,
+                start_col: 2,
+                end_col: 5,
+            },
+            DirtyRegion {
+                row: 1,
+                start_col: 3,
+                end_col: 4,
+            },
         ];
         merge_regions(&mut regions);
         assert_eq!(regions.len(), 2);
-        assert_eq!(regions[0], DirtyRegion { row: 0, start_col: 0, end_col: 5 });
+        assert_eq!(
+            regions[0],
+            DirtyRegion {
+                row: 0,
+                start_col: 0,
+                end_col: 5
+            }
+        );
     }
 }

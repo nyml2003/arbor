@@ -3,12 +3,12 @@
 
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 #[test]
@@ -34,9 +34,15 @@ fn border_rounded_corners() {
     let h = WidgetHarness::render(&root, 40, 5, &t);
     // Rounded corner chars should be present
     let tl = h.cell_at(0, 0).ch;
-    assert!(tl == '\u{256D}' || tl == '\u{250C}', "expected corner char, got {tl:?}");
+    assert!(
+        tl == '\u{256D}' || tl == '\u{250C}',
+        "expected corner char, got {tl:?}"
+    );
     let tr = h.cell_at(39, 0).ch;
-    assert!(tr == '\u{256E}' || tr == '\u{2510}', "expected corner char, got {tr:?}");
+    assert!(
+        tr == '\u{256E}' || tr == '\u{2510}',
+        "expected corner char, got {tr:?}"
+    );
 }
 
 #[test]

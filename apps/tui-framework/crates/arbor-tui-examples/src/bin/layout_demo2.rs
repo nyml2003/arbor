@@ -22,11 +22,11 @@ use arbor_tui::TerminalBackend;
 use arbor_tui_backend::crossterm_backend::CrosstermBackend;
 use arbor_tui_backend::stdin_reader::StdinReader;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::container::{Col, Row};
 use arbor_tui_widgets::input::Input;
 use arbor_tui_widgets::rich_text::RichText;
+use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::text::Text;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 fn main() {
     if let Err(e) = run() {
@@ -48,16 +48,14 @@ fn run() -> anyhow::Result<()> {
     let theme_changed = Rc::new(Cell::new(false));
     let (mut cols, mut rows) = backend.size()?;
     let mut app = App::new(cols, rows, AppConfig::default());
-    let wm = WidgetManager::new();
+    let wm = WidgetFactory::new();
     let mut root = build_ui(&wm, &theme.borrow(), cols, rows, &theme_changed, &theme);
     let mut needs_rebuild = true;
     let mut first = true;
 
     loop {
         let (new_cols, new_rows) = backend.size()?;
-        if (new_cols != cols || new_rows != rows)
-            && app.check_resize(new_cols, new_rows, 50)
-        {
+        if (new_cols != cols || new_rows != rows) && app.check_resize(new_cols, new_rows, 50) {
             cols = new_cols;
             rows = new_rows;
             backend.clear()?;
@@ -114,7 +112,7 @@ fn run() -> anyhow::Result<()> {
 }
 
 fn build_ui(
-    wm: &WidgetManager,
+    wm: &WidgetFactory,
     t: &Theme,
     cols: u16,
     rows: u16,

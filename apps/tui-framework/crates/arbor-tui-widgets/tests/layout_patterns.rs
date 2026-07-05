@@ -2,13 +2,13 @@
 
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::container::{Col, Row};
-use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 // ── Col ───────────────────────────────────────────────────────────
@@ -36,7 +36,12 @@ fn col_padding_offsets_children() {
     let (wm, t) = wm_and_theme();
     use arbor_tui_primitives::layout::RectOffset;
     let root = Col::new()
-        .padding(RectOffset { top: 2, bottom: 0, left: 4, right: 0 })
+        .padding(RectOffset {
+            top: 2,
+            bottom: 0,
+            left: 4,
+            right: 0,
+        })
         .children([Text::new("padded").build(&wm, &t)])
         .build(&wm, &t);
     let h = WidgetHarness::render(&root, 40, 10, &t);
@@ -97,8 +102,15 @@ fn header_body_footer_layout() {
     let body = Row::new()
         .flex(1.0)
         .children([
-            Border::new().title(" Left ").child(Text::new("left").build(&wm, &t)).build(&wm, &t),
-            Border::new().flex(1.0).title(" Center ").child(Text::new("center").build(&wm, &t)).build(&wm, &t),
+            Border::new()
+                .title(" Left ")
+                .child(Text::new("left").build(&wm, &t))
+                .build(&wm, &t),
+            Border::new()
+                .flex(1.0)
+                .title(" Center ")
+                .child(Text::new("center").build(&wm, &t))
+                .build(&wm, &t),
         ])
         .build(&wm, &t);
 
@@ -107,9 +119,7 @@ fn header_body_footer_layout() {
         .child(Text::new("status").build(&wm, &t))
         .build(&wm, &t);
 
-    let root = Col::new()
-        .children([header, body, footer])
-        .build(&wm, &t);
+    let root = Col::new().children([header, body, footer]).build(&wm, &t);
 
     let h = WidgetHarness::render(&root, 80, 24, &t);
     assert!(!h.find_text("header text").is_empty());
@@ -128,7 +138,10 @@ fn deeply_nested_light_theme_no_black_bg() {
     let middle_col = Col::new()
         .children([Text::new("above").fg(t.text()).build(&wm, &t), inner_border])
         .build(&wm, &t);
-    let outer = Border::new().title(" Outer ").child(middle_col).build(&wm, &t);
+    let outer = Border::new()
+        .title(" Outer ")
+        .child(middle_col)
+        .build(&wm, &t);
 
     let h = WidgetHarness::render(&outer, 80, 20, &t);
     h.assert_no_black_bg_on_text().unwrap();
@@ -161,7 +174,7 @@ fn three_column_flex_layout() {
 // ── Edge cases ────────────────────────────────────────────────────
 
 #[test]
-fn empty_container() {
+fn empty_stack() {
     let (wm, t) = wm_and_theme();
     let root = Col::new().build(&wm, &t);
     let h = WidgetHarness::render(&root, 80, 24, &t);

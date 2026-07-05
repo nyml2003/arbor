@@ -3,14 +3,19 @@
 use arbor_tui_primitives::cell::{Attrs, Cell};
 use arbor_tui_primitives::input::KeyHandleResult;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_reactive::signal::ReadSignal;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
+use arbor_tui_reactive::signal::ReadSignal;
+use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub enum ButtonStyle { Primary, Secondary, Danger, Default }
+pub enum ButtonStyle {
+    Primary,
+    Secondary,
+    Danger,
+    Default,
+}
 
 pub struct ButtonWidget {
     pub id: WidgetId,
@@ -21,11 +26,19 @@ pub struct ButtonWidget {
 }
 
 impl Widget for ButtonWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
 
-    fn on_mount(&mut self) { self.label.subscribe(self.id); }
-    fn on_unmount(&mut self) { self.label.unsubscribe(self.id); }
+    fn on_mount(&mut self) {
+        self.label.subscribe(self.id);
+    }
+    fn on_unmount(&mut self) {
+        self.label.unsubscribe(self.id);
+    }
 
     fn measure(&self, _available: Size) -> SizeConstraint {
         if let (Some(w_val), Some(h_val)) = (self.props.width, self.props.height) {
@@ -47,14 +60,20 @@ impl Widget for ButtonWidget {
             ButtonStyle::Secondary => (theme.text(), theme.surface_alt()),
             ButtonStyle::Default => (theme.text(), theme.surface_alt()),
         };
-        let attrs = Attrs { bold: true, ..Default::default() };
+        let attrs = Attrs {
+            bold: true,
+            ..Default::default()
+        };
 
         let display = format!(" {} ", self.label.get());
         let truncated = text::truncate(&display, rect.w, TruncateStrategy::End);
         let label_w = text::measure_width(&truncated);
         let offset = rect.w.saturating_sub(label_w) / 2;
 
-        let bg_cell = Cell { bg, ..Default::default() };
+        let bg_cell = Cell {
+            bg,
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w, 1), &bg_cell);
         screen.write_str(offset, 0, &truncated, fg, bg, attrs);
         screen
@@ -63,7 +82,9 @@ impl Widget for ButtonWidget {
     fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         match action {
             WidgetAction::Activate => {
-                if let Some(ref cb) = self.on_click { cb(); }
+                if let Some(ref cb) = self.on_click {
+                    cb();
+                }
                 KeyHandleResult::Handled
             }
             _ => KeyHandleResult::Bubble,
@@ -72,5 +93,7 @@ impl Widget for ButtonWidget {
 }
 
 impl Drop for ButtonWidget {
-    fn drop(&mut self) { self.label.unsubscribe(self.id); }
+    fn drop(&mut self) {
+        self.label.unsubscribe(self.id);
+    }
 }

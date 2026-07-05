@@ -19,8 +19,7 @@ impl PaletteColor {
 /// When the terminal does not support 24-bit RGB, the `true_color` field is
 /// silently dropped and only the palette index is emitted. The framework does
 /// NOT perform RGB→256 mapping — that responsibility belongs to the theme layer.
-#[derive(Copy, Clone, Debug)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct AnsiColor {
     pub palette: PaletteColor,
     pub true_color: Option<Rgb>,
@@ -33,7 +32,6 @@ impl PartialEq for AnsiColor {
 }
 
 impl Eq for AnsiColor {}
-
 
 impl AnsiColor {
     pub const fn from_palette(index: u8) -> Self {
@@ -56,8 +54,7 @@ impl AnsiColor {
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 /// Character attributes stored as bitflags-compatible booleans.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[derive(Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Attrs {
     pub bold: bool,
     pub dim: bool,
@@ -65,7 +62,6 @@ pub struct Attrs {
     pub underline: bool,
     pub reverse: bool,
 }
-
 
 /// A single character cell on the terminal grid.
 ///
@@ -113,7 +109,10 @@ impl Default for Cell {
 
 impl Cell {
     pub fn new(ch: char) -> Self {
-        Self { ch, ..Default::default() }
+        Self {
+            ch,
+            ..Default::default()
+        }
     }
 
     pub fn with_fg(mut self, fg: AnsiColor) -> Self {
@@ -144,23 +143,55 @@ pub struct Span {
 
 impl Span {
     pub fn new(text: impl Into<String>, fg: AnsiColor, bg: AnsiColor, attrs: Attrs) -> Self {
-        Self { text: text.into(), fg, bg, attrs }
+        Self {
+            text: text.into(),
+            fg,
+            bg,
+            attrs,
+        }
     }
 
     pub fn plain(text: impl Into<String>) -> Self {
-        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs::default() }
+        Self {
+            text: text.into(),
+            fg: AnsiColor::default(),
+            bg: AnsiColor::default(),
+            attrs: Attrs::default(),
+        }
     }
 
     pub fn bold(text: impl Into<String>) -> Self {
-        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs { bold: true, ..Default::default() } }
+        Self {
+            text: text.into(),
+            fg: AnsiColor::default(),
+            bg: AnsiColor::default(),
+            attrs: Attrs {
+                bold: true,
+                ..Default::default()
+            },
+        }
     }
 
     pub fn italic(text: impl Into<String>) -> Self {
-        Self { text: text.into(), fg: AnsiColor::default(), bg: AnsiColor::default(), attrs: Attrs { italic: true, ..Default::default() } }
+        Self {
+            text: text.into(),
+            fg: AnsiColor::default(),
+            bg: AnsiColor::default(),
+            attrs: Attrs {
+                italic: true,
+                ..Default::default()
+            },
+        }
     }
 
-    pub fn with_fg(mut self, fg: AnsiColor) -> Self { self.fg = fg; self }
-    pub fn with_bg(mut self, bg: AnsiColor) -> Self { self.bg = bg; self }
+    pub fn with_fg(mut self, fg: AnsiColor) -> Self {
+        self.fg = fg;
+        self
+    }
+    pub fn with_bg(mut self, bg: AnsiColor) -> Self {
+        self.bg = bg;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -178,13 +209,25 @@ mod tests {
 
     #[test]
     fn cell_equality_ignores_truecolor() {
-        let a = Cell { fg: AnsiColor::from_palette(1), ..Default::default() };
-        let b = Cell { fg: AnsiColor::from_rgb(255, 0, 0), ..Default::default() };
+        let a = Cell {
+            fg: AnsiColor::from_palette(1),
+            ..Default::default()
+        };
+        let b = Cell {
+            fg: AnsiColor::from_rgb(255, 0, 0),
+            ..Default::default()
+        };
         // palette indices differ (1 vs 7), so they are NOT equal
         assert_ne!(a, b);
 
-        let c = Cell { fg: AnsiColor::from_palette(7), ..Default::default() };
-        let d = Cell { fg: AnsiColor::from_rgb(255, 0, 0), ..Default::default() };
+        let c = Cell {
+            fg: AnsiColor::from_palette(7),
+            ..Default::default()
+        };
+        let d = Cell {
+            fg: AnsiColor::from_rgb(255, 0, 0),
+            ..Default::default()
+        };
         // same palette index (7), true_color ignored → equal
         assert_eq!(c, d);
     }

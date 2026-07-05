@@ -7,14 +7,14 @@ use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::layout_engine::{layout_tree, measure_tree};
 use arbor_tui_widget::render::render_tree;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::container::Col;
 use arbor_tui_widgets::list::List;
-use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::stack::Col;
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::text::Text;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 // ── Large renders ─────────────────────────────────────────────────
@@ -86,13 +86,23 @@ fn realistic_layout_at_various_sizes() {
             .child(Text::new("v0.1.0").build(&wm, &t))
             .build(&wm, &t);
 
-        use arbor_tui_widgets::container::Row;
+        use arbor_tui_widgets::stack::Row;
         let body = Row::new()
             .flex(1.0)
             .children([
-                Border::new().title(" Nav ").child(Text::new("menu").build(&wm, &t)).build(&wm, &t),
-                Border::new().flex(1.0).title(" Main ").child(Text::new("content").build(&wm, &t)).build(&wm, &t),
-                Border::new().title(" Info ").child(Text::new("info").build(&wm, &t)).build(&wm, &t),
+                Border::new()
+                    .title(" Nav ")
+                    .child(Text::new("menu").build(&wm, &t))
+                    .build(&wm, &t),
+                Border::new()
+                    .flex(1.0)
+                    .title(" Main ")
+                    .child(Text::new("content").build(&wm, &t))
+                    .build(&wm, &t),
+                Border::new()
+                    .title(" Info ")
+                    .child(Text::new("info").build(&wm, &t))
+                    .build(&wm, &t),
             ])
             .build(&wm, &t);
 
@@ -101,9 +111,7 @@ fn realistic_layout_at_various_sizes() {
             .child(Text::new("OK").build(&wm, &t))
             .build(&wm, &t);
 
-        let root = Col::new()
-            .children([header, body, footer])
-            .build(&wm, &t);
+        let root = Col::new().children([header, body, footer]).build(&wm, &t);
 
         let h = WidgetHarness::render(&root, cols, rows, &t);
         // Just verify it rendered without corrupting the screen dimensions
@@ -129,7 +137,7 @@ fn multiple_resize_cycles() {
     ];
 
     for &(cols, rows) in &resize_sequence {
-        let wm = WidgetManager::new();
+        let wm = WidgetFactory::new();
 
         let root = Col::new()
             .children([
@@ -182,11 +190,7 @@ fn rapid_resize_100_cycles() {
 
     // Run 100 resize+render cycles, alternating between two sizes
     for i in 0..100 {
-        let (cols, rows) = if i % 2 == 0 {
-            (80, 24)
-        } else {
-            (100, 30)
-        };
+        let (cols, rows) = if i % 2 == 0 { (80, 24) } else { (100, 30) };
 
         // Manually run the pipeline for each resize
         let size = arbor_tui_primitives::layout::Size { w: cols, h: rows };

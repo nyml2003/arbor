@@ -195,7 +195,10 @@ mod tests {
         assert_eq!(s.subscribers().len(), 1);
 
         s.set("world".to_string(), &mut dt);
-        assert!(dt.is_dirty(id), "subscriber should be marked dirty after set");
+        assert!(
+            dt.is_dirty(id),
+            "subscriber should be marked dirty after set"
+        );
     }
 
     #[test]

@@ -25,8 +25,12 @@ impl VirtualScreen {
         }
     }
 
-    pub fn cols(&self) -> u16 { self.cols }
-    pub fn rows(&self) -> u16 { self.rows }
+    pub fn cols(&self) -> u16 {
+        self.cols
+    }
+    pub fn rows(&self) -> u16 {
+        self.rows
+    }
 
     /// Read a cell at (col, row). Returns `Cell::default()` for out-of-bounds access.
     pub fn cell_at(&self, col: u16, row: u16) -> Cell {
@@ -50,7 +54,15 @@ impl VirtualScreen {
     /// Characters that extend beyond the right edge are silently dropped.
     /// CJK characters occupy 2 columns — the column after a wide char is skipped.
     /// Tab characters must be pre-expanded by the caller.
-    pub fn write_str(&mut self, col: u16, row: u16, text: &str, fg: AnsiColor, bg: AnsiColor, attrs: Attrs) {
+    pub fn write_str(
+        &mut self,
+        col: u16,
+        row: u16,
+        text: &str,
+        fg: AnsiColor,
+        bg: AnsiColor,
+        attrs: Attrs,
+    ) {
         if row >= self.rows {
             return;
         }
@@ -82,12 +94,16 @@ impl VirtualScreen {
     /// Write a sequence of styled spans at (col, row).
     /// Each span has its own fg/bg/attrs — inline rich text.
     pub fn write_spans(&mut self, col: u16, row: u16, spans: &[Span]) {
-        if row >= self.rows { return; }
+        if row >= self.rows {
+            return;
+        }
         let mut c = col;
         for span in spans {
             for ch in span.text.chars() {
                 let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
-                if c + cw > self.cols { break; }
+                if c + cw > self.cols {
+                    break;
+                }
                 if let Some(cell) = self.cell_at_mut(c, row) {
                     cell.ch = ch;
                     cell.fg = span.fg;
@@ -110,9 +126,13 @@ impl VirtualScreen {
     /// Fill a rectangular region with a single cell.
     pub fn fill_rect(&mut self, rect: Rect, cell: &Cell) {
         for row in rect.y..rect.y.saturating_add(rect.h) {
-            if row >= self.rows { break; }
+            if row >= self.rows {
+                break;
+            }
             for col in rect.x..rect.x.saturating_add(rect.w) {
-                if col >= self.cols { break; }
+                if col >= self.cols {
+                    break;
+                }
                 if let Some(target) = self.cell_at_mut(col, row) {
                     *target = cell.clone();
                 }
@@ -124,10 +144,14 @@ impl VirtualScreen {
     pub fn blit(&mut self, dest: Rect, source: &VirtualScreen) {
         for row in 0..source.rows {
             let dest_row = dest.y + row;
-            if dest_row >= self.rows { break; }
+            if dest_row >= self.rows {
+                break;
+            }
             for col in 0..source.cols {
                 let dest_col = dest.x + col;
-                if dest_col >= self.cols { break; }
+                if dest_col >= self.cols {
+                    break;
+                }
                 let src_idx = row as usize * source.cols as usize + col as usize;
                 if let Some(dest_cell) = self.cell_at_mut(dest_col, dest_row) {
                     *dest_cell = source.cells[src_idx].clone();

@@ -3,8 +3,8 @@
 use arbor_tui_primitives::cell::{Attrs, Cell};
 use arbor_tui_primitives::input::KeyHandleResult;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
+use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
@@ -20,13 +20,21 @@ pub struct ListWidget {
 }
 
 impl Widget for ListWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
-    fn focusable(&self) -> bool { true }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
+    fn focusable(&self) -> bool {
+        true
+    }
 
     fn measure(&self, available: Size) -> SizeConstraint {
         let avail = arbor_tui_primitives::layout::SizeCalc::content_available(
-            available, self.props.padding, self.props.margin,
+            available,
+            self.props.padding,
+            self.props.margin,
         );
         SizeConstraint {
             min_w: 1,
@@ -42,7 +50,10 @@ impl Widget for ListWidget {
         let accent = theme.accent();
         let text = theme.text();
 
-        let bg_cell = Cell { bg, ..Default::default() };
+        let bg_cell = Cell {
+            bg,
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w, rect.h), &bg_cell);
 
         let visible_count = rect.h as usize;
@@ -52,10 +63,17 @@ impl Widget for ListWidget {
         for (i, item_idx) in (start..end).enumerate() {
             let row = i as u16;
             let is_selected = self.selected == Some(item_idx);
-            let (fg, row_bg) = if is_selected { (theme.surface(), accent) } else { (text, bg) };
+            let (fg, row_bg) = if is_selected {
+                (theme.surface(), accent)
+            } else {
+                (text, bg)
+            };
 
             if is_selected {
-                let sel_cell = Cell { bg: row_bg, ..Default::default() };
+                let sel_cell = Cell {
+                    bg: row_bg,
+                    ..Default::default()
+                };
                 screen.fill_rect(Rect::new(0, row, rect.w, 1), &sel_cell);
             }
 
@@ -90,13 +108,17 @@ impl Widget for ListWidget {
             }
             WidgetAction::NavigateUp => {
                 if let Some(s) = self.selected {
-                    if s > 0 { self.selected = Some(s - 1); }
+                    if s > 0 {
+                        self.selected = Some(s - 1);
+                    }
                 }
             }
             _ => return KeyHandleResult::Bubble,
         }
         if self.selected != old {
-            if let Some(ref cb) = self.on_select { cb(self.selected); }
+            if let Some(ref cb) = self.on_select {
+                cb(self.selected);
+            }
         }
         KeyHandleResult::Handled
     }

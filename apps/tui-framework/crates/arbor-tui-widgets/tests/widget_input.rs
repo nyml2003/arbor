@@ -7,15 +7,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use arbor_tui_backend::simulated_input::SimulatedInput;
-use arbor_tui_primitives::input::{InputReader, Key, KeyEvent, KeyEventKind, KeyHandleResult, Modifiers};
+use arbor_tui_primitives::input::{
+    InputReader, Key, KeyEvent, KeyEventKind, KeyHandleResult, Modifiers,
+};
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::WidgetAction;
 use arbor_tui_widgets::input::Input;
 use arbor_tui_widgets::testing::WidgetHarness;
-use arbor_tui_widgets::widget_manager::WidgetManager;
+use arbor_tui_widgets::widget_factory::WidgetFactory;
 
-fn wm_and_theme() -> (WidgetManager, Theme) {
-    (WidgetManager::new(), Theme::dark())
+fn wm_and_theme() -> (WidgetFactory, Theme) {
+    (WidgetFactory::new(), Theme::dark())
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -114,7 +116,10 @@ fn no_black_bg_when_buffer_has_content() {
 fn typechar_inserts_at_cursor() {
     let (wm, t) = wm_and_theme();
     let mut input = Input::new().build(&wm, &t);
-    assert_eq!(input.perform(&WidgetAction::TypeChar('a')), KeyHandleResult::Handled);
+    assert_eq!(
+        input.perform(&WidgetAction::TypeChar('a')),
+        KeyHandleResult::Handled
+    );
     let h = WidgetHarness::render(&input, 40, 1, &t);
     assert!(!h.find_text("a").is_empty());
 }
@@ -136,7 +141,9 @@ fn typechar_triggers_on_change() {
     let changed = Rc::new(RefCell::new(String::new()));
     let changed2 = changed.clone();
     let mut input = Input::new()
-        .on_change(move |s| { let _ = changed2.replace(s); })
+        .on_change(move |s| {
+            let _ = changed2.replace(s);
+        })
         .build(&wm, &t);
     input.perform(&WidgetAction::TypeChar('z'));
     assert_eq!(changed.borrow().clone(), "z");
@@ -167,11 +174,7 @@ fn backspace_deletes_before_cursor() {
     let h = WidgetHarness::render(&input, 40, 1, &t);
     assert!(!h.find_text("a").is_empty());
     // "b" should be gone
-    assert_eq!(
-        find_count(&h, "b"),
-        0,
-        "backspace should remove last char"
-    );
+    assert_eq!(find_count(&h, "b"), 0, "backspace should remove last char");
 }
 
 #[test]
@@ -192,7 +195,9 @@ fn backspace_triggers_on_change() {
     let changed = Rc::new(RefCell::new(String::new()));
     let changed2 = changed.clone();
     let mut input = Input::new()
-        .on_change(move |s| { let _ = changed2.replace(s); })
+        .on_change(move |s| {
+            let _ = changed2.replace(s);
+        })
         .build(&wm, &t);
     input.perform(&WidgetAction::TypeChar('x'));
     input.perform(&WidgetAction::Backspace);
@@ -310,7 +315,9 @@ fn activate_triggers_on_submit_with_buffer() {
     let submitted = Rc::new(RefCell::new(String::new()));
     let submitted2 = submitted.clone();
     let mut input = Input::new()
-        .on_submit(move |s| { let _ = submitted2.replace(s); })
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
         .build(&wm, &t);
     input.perform(&WidgetAction::TypeChar('c'));
     input.perform(&WidgetAction::TypeChar('m'));
@@ -326,7 +333,9 @@ fn activate_with_empty_buffer() {
     let submitted = Rc::new(RefCell::new(String::new()));
     let submitted2 = submitted.clone();
     let mut input = Input::new()
-        .on_submit(move |s| { let _ = submitted2.replace(s); })
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
         .build(&wm, &t);
     input.perform(&WidgetAction::Activate);
     assert_eq!(submitted.borrow().clone(), "");
@@ -347,10 +356,13 @@ fn password_mode_masks_content() {
     // Should NOT show "secret"
     assert_eq!(find_count(&h, "secret"), 0);
     // Should show "●●●●●●" (6 bullets, one for each char)
-    let bullets: String = h.find_text("●●●●●●")
+    let bullets: String = h
+        .find_text("●●●●●●")
         .first()
         .map(|(col, row)| {
-            (0..6).map(|i| h.cell_at(col + i, *row).ch).collect::<String>()
+            (0..6)
+                .map(|i| h.cell_at(col + i, *row).ch)
+                .collect::<String>()
         })
         .unwrap_or_default();
     assert_eq!(bullets, "●●●●●●");
@@ -377,10 +389,7 @@ fn focused_shows_cursor_highlight() {
     let mut input = Input::new().placeholder("input").build(&wm, &t);
     input.perform(&WidgetAction::TypeChar('a'));
     // Render with focus on this widget
-    let h = WidgetHarness::render_with_focus(
-        &input, 40, 1, &t,
-        Some(input.id()),
-    );
+    let h = WidgetHarness::render_with_focus(&input, 40, 1, &t, Some(input.id()));
     // Cursor should be highlighted. After typing 'a' the cursor is at col 3
     // ("> a"). The cursor cell bg should be the primary color.
     let cursor_col: u16 = 3; // "> " + 'a' + cursor
@@ -522,21 +531,23 @@ fn simulated_input_backspace_and_enter() {
 
     sim.push(KeyEvent::char('t'));
     sim.push(KeyEvent::char('x'));
-    sim.push(KeyEvent::char('t'));       // "txt"
+    sim.push(KeyEvent::char('t')); // "txt"
     sim.push(KeyEvent {
         key: Key::Backspace,
         modifiers: Modifiers::default(),
         kind: KeyEventKind::Press,
-    });                                   // backspace → "tx"
-    sim.push(KeyEvent::char('p'));       // "txp"
+    }); // backspace → "tx"
+    sim.push(KeyEvent::char('p')); // "txp"
     sim.push(KeyEvent {
         key: Key::Enter,
         modifiers: Modifiers::default(),
         kind: KeyEventKind::Press,
-    });                                   // submit
+    }); // submit
 
     let mut input = Input::new()
-        .on_submit(move |s| { let _ = submitted2.replace(s); })
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
         .build(&wm, &t);
 
     for event in sim.poll() {
@@ -592,7 +603,9 @@ fn simulated_input_ctrl_handling() {
     sim.push(KeyEvent::char('t'));
 
     let mut input = Input::new()
-        .on_submit(move |s| { let _ = submitted2.replace(s); })
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
         .build(&wm, &t);
 
     // No Enter pressed — simulate poll_timeout returning empty
@@ -659,7 +672,9 @@ fn simulated_input_realistic_typing_session() {
 
     let mut input = Input::new()
         .placeholder("type command...")
-        .on_submit(move |s| { let _ = submitted2.replace(s); })
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
         .build(&wm, &t);
 
     // This mirrors what the app's event loop does:

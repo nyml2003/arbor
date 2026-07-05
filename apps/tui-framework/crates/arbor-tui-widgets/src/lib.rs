@@ -3,16 +3,16 @@
 
 pub mod border;
 pub mod button;
-pub mod container;
 pub mod input;
 pub mod list;
 pub mod rich_text;
 pub mod scroll;
+pub mod stack;
 pub mod table;
 pub mod tabs;
 pub mod testing;
 pub mod text;
-pub mod widget_manager;
+pub mod widget_factory;
 
 pub use button::widget::ButtonStyle;
 pub use table::widget::{ColumnDef, ColumnWidth};

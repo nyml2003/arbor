@@ -3,11 +3,11 @@
 //
 // Re-exports commonly-needed types so widget authors only need one import.
 
-pub mod widget;
+pub mod focus;
 pub mod layout_engine;
 pub mod render;
-pub mod focus;
+pub mod widget;
 
 // Convenience re-exports from upstream crates
-pub use arbor_tui_primitives::widget_id::{WidgetAction, WidgetId, WidgetLayoutInfo};
 pub use arbor_tui_primitives::layout_error::LayoutError;
+pub use arbor_tui_primitives::widget_id::{WidgetAction, WidgetId, WidgetLayoutInfo};

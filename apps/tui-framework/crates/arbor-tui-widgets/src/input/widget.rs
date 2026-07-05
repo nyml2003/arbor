@@ -3,8 +3,8 @@
 use arbor_tui_primitives::cell::{Attrs, Cell};
 use arbor_tui_primitives::input::KeyHandleResult;
 use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_primitives::text::{self, TruncateStrategy};
+use arbor_tui_render::screen::VirtualScreen;
 use arbor_tui_render::theme::Theme;
 use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
 
@@ -20,9 +20,15 @@ pub struct InputWidget {
 }
 
 impl Widget for InputWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
-    fn focusable(&self) -> bool { true }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
+    fn focusable(&self) -> bool {
+        true
+    }
 
     fn on_mount(&mut self) {
         // InputWidget buffer is owned; no signal subscriptions in v1
@@ -32,7 +38,8 @@ impl Widget for InputWidget {
         if let Some(w_val) = self.props.width {
             SizeConstraint::fixed(w_val, 1)
         } else {
-            let avail = SizeCalc::content_available(available, self.props.padding, self.props.margin);
+            let avail =
+                SizeCalc::content_available(available, self.props.padding, self.props.margin);
             SizeConstraint {
                 min_w: 1,
                 min_h: 1,
@@ -49,7 +56,10 @@ impl Widget for InputWidget {
         let text_fg = theme.text();
 
         // 先用背景色填充整个区域，避免 Cell::default() 黑底覆盖父组件。
-        let fill = Cell { bg, ..Default::default() };
+        let fill = Cell {
+            bg,
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), 1), &fill);
 
         screen.write_str(0, 0, "> ", border_fg, bg, Attrs::default());
@@ -78,7 +88,10 @@ impl Widget for InputWidget {
         let cursor_bg = theme.primary();
 
         // 先用背景色填充整个区域，避免 Cell::default() 黑底覆盖父组件。
-        let fill = Cell { bg, ..Default::default() };
+        let fill = Cell {
+            bg,
+            ..Default::default()
+        };
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), 1), &fill);
 
         // "> " prompt with accent when focused
@@ -114,50 +127,74 @@ impl Widget for InputWidget {
     fn perform(&mut self, action: &WidgetAction) -> KeyHandleResult {
         match action {
             WidgetAction::Activate => {
-                if let Some(ref cb) = self.on_submit { cb(self.buffer.clone()); }
+                if let Some(ref cb) = self.on_submit {
+                    cb(self.buffer.clone());
+                }
                 KeyHandleResult::Handled
             }
             WidgetAction::Backspace => {
                 if self.cursor > 0 {
-                    let idx = self.buffer.char_indices()
+                    let idx = self
+                        .buffer
+                        .char_indices()
                         .nth(self.cursor - 1)
                         .map(|(i, _)| i)
                         .expect("cursor-1 must be a valid char boundary");
                     self.buffer.remove(idx);
                     self.cursor -= 1;
-                    if let Some(ref cb) = self.on_change { cb(self.buffer.clone()); }
+                    if let Some(ref cb) = self.on_change {
+                        cb(self.buffer.clone());
+                    }
                 }
                 KeyHandleResult::Handled
             }
             WidgetAction::TypeChar(c) => {
-                let insert_idx = self.buffer.char_indices()
+                let insert_idx = self
+                    .buffer
+                    .char_indices()
                     .nth(self.cursor)
                     .map(|(i, _)| i)
                     .unwrap_or_else(|| self.buffer.len());
                 self.buffer.insert(insert_idx, *c);
                 self.cursor += 1;
-                if let Some(ref cb) = self.on_change { cb(self.buffer.clone()); }
+                if let Some(ref cb) = self.on_change {
+                    cb(self.buffer.clone());
+                }
                 KeyHandleResult::Handled
             }
             WidgetAction::NavigateLeft => {
-                if self.cursor > 0 { self.cursor -= 1; }
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                }
                 KeyHandleResult::Handled
             }
             WidgetAction::NavigateRight => {
-                if self.cursor < self.buffer.chars().count() { self.cursor += 1; }
+                if self.cursor < self.buffer.chars().count() {
+                    self.cursor += 1;
+                }
                 KeyHandleResult::Handled
             }
-            WidgetAction::Home => { self.cursor = 0; KeyHandleResult::Handled }
-            WidgetAction::End => { self.cursor = self.buffer.chars().count(); KeyHandleResult::Handled }
+            WidgetAction::Home => {
+                self.cursor = 0;
+                KeyHandleResult::Handled
+            }
+            WidgetAction::End => {
+                self.cursor = self.buffer.chars().count();
+                KeyHandleResult::Handled
+            }
             WidgetAction::Delete => {
                 let len = self.buffer.chars().count();
                 if self.cursor < len {
-                    let idx = self.buffer.char_indices()
+                    let idx = self
+                        .buffer
+                        .char_indices()
                         .nth(self.cursor)
                         .map(|(i, _)| i)
                         .expect("cursor must be a valid char boundary when cursor < len");
                     self.buffer.remove(idx);
-                    if let Some(ref cb) = self.on_change { cb(self.buffer.clone()); }
+                    if let Some(ref cb) = self.on_change {
+                        cb(self.buffer.clone());
+                    }
                 }
                 KeyHandleResult::Handled
             }

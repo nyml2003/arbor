@@ -1,1 +1,2 @@
-pub mod widget; pub use widget::{ColumnDef, ColumnWidth, TableWidget};
+pub mod widget;
+pub use widget::{ColumnDef, ColumnWidth, TableWidget};

@@ -1,2 +1,4 @@
-pub mod widget; pub mod builder; pub use widget::TabDef;
+pub mod builder;
+pub mod widget;
 pub use builder::*;
+pub use widget::TabDef;

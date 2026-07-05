@@ -21,11 +21,20 @@ pub struct BackendError {
 
 impl BackendError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into(), source: None }
+        Self {
+            message: message.into(),
+            source: None,
+        }
     }
 
-    pub fn with_source(message: impl Into<String>, source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self { message: message.into(), source: Some(Box::new(source)) }
+    pub fn with_source(
+        message: impl Into<String>,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
     }
 }
 
@@ -37,7 +46,9 @@ impl std::fmt::Display for BackendError {
 
 impl std::error::Error for BackendError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref() as &dyn std::error::Error)
+        self.source
+            .as_ref()
+            .map(|e| e.as_ref() as &dyn std::error::Error)
     }
 }
 
@@ -86,9 +97,13 @@ pub trait TerminalBackend {
     fn flush(&mut self) -> BackendResult<()>;
 
     /// Time spent queuing ANSI sequences (pure memory) in the last `emit()` call, in µs.
-    fn last_emit_queue_us(&self) -> u64 { 0 }
+    fn last_emit_queue_us(&self) -> u64 {
+        0
+    }
     /// Time spent in the stdout `flush()` syscall in the last `emit()` call, in µs.
-    fn last_emit_flush_us(&self) -> u64 { 0 }
+    fn last_emit_flush_us(&self) -> u64 {
+        0
+    }
 }
 
 /// RAII guard for terminal raw mode.

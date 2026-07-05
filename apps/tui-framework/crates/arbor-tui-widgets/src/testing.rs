@@ -63,8 +63,12 @@ impl WidgetHarness {
     }
 
     /// Screen dimensions.
-    pub fn cols(&self) -> u16 { self.screen.cols() }
-    pub fn rows(&self) -> u16 { self.screen.rows() }
+    pub fn cols(&self) -> u16 {
+        self.screen.cols()
+    }
+    pub fn rows(&self) -> u16 {
+        self.screen.rows()
+    }
 
     // ── Inspection helpers ──────────────────────────────────────────
 

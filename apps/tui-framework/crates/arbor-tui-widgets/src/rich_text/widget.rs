@@ -19,12 +19,18 @@ pub struct RichTextWidget {
 }
 
 impl Widget for RichTextWidget {
-    fn id(&self) -> WidgetId { self.id }
-    fn layout_props(&self) -> &LayoutProps { &self.props }
+    fn id(&self) -> WidgetId {
+        self.id
+    }
+    fn layout_props(&self) -> &LayoutProps {
+        &self.props
+    }
 
     fn measure(&self, _available: Size) -> SizeConstraint {
         let h = (self.lines.len() as u16).max(1);
-        let w = self.lines.iter()
+        let w = self
+            .lines
+            .iter()
             .flat_map(|spans| {
                 let len: usize = spans.iter().map(|s| s.text.chars().count()).sum();
                 Some(len as u16)
@@ -43,7 +49,9 @@ impl Widget for RichTextWidget {
         screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &self.bg);
 
         for (i, spans) in self.lines.iter().enumerate() {
-            if i as u16 >= rect.h { break; }
+            if i as u16 >= rect.h {
+                break;
+            }
             if self.clip {
                 // Write as much as fits
                 screen.write_spans(0, i as u16, spans);
