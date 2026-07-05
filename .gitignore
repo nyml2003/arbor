@@ -38,3 +38,5 @@ npm-debug.log*
 pnpm-debug.log*
 test-results/
 playwright-report/
+
+/packages/kaubo-features/

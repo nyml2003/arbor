@@ -1,0 +1,395 @@
+# arbor-tui 使用最佳实践
+
+本文面向 arbor-tui 的使用者。也就是用这个框架写 TUI 应用的人。
+
+本文不讲框架内部实现。内部维护规则见 `docs/arbor-tui开发最佳实践.md`。
+
+## 适合用 arbor-tui 的场景
+
+arbor-tui 适合做键盘驱动的终端工具：
+
+- 状态面板。
+- 表格和列表浏览。
+- 配置编辑。
+- 命令输入。
+- 运维和诊断工具。
+- 可在 SSH、tmux、本地终端和 xterm.js 中运行的轻量 TUI。
+
+不适合的场景：
+
+- 复杂鼠标交互。
+- 富文本排版。
+- IME 输入重度依赖。
+- 像素级图形界面。
+- 需要完整 CSS 布局的应用。
+
+## 推荐应用结构
+
+把应用分成三部分：
+
+```text
+状态模型 -> build_ui -> run loop
+```
+
+推荐文件结构：
+
+```text
+src/
+├── main.rs        # 终端初始化和事件循环
+├── ui.rs          # build_ui，组件树构建
+├── state.rs       # 应用状态和命令处理
+└── tests/         # E2E 场景
+```
+
+小 demo 可以放在一个文件里。正式工具不要把状态、UI 和事件循环全塞进 `main.rs`。
+
+## 从 build_ui 开始
+
+`build_ui` 应该是一个纯构建函数。输入状态和 theme，输出 `WidgetNode`。
+
+推荐形式：
+
+```rust
+fn build_ui(
+    factory: &WidgetFactory,
+    theme: &Theme,
+    state: &AppState,
+) -> WidgetNode {
+    // build widget tree
+}
+```
+
+规则：
+
+- `build_ui` 不读终端。
+- `build_ui` 不轮询输入。
+- `build_ui` 不修改运行时主状态。
+- UI 文案、布局和主题都集中在这里。
+- 回调只把用户动作交给状态层，不在组件里写复杂业务逻辑。
+
+## 布局实践
+
+arbor-tui 使用终端版 Flexbox。
+
+常用布局：
+
+```text
+Col
+├── Header
+├── Body (flex)
+└── Footer
+```
+
+三栏布局：
+
+```text
+Row
+├── Left  (fixed width)
+├── Main  (flex)
+└── Right (fixed width)
+```
+
+规则：
+
+- 页面根节点设置 `.size(cols, rows)`。
+- 主内容区域通常 `.flex(1.0)`。
+- 想铺满高度的 panel，本身也要 `.flex(1.0)`。
+- 固定宽度只用于侧栏、短按钮、输入框等明确尺寸。
+- 文案不要把最小宽度撑爆。默认按 80 列可读设计。
+- resize 后应重建 UI 树，使用新的 `cols` 和 `rows`。
+
+常见错误：
+
+```rust
+Col::new().flex(1.0).children([border]).build(factory, theme)
+```
+
+如果 `border` 自己没有 `.flex(1.0)`，它可能只按内容高度渲染。想让 panel 铺满，给 Border 也加 flex：
+
+```rust
+let panel = Border::new()
+    .rounded()
+    .flex(1.0)
+    .title(" Logs ")
+    .child(content)
+    .build(factory, theme);
+```
+
+## 颜色实践
+
+总是使用 `Theme` 的语义色。
+
+推荐：
+
+- 普通文字：`theme.text()`。
+- 次要文字：`theme.text_dim()`。
+- 页面背景：`theme.surface()`。
+- panel 背景：`theme.surface_alt()` 或 demo 自己定义的 panel 背景。
+- 焦点、主操作：`theme.primary()`。
+- 选中、高亮：`theme.accent()`。
+- 成功：`theme.success()`。
+- 警告：`theme.warning()`。
+- 危险：`theme.danger()`。
+- 边框：`theme.border()`。
+
+不要直接用裸 palette index 写业务含义。裸颜色只适合测试或临时实验。
+
+light theme 下要特别检查：
+
+- 可见文字不能出现默认黑底。
+- 输入框尾部空白要有背景。
+- 选中行整行要有背景。
+- panel 内空白区域要有背景。
+- xterm.js 和本地终端显示要一致。
+
+## 组件使用建议
+
+### Text
+
+用于短文本、标题、状态值。
+
+推荐：
+
+```rust
+Text::new("ready")
+    .fg(theme.success())
+    .bg(theme.surface_alt())
+    .build(factory, theme)
+```
+
+如果 Text 放在有背景的 panel 里，显式设置 `.bg(panel_bg)`。
+
+### RichText
+
+用于多行文本和局部样式。
+
+推荐先设置整体背景：
+
+```rust
+RichText::new()
+    .bg(Cell {
+        bg: panel_bg,
+        ..Default::default()
+    })
+    .line(vec![Span::new("Status", theme.text(), panel_bg, Attrs::default())])
+    .build(factory, theme)
+```
+
+每个 `Span` 都要给背景色。不要只给前景色。
+
+### Border
+
+用于 panel，不要把所有东西都包成 Border。
+
+推荐：
+
+```rust
+Border::new()
+    .rounded()
+    .flex(1.0)
+    .fg(theme.border())
+    .bg(panel_bg)
+    .title(" Jobs ")
+    .child(content)
+    .build(factory, theme)
+```
+
+如果 panel 要铺满父级剩余高度，Border 自己要 `.flex(1.0)`。
+
+### Input
+
+Input 是非受控组件。用户输入先存在组件内部。
+
+使用 `on_submit` 接收最终命令：
+
+```rust
+Input::new()
+    .placeholder("type command")
+    .on_submit(move |cmd| {
+        // handle command
+    })
+    .build(factory, theme)
+```
+
+使用建议：
+
+- 命令行输入放 footer。
+- 表单字段用明确 placeholder。
+- 不要把长篇帮助文本塞进 placeholder。
+- password 输入使用 `.password()`。
+
+### List 和 Table
+
+List 适合单列对象。Table 适合结构化数据。
+
+规则：
+
+- 长列表要放在可滚动区域里。
+- 选中状态要用 theme 高亮。
+- 表格列宽先用固定宽度，避免窄屏布局抖动。
+- 表格内容要短。详细信息放右侧 Info panel。
+
+### Tabs
+
+Tabs 适合少量视图切换。
+
+规则：
+
+- tab label 要短。
+- 每个 tab 的内容区域要能独立渲染。
+- tab 内有 Input/Button/List 时，要用 E2E 测焦点。
+- 不要用 Tabs 做复杂导航树。
+
+## 输入和快捷键
+
+默认行为：
+
+- `Tab`：焦点前进。
+- `Shift+Tab`：焦点后退。
+- `Enter`：激活或提交。
+- `Esc`：退出。
+- `Ctrl+C`：退出。
+- `Ctrl+Q`：退出。
+- 方向键：由焦点组件处理。
+
+使用建议：
+
+- 不要覆盖全局退出键。
+- 表单提交用 Enter。
+- 列表移动用方向键。
+- 命令输入用 footer Input。
+- 复杂快捷键先写到状态层，不要散落在 widget 回调里。
+
+## 运行循环建议
+
+事件循环只做调度。不要在循环里写业务逻辑。
+
+推荐流程：
+
+1. 创建 backend。
+2. 进入 alternate screen。
+3. 隐藏 cursor。
+4. 进入 raw mode。
+5. 创建 App。
+6. 构建 root widget。
+7. 轮询输入。
+8. 调用 `runtime_step`。
+9. 根据 step 结果 clear、rebuild、render。
+10. 退出时恢复终端。
+
+如果 theme、尺寸或全局状态变化，需要重建 root tree。
+
+## 状态管理建议
+
+简单应用可以用 `Rc<RefCell<State>>`。
+
+规则：
+
+- UI 只读状态。
+- 回调发出动作或命令。
+- 状态层处理动作。
+- 需要重建 UI 时设置一个 changed flag。
+
+示例：
+
+```rust
+let state = Rc::new(RefCell::new(AppState::default()));
+let changed = Rc::new(Cell::new(false));
+
+Input::new()
+    .on_submit({
+        let state = state.clone();
+        let changed = changed.clone();
+        move |cmd| {
+            state.borrow_mut().handle_command(&cmd);
+            changed.set(true);
+        }
+    })
+    .build(factory, theme)
+```
+
+复杂应用再引入更明确的 action enum：
+
+```rust
+enum AppAction {
+    SubmitCommand(String),
+    SelectJob(usize),
+    Refresh,
+}
+```
+
+## 测试建议
+
+使用者也应该写 E2E。不要只手动看终端。
+
+推荐测试：
+
+- 首帧渲染有核心文本。
+- Tab 能聚焦到目标输入。
+- 输入脚本能更新屏幕。
+- resize 后布局仍可读。
+- light theme 没有默认黑底。
+- placeholder 被输入替换后，尾部背景仍正确。
+- 复杂 dashboard 中，List、Table、Footer 同时工作。
+
+选择工具：
+
+- `WidgetHarness`：测单个 widget 或静态页面。
+- `TuiTestDriver`：测输入、焦点、resize、runtime。
+- `AnsiTuiTestDriver`：测颜色、空白背景、真实 ANSI 输出效果。
+
+颜色相关测试优先用 `AnsiTuiTestDriver`。
+
+## 手动验收清单
+
+每个 TUI 应用至少检查：
+
+- 80x24 可用。
+- 120x40 可用。
+- 40x12 不 panic，内容能合理裁切。
+- light theme 可读。
+- dark theme 可读。
+- Tab 顺序符合视觉顺序。
+- 退出后终端恢复。
+- 输入长文本不会撑破布局。
+- resize 后不会留下旧画面。
+- xterm.js 中空白背景不会露出终端默认色。
+
+## xterm.js 使用建议
+
+xterm.js 对“没有写入的单元格”更敏感。它不会替应用补背景。
+
+使用时注意：
+
+- 后端要输出完整脏行背景。
+- 空白区域必须是真实空格，不是“什么都不写”。
+- 不要依赖宿主页面背景色。
+- light theme 下先测 Header、Nav、Content、Info 和 Footer 的空白区域。
+- 如果本地终端正常但 xterm.js 异常，优先查 ANSI 输出，而不是先改主题色。
+
+## 常见应用反模式
+
+| 反模式 | 正确做法 |
+| --- | --- |
+| 把业务逻辑写在 `build_ui` 里 | `build_ui` 只构建组件树 |
+| 只给文字设置背景 | 整个 panel 先填背景 |
+| Border 子项 flex，Border 自己不 flex | 需要铺满时 Border 也 flex |
+| placeholder 写很长 | placeholder 写短提示 |
+| 表格列自适应全部内容 | 先用固定列宽 |
+| 只在 dark theme 下看效果 | light/dark 都验收 |
+| 只用本地终端验收 | 至少补 ANSI replay；有条件再看 xterm.js |
+| 退出时不恢复终端 | 使用 raw mode guard，并显式退出 alternate screen |
+| resize 后不重建 UI | 使用新尺寸重建 root tree |
+
+## 最小完成标准
+
+一个 arbor-tui 应用完成前，至少满足：
+
+- 能在真实终端启动和退出。
+- 首屏有明确 Header、Body、Footer 或等价结构。
+- 所有可见区域有明确背景。
+- 键盘主路径可用。
+- 80x24 下布局稳定。
+- light theme 无默认黑底。
+- 有一组 E2E 覆盖核心路径。
+- `cargo test` 通过。
