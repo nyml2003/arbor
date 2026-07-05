@@ -128,6 +128,13 @@ impl FuzzyPanelWidget {
         let accent = self.accent.unwrap_or_else(|| theme.accent());
         let text_fg = theme.text();
         let dim = theme.text_dim();
+        let style = FuzzyPanelStyle {
+            theme,
+            bg,
+            text_fg,
+            dim,
+            accent,
+        };
 
         screen.fill_rect(
             Rect::new(0, 0, w, h),
@@ -138,8 +145,8 @@ impl FuzzyPanelWidget {
         );
 
         self.draw_border(&mut screen, w, h, fg, bg);
-        self.draw_query(&mut screen, w, theme, bg, text_fg, dim, accent, focused);
-        self.draw_matches(&mut screen, w, h, theme, bg, text_fg, dim, accent);
+        self.draw_query(&mut screen, w, style, focused);
+        self.draw_matches(&mut screen, w, h, style);
         self.draw_status(&mut screen, w, h, theme, bg, dim);
 
         screen
@@ -187,24 +194,20 @@ impl FuzzyPanelWidget {
         &self,
         screen: &mut VirtualScreen,
         w: u16,
-        theme: &Theme,
-        bg: AnsiColor,
-        text_fg: AnsiColor,
-        dim: AnsiColor,
-        accent: AnsiColor,
+        style: FuzzyPanelStyle<'_>,
         focused: bool,
     ) {
         let query_row = 1;
         let query_w = w.saturating_sub(4);
-        screen.write_str(2, query_row, "> ", accent, bg, Attrs::default());
+        screen.write_str(2, query_row, "> ", style.accent, style.bg, Attrs::default());
 
         let (display, color) = if self.query.is_empty() {
-            (self.placeholder.as_str(), dim)
+            (self.placeholder.as_str(), style.dim)
         } else {
-            (self.query.as_str(), text_fg)
+            (self.query.as_str(), style.text_fg)
         };
         let display = text::truncate(display, query_w, TruncateStrategy::End);
-        screen.write_str(4, query_row, &display, color, bg, Attrs::default());
+        screen.write_str(4, query_row, &display, color, style.bg, Attrs::default());
 
         if focused {
             let cursor_col = 4 + text::measure_width(&display).min(query_w.saturating_sub(1));
@@ -219,25 +222,15 @@ impl FuzzyPanelWidget {
                     cursor_col,
                     query_row,
                     cursor_ch,
-                    theme.surface(),
-                    accent,
+                    style.theme.surface(),
+                    style.accent,
                     Attrs::default(),
                 );
             }
         }
     }
 
-    fn draw_matches(
-        &self,
-        screen: &mut VirtualScreen,
-        w: u16,
-        h: u16,
-        theme: &Theme,
-        bg: AnsiColor,
-        text_fg: AnsiColor,
-        dim: AnsiColor,
-        accent: AnsiColor,
-    ) {
+    fn draw_matches(&self, screen: &mut VirtualScreen, w: u16, h: u16, style: FuzzyPanelStyle<'_>) {
         let matches = self.matches();
         let list_start = 2u16;
         let list_rows = h.saturating_sub(4);
@@ -245,7 +238,14 @@ impl FuzzyPanelWidget {
             return;
         }
         if matches.is_empty() {
-            screen.write_str(2, list_start, &self.empty_text, dim, bg, Attrs::default());
+            screen.write_str(
+                2,
+                list_start,
+                &self.empty_text,
+                style.dim,
+                style.bg,
+                Attrs::default(),
+            );
             return;
         }
 
@@ -260,11 +260,11 @@ impl FuzzyPanelWidget {
             };
             let is_selected = scroll_offset + row as usize == selected;
             let y = list_start + row;
-            let row_bg = if is_selected { accent } else { bg };
+            let row_bg = if is_selected { style.accent } else { style.bg };
             let row_fg = if is_selected {
-                theme.surface()
+                style.theme.surface()
             } else {
-                text_fg
+                style.text_fg
             };
             let prefix = if is_selected { ">" } else { " " };
 
@@ -309,6 +309,15 @@ impl FuzzyPanelWidget {
     fn matches(&self) -> Vec<FuzzyMatch> {
         rank_items(&self.items, &self.query)
     }
+}
+
+#[derive(Copy, Clone)]
+struct FuzzyPanelStyle<'a> {
+    theme: &'a Theme,
+    bg: AnsiColor,
+    text_fg: AnsiColor,
+    dim: AnsiColor,
+    accent: AnsiColor,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
