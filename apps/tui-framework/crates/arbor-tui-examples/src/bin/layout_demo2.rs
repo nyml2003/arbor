@@ -10,10 +10,11 @@ use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::theme::{Theme, ThemeVariant};
 use arbor_tui_domain::widget::WidgetNode;
 
-use arbor_tui_composites::{FuzzyPanel, Panel, PromptBar, StatusLine};
+use arbor_tui_composites::{FuzzyPanel, Panel, PromptBar, SectionDivider, StatusLine};
 use arbor_tui_runtime::{run_crossterm_terminal_app, TerminalApp};
 use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
+use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 fn main() {
@@ -121,57 +122,39 @@ fn build_ui(
         .build(factory, t);
 
     // ── Body: 3 columns ────────────────────────────────────────
-    let left = Panel::new(
-        RichText::new()
-            .bg(panel_cell)
-            .line(vec![Span::new(
-                "  Home",
-                t.text(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                "  Projects",
-                t.text(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                "  Settings",
-                t.text(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![])
-            .line(vec![Span::new(
-                " Status:",
-                t.text_dim(),
-                panel_bg,
-                Attrs {
-                    italic: true,
-                    ..Default::default()
-                },
-            )])
-            .line(vec![Span::new(
-                "  CPU  12%",
-                t.text_dim(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                "  RAM  3.2G",
-                t.text_dim(),
-                panel_bg,
-                Default::default(),
-            )])
-            .build(factory, t),
-    )
-    .rounded()
-    .flex(1.0)
-    .fg(demo_border_fg(t, t.primary()))
-    .bg(panel_bg)
-    .title(" Nav ")
-    .build(factory, t);
+    let left_content = Col::new()
+        .children([
+            SectionDivider::new("Menu")
+                .divider_width(6)
+                .divider_fg(demo_border_fg(t, t.primary()))
+                .label_fg(t.text_dim())
+                .bg(panel_bg)
+                .build(factory, t),
+            Text::new("  Home\n  Projects\n  Settings")
+                .fg(t.text())
+                .bg(panel_bg)
+                .build(factory, t),
+            SectionDivider::new("Status")
+                .divider_width(6)
+                .divider_fg(demo_border_fg(t, t.success()))
+                .label_fg(t.text_dim())
+                .bg(panel_bg)
+                .build(factory, t),
+            Text::new("  CPU  12%\n  RAM  3.2G")
+                .fg(t.text_dim())
+                .bg(panel_bg)
+                .italic()
+                .build(factory, t),
+        ])
+        .build(factory, t);
+
+    let left = Panel::new(left_content)
+        .rounded()
+        .flex(1.0)
+        .fg(demo_border_fg(t, t.primary()))
+        .bg(panel_bg)
+        .title(" Sidebar ")
+        .build(factory, t);
 
     let center = FuzzyPanel::new([
         "src/bin/layout_demo2.rs",
@@ -309,6 +292,8 @@ mod tests {
         for text in [
             "Arbor TUI".to_string(),
             "Home".to_string(),
+            "╭----╯ Menu".to_string(),
+            "╭----╯ Status".to_string(),
             "Fuzzy Files".to_string(),
             format!("{cols}x{rows}"),
         ] {

@@ -3,7 +3,6 @@ members = [
     "crates/aster-domain",
     "crates/aster-application",
     "crates/aster-adapters",
-    "crates/aster-markdown",
     "crates/aster-tui",
 ]
 resolver = "2"
@@ -19,20 +18,18 @@ publish = false
 aster-domain = { path = "crates/aster-domain" }
 aster-application = { path = "crates/aster-application" }
 aster-adapters = { path = "crates/aster-adapters" }
-aster-markdown = { path = "crates/aster-markdown" }
 
 arbor-tui-domain = { path = "../tui-framework/crates/arbor-tui-domain" }
 arbor-tui-application = { path = "../tui-framework/crates/arbor-tui-application" }
 arbor-tui-adapters = { path = "../tui-framework/crates/arbor-tui-adapters" }
+arbor-tui-composites = { path = "../tui-framework/crates/arbor-tui-composites" }
 arbor-tui-runtime = { path = "../tui-framework/crates/arbor-tui-runtime" }
 arbor-tui-widgets = { path = "../tui-framework/crates/arbor-tui-widgets" }
 arbor-tui-testing = { path = "../tui-framework/crates/arbor-tui-testing" }
 
 anyhow = "1"
-pulldown-cmark = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 thiserror = "2"
 ureq = { version = "3", features = ["json"] }
 
@@ -42,3 +39,10 @@ unused_qualifications = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

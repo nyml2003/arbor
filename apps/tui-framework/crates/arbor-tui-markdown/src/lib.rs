@@ -1,4 +1,4 @@
-// aster-markdown - Markdown to arbor-tui spans.
+//! Markdown rendering helpers for terminal UI text.
 
 use std::sync::OnceLock;
 
@@ -6,16 +6,15 @@ use arbor_tui_domain::cell::{AnsiColor, Attrs, PaletteColor, Span};
 use arbor_tui_domain::theme::Theme;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use syntect::highlighting::{Highlighter, ThemeSet};
-use syntect::parsing::{ParseState, ScopeStack};
-use syntect::parsing::{ScopeStackOp, SyntaxSet};
+use syntect::parsing::{ParseState, ScopeStack, ScopeStackOp, SyntaxSet};
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Block {
+pub enum MarkdownBlock {
     Text(Vec<Vec<Span>>),
     Code { lang: String, lines: Vec<Vec<Span>> },
 }
 
-pub fn parse_blocks(text: &str, theme: &Theme) -> Vec<Block> {
+pub fn parse_blocks(text: &str, theme: &Theme) -> Vec<MarkdownBlock> {
     let parser = MarkdownBlockParser::new(theme);
     parser.parse(text)
 }
@@ -24,14 +23,14 @@ pub fn render_message(text: &str, theme: &Theme) -> Vec<Vec<Span>> {
     parse_blocks(text, theme)
         .into_iter()
         .flat_map(|block| match block {
-            Block::Text(lines) | Block::Code { lines, .. } => lines,
+            MarkdownBlock::Text(lines) | MarkdownBlock::Code { lines, .. } => lines,
         })
         .collect()
 }
 
 struct MarkdownBlockParser<'a> {
     theme: &'a Theme,
-    blocks: Vec<Block>,
+    blocks: Vec<MarkdownBlock>,
     current_block: Vec<Vec<Span>>,
     current_line: Vec<Span>,
     attrs_stack: Vec<Attrs>,
@@ -56,7 +55,7 @@ impl<'a> MarkdownBlockParser<'a> {
         }
     }
 
-    fn parse(mut self, text: &str) -> Vec<Block> {
+    fn parse(mut self, text: &str) -> Vec<MarkdownBlock> {
         let parser = Parser::new_ext(text, Options::ENABLE_STRIKETHROUGH);
         for event in parser {
             if self.in_code {
@@ -100,7 +99,7 @@ impl<'a> MarkdownBlockParser<'a> {
                     highlight_block(&self.code_lang, trimmed)
                 };
 
-                self.blocks.push(Block::Code {
+                self.blocks.push(MarkdownBlock::Code {
                     lang: std::mem::take(&mut self.code_lang),
                     lines,
                 });
@@ -217,7 +216,7 @@ impl<'a> MarkdownBlockParser<'a> {
     fn flush_text_block(&mut self) {
         if !self.current_block.is_empty() {
             self.blocks
-                .push(Block::Text(std::mem::take(&mut self.current_block)));
+                .push(MarkdownBlock::Text(std::mem::take(&mut self.current_block)));
         }
     }
 
@@ -453,9 +452,9 @@ mod tests {
     fn code_block_is_split_into_code_block() {
         let blocks = parse_blocks("before\n```rust\nlet x = 1;\n```\nafter", &theme());
 
-        assert!(matches!(blocks[0], Block::Text(_)));
-        assert!(matches!(blocks[1], Block::Code { .. }));
-        assert!(matches!(blocks[2], Block::Text(_)));
+        assert!(matches!(blocks[0], MarkdownBlock::Text(_)));
+        assert!(matches!(blocks[1], MarkdownBlock::Code { .. }));
+        assert!(matches!(blocks[2], MarkdownBlock::Text(_)));
     }
 
     #[test]
@@ -470,5 +469,16 @@ mod tests {
             .flatten()
             .filter(|span| span.text.contains("int"))
             .all(|span| span.bg.palette.0 == 236));
+    }
+
+    #[test]
+    fn light_theme_text_spans_use_theme_surface_background() {
+        let theme = Theme::light();
+        let rendered = render_message("hello **world**", &theme);
+
+        assert!(rendered
+            .iter()
+            .flatten()
+            .all(|span| span.bg == theme.surface()));
     }
 }

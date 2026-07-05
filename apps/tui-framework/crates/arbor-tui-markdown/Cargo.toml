@@ -1,5 +1,5 @@
 [package]
-name = "arbor-tui-composites"
+name = "arbor-tui-markdown"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,8 +11,5 @@ workspace = true
 
 [dependencies]
 arbor-tui-domain = { path = "../arbor-tui-domain" }
-arbor-tui-markdown = { path = "../arbor-tui-markdown" }
-arbor-tui-widgets = { path = "../arbor-tui-widgets" }
-
-[dev-dependencies]
-arbor-tui-testing = { path = "../arbor-tui-testing" }
+pulldown-cmark = "0.12"
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }

@@ -42,11 +42,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "arbor-tui-composites"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-domain",
+ "arbor-tui-markdown",
+ "arbor-tui-widgets",
+]
+
+[[package]]
 name = "arbor-tui-domain"
 version = "0.1.0"
 dependencies = [
  "thiserror",
  "unicode-width",
+]
+
+[[package]]
+name = "arbor-tui-markdown"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-domain",
+ "pulldown-cmark",
+ "syntect",
 ]
 
 [[package]]
@@ -102,20 +120,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "aster-markdown"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-domain",
- "pulldown-cmark",
- "syntect",
-]
-
-[[package]]
 name = "aster-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "arbor-tui-application",
+ "arbor-tui-composites",
  "arbor-tui-domain",
  "arbor-tui-runtime",
  "arbor-tui-testing",
@@ -123,7 +133,6 @@ dependencies = [
  "aster-adapters",
  "aster-application",
  "aster-domain",
- "aster-markdown",
 ]
 
 [[package]]

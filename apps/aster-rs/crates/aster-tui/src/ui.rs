@@ -1,15 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use arbor_tui_domain::cell::{Attrs, Cell, Span};
+use arbor_tui_composites::{Transcript, TranscriptMessage, TranscriptNotice};
 use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::signal::ReadSignal;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::WidgetNode;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::input::Input;
-use arbor_tui_widgets::rich_text::RichText;
-use arbor_tui_widgets::scroll::Scroll;
 use arbor_tui_widgets::stack::Col;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
@@ -22,22 +20,7 @@ pub fn estimate_line_count(
     state: &ConversationStatus,
     theme: &Theme,
 ) -> usize {
-    if messages.is_empty() {
-        return 1;
-    }
-
-    let mut total_lines = 0usize;
-    for message in messages {
-        total_lines += 1;
-        total_lines += estimate_content_lines(message.content(), theme);
-        total_lines += 1;
-    }
-
-    if matches!(state, ConversationStatus::Error { .. }) {
-        total_lines += 2;
-    }
-
-    total_lines
+    build_transcript(theme, messages, state, ReadSignal::constant(0)).line_count(theme)
 }
 
 pub fn build_ui(
@@ -52,9 +35,11 @@ pub fn build_ui(
     let chat = borrowed.chat();
     let panel_bg = theme.surface();
     let title = title_for(chat.state());
-    let msg_width = cols.saturating_sub(6) as usize;
-    let (messages, line_count) =
-        build_message_blocks(chat.messages(), chat.state(), theme, factory, msg_width);
+    let line_count = estimate_line_count(chat.messages(), chat.state(), theme);
+    let transcript = build_transcript(theme, chat.messages(), chat.state(), scroll_y)
+        .bg(panel_bg)
+        .flex(1.0)
+        .build(factory, theme);
 
     let state_for_submit = Rc::clone(state);
     let input = Border::new()
@@ -70,17 +55,6 @@ pub fn build_ui(
         )
         .build(factory, theme);
 
-    let message_stack = Col::new()
-        .flex(1.0)
-        .children(messages)
-        .build(factory, theme);
-    let message_scroll = Scroll::new()
-        .flex(1.0)
-        .scroll_y(scroll_y)
-        .content_h(usize_to_u16_saturating(line_count.max(1)))
-        .child(message_stack)
-        .build(factory, theme);
-
     let footer = Text::new(footer_text(line_count))
         .fg(theme.text_dim())
         .bg(panel_bg)
@@ -92,7 +66,7 @@ pub fn build_ui(
 
     let inner = Col::new()
         .flex(1.0)
-        .children([message_scroll, input, footer])
+        .children([transcript, input, footer])
         .build(factory, theme);
 
     let page = Border::new()
@@ -116,6 +90,46 @@ pub fn build_ui(
         .build(factory, theme)
 }
 
+fn build_transcript(
+    theme: &Theme,
+    messages: &[ChatMessage],
+    state: &ConversationStatus,
+    scroll_y: ReadSignal<u16>,
+) -> Transcript {
+    Transcript::new()
+        .messages(
+            messages
+                .iter()
+                .map(|message| transcript_message(theme, message)),
+        )
+        .empty_text("Welcome to Aster. Type a message and press Enter.")
+        .notice(transcript_notice(theme, state))
+        .scroll_y(scroll_y)
+}
+
+fn transcript_message(theme: &Theme, message: &ChatMessage) -> TranscriptMessage {
+    let (label, color) = match message.role() {
+        ChatRole::User => ("You", theme.accent()),
+        ChatRole::Assistant => ("Aster", theme.primary()),
+        ChatRole::System => ("System", theme.warning()),
+        ChatRole::Other(name) => (name.as_str(), theme.text()),
+    };
+
+    TranscriptMessage::new(label, color, message.content())
+}
+
+fn transcript_notice(theme: &Theme, state: &ConversationStatus) -> Option<TranscriptNotice> {
+    let ConversationStatus::Error { message } = state else {
+        return None;
+    };
+
+    Some(TranscriptNotice::new(
+        format!("Error: {message}"),
+        "Press Esc after the stream stops, or submit another message.",
+        theme.danger(),
+    ))
+}
+
 fn title_for(state: &ConversationStatus) -> String {
     match state {
         ConversationStatus::Idle => " Aster - Chat ".to_string(),
@@ -134,246 +148,6 @@ fn title_color(state: &ConversationStatus, theme: &Theme) -> arbor_tui_domain::c
 
 fn footer_text(line_count: usize) -> String {
     format!("{line_count} lines | Up/Down: scroll Enter: send Esc/Ctrl+C: quit")
-}
-
-fn build_message_blocks(
-    messages: &[ChatMessage],
-    state: &ConversationStatus,
-    theme: &Theme,
-    factory: &WidgetFactory,
-    width: usize,
-) -> (Vec<WidgetNode>, usize) {
-    let mut widgets = Vec::new();
-    let mut total_lines = 0usize;
-
-    if messages.is_empty() {
-        widgets.push(
-            RichText::new()
-                .bg(surface_cell(theme))
-                .lines(vec![vec![surface_span(
-                    "  Welcome to Aster. Type a message and press Enter.",
-                    theme.text(),
-                    theme,
-                    Attrs::default(),
-                )]])
-                .build(factory, theme),
-        );
-        return (widgets, 1);
-    }
-
-    for message in messages {
-        push_message_label(
-            &mut widgets,
-            &mut total_lines,
-            message.role(),
-            theme,
-            factory,
-        );
-        push_message_content(
-            &mut widgets,
-            &mut total_lines,
-            message.content(),
-            theme,
-            factory,
-            width,
-        );
-
-        widgets.push(
-            RichText::new()
-                .bg(surface_cell(theme))
-                .lines(vec![vec![surface_span(
-                    "",
-                    theme.text(),
-                    theme,
-                    Attrs::default(),
-                )]])
-                .build(factory, theme),
-        );
-        total_lines += 1;
-    }
-
-    if let ConversationStatus::Error { message } = state {
-        widgets.push(
-            RichText::new()
-                .bg(surface_cell(theme))
-                .lines(vec![
-                    vec![surface_span(
-                        format!("  Error: {message}"),
-                        theme.danger(),
-                        theme,
-                        Attrs::default(),
-                    )],
-                    vec![surface_span(
-                        "  Press Esc after the stream stops, or submit another message.",
-                        theme.text_dim(),
-                        theme,
-                        Attrs::default(),
-                    )],
-                ])
-                .build(factory, theme),
-        );
-        total_lines += 2;
-    }
-
-    (widgets, total_lines)
-}
-
-fn push_message_label(
-    widgets: &mut Vec<WidgetNode>,
-    total_lines: &mut usize,
-    role: &ChatRole,
-    theme: &Theme,
-    factory: &WidgetFactory,
-) {
-    let (label, color) = match role {
-        ChatRole::User => ("You", theme.accent()),
-        ChatRole::Assistant => ("Aster", theme.primary()),
-        ChatRole::System => ("System", theme.warning()),
-        ChatRole::Other(name) => (name.as_str(), theme.text()),
-    };
-
-    widgets.push(
-        RichText::new()
-            .bg(surface_cell(theme))
-            .lines(vec![vec![
-                surface_span("  ", theme.text(), theme, Attrs::default()),
-                surface_span(
-                    format!("{label}: "),
-                    color,
-                    theme,
-                    Attrs {
-                        bold: true,
-                        ..Default::default()
-                    },
-                ),
-            ]])
-            .build(factory, theme),
-    );
-    *total_lines += 1;
-}
-
-fn push_message_content(
-    widgets: &mut Vec<WidgetNode>,
-    total_lines: &mut usize,
-    content: &str,
-    theme: &Theme,
-    factory: &WidgetFactory,
-    width: usize,
-) {
-    if content.is_empty() {
-        widgets.push(
-            RichText::new()
-                .bg(surface_cell(theme))
-                .lines(vec![vec![surface_span(
-                    "",
-                    theme.text(),
-                    theme,
-                    Attrs::default(),
-                )]])
-                .build(factory, theme),
-        );
-        *total_lines += 1;
-        return;
-    }
-
-    for block in aster_markdown::parse_blocks(content, theme) {
-        match block {
-            aster_markdown::Block::Text(lines) => {
-                let text_lines = indent_lines(lines, theme);
-                *total_lines += text_lines.len();
-                widgets.push(
-                    RichText::new()
-                        .bg(surface_cell(theme))
-                        .lines(text_lines)
-                        .build(factory, theme),
-                );
-            }
-            aster_markdown::Block::Code { lang, lines } => {
-                let code_height = lines.len();
-                let title = if lang.is_empty() {
-                    String::new()
-                } else {
-                    format!(" {lang} ")
-                };
-                let code = RichText::new()
-                    .bg(Cell {
-                        bg: arbor_tui_domain::cell::AnsiColor::from_palette(236),
-                        ..Default::default()
-                    })
-                    .lines(lines)
-                    .padding(RectOffset {
-                        left: 1,
-                        right: 1,
-                        top: 1,
-                        bottom: 1,
-                    })
-                    .build(factory, theme);
-
-                widgets.push(
-                    Border::new()
-                        .title(title)
-                        .fg(theme.border())
-                        .bg(theme.surface())
-                        .child(code)
-                        .build(factory, theme),
-                );
-                *total_lines += code_height + 4;
-            }
-        }
-    }
-
-    let _ = width;
-}
-
-fn estimate_content_lines(content: &str, theme: &Theme) -> usize {
-    if content.is_empty() {
-        return 1;
-    }
-
-    aster_markdown::parse_blocks(content, theme)
-        .into_iter()
-        .map(|block| match block {
-            aster_markdown::Block::Text(lines) => lines.len(),
-            aster_markdown::Block::Code { lines, .. } => lines.len() + 4,
-        })
-        .sum()
-}
-
-fn usize_to_u16_saturating(value: usize) -> u16 {
-    value.min(usize::from(u16::MAX)) as u16
-}
-
-fn indent_lines(lines: Vec<Vec<Span>>, theme: &Theme) -> Vec<Vec<Span>> {
-    lines
-        .into_iter()
-        .map(|mut line| {
-            let bg = line
-                .first()
-                .map(|span| span.bg)
-                .unwrap_or_else(|| theme.surface());
-            line.insert(
-                0,
-                Span::new("    ".to_string(), theme.text(), bg, Attrs::default()),
-            );
-            line
-        })
-        .collect()
-}
-
-fn surface_cell(theme: &Theme) -> Cell {
-    Cell {
-        bg: theme.surface(),
-        ..Default::default()
-    }
-}
-
-fn surface_span(
-    text: impl Into<String>,
-    fg: arbor_tui_domain::cell::AnsiColor,
-    theme: &Theme,
-    attrs: Attrs,
-) -> Span {
-    Span::new(text, fg, theme.surface(), attrs)
 }
 
 #[cfg(test)]
@@ -412,7 +186,7 @@ mod tests {
         let root = build_ui(&factory, &theme, &state, scroll.read_only(), 80, 24);
         let harness = WidgetHarness::render(&root, 80, 24, &theme);
 
-        assert!(harness.find_text("Welcome to Aster").len() > 0);
+        assert!(!harness.find_text("Welcome to Aster").is_empty());
         harness.assert_no_black_bg_on_text().unwrap();
     }
 
@@ -433,6 +207,6 @@ mod tests {
         let root = build_ui(&factory, &theme, &state, scroll.read_only(), 80, 24);
         let harness = WidgetHarness::render(&root, 80, 24, &theme);
 
-        assert!(harness.find_text("visible reply").len() > 0);
+        assert!(!harness.find_text("visible reply").is_empty());
     }
 }

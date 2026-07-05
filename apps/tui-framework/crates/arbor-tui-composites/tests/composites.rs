@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use arbor_tui_composites::{
-    ContentBlock, FuzzyPanel, FuzzyPanelSelection, Panel, PromptBar, ScrollColumn, StatusLine,
+    ContentBlock, DividerBlock, FuzzyPanel, FuzzyPanelSelection, Panel, PromptBar, ScrollColumn,
+    SectionDivider, StatusLine, Transcript, TranscriptMessage, TranscriptNotice,
 };
 use arbor_tui_domain::input::Key;
 use arbor_tui_domain::layout::RectOffset;
@@ -115,6 +116,113 @@ fn status_line_allows_padding_override() {
 }
 
 #[test]
+fn transcript_renders_empty_text() {
+    let (factory, theme) = wm_and_theme();
+    let root = Transcript::new()
+        .empty_text("No messages")
+        .build(&factory, &theme);
+    let harness = WidgetHarness::render(&root, 40, 3, &theme);
+
+    assert!(!harness.find_text("No messages").is_empty());
+    assert_eq!(
+        Transcript::new()
+            .empty_text("No messages")
+            .line_count(&theme),
+        1
+    );
+}
+
+#[test]
+fn transcript_renders_markdown_message_and_code_block() {
+    let (factory, theme) = wm_and_theme();
+    let message = TranscriptMessage::new(
+        "Aster",
+        theme.primary(),
+        "hello **world**\n```rust\nlet x = 1;\n```",
+    );
+    let root = Transcript::new()
+        .messages([message.clone()])
+        .build(&factory, &theme);
+    let harness = WidgetHarness::render(&root, 60, 10, &theme);
+
+    assert!(!harness.find_text("Aster:").is_empty());
+    assert!(!harness.find_text("hello").is_empty());
+    assert!(!harness.find_text("world").is_empty());
+    assert!(!harness.find_text("rust").is_empty());
+    assert!(!harness.find_text("let x = 1;").is_empty());
+    assert_eq!(Transcript::new().messages([message]).line_count(&theme), 8);
+}
+
+#[test]
+fn transcript_renders_notice_after_messages() {
+    let (factory, theme) = wm_and_theme();
+    let message = TranscriptMessage::new("Aster", theme.primary(), "done");
+    let notice = TranscriptNotice::new("Error: timeout", "Submit another message.", theme.danger());
+    let root = Transcript::new()
+        .messages([message.clone()])
+        .notice(Some(notice.clone()))
+        .build(&factory, &theme);
+    let harness = WidgetHarness::render(&root, 60, 6, &theme);
+
+    assert!(!harness.find_text("Error: timeout").is_empty());
+    assert!(!harness.find_text("Submit another message.").is_empty());
+    assert_eq!(
+        Transcript::new()
+            .messages([message])
+            .notice(Some(notice))
+            .line_count(&theme),
+        5
+    );
+}
+
+#[test]
+fn transcript_uses_theme_background_in_light_theme() {
+    let factory = WidgetFactory::new();
+    let theme = Theme::light();
+    let root = Transcript::new()
+        .messages([TranscriptMessage::new(
+            "Aster",
+            theme.primary(),
+            "hello **world**",
+        )])
+        .build(&factory, &theme);
+    let harness = WidgetHarness::render(&root, 40, 4, &theme);
+
+    assert!(!harness.find_text("world").is_empty());
+    harness.assert_no_black_bg_on_text().unwrap();
+}
+
+#[test]
+fn section_divider_renders_separator_and_label() {
+    let (factory, theme) = wm_and_theme();
+    let root = SectionDivider::new("Files")
+        .divider_width(8)
+        .bg(theme.surface_alt())
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 20, 1, &theme);
+
+    assert_eq!(row_text(&harness, 0, 14), "╭------╯ Files");
+    assert_eq!(harness.cell_at(0, 0).fg, theme.border());
+    assert_eq!(harness.cell_at(9, 0).fg, theme.text_dim());
+    assert_eq!(harness.cell_at(9, 0).bg, theme.surface_alt());
+}
+
+#[test]
+fn divider_block_stacks_section_divider_and_body() {
+    let (factory, theme) = wm_and_theme();
+    let body = Text::new("body").build(&factory, &theme);
+    let root = DividerBlock::new("Meta", body)
+        .divider_width(6)
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 24, 2, &theme);
+
+    assert_eq!(row_text(&harness, 0, 11), "╭----╯ Meta");
+    assert_eq!(harness.find_text("body"), vec![(0, 1)]);
+}
+
+#[test]
 fn prompt_bar_renders_placeholder_inside_border() {
     let (factory, theme) = wm_and_theme();
     let root = PromptBar::new()
@@ -130,6 +238,10 @@ fn prompt_bar_renders_placeholder_inside_border() {
     assert!(!harness.find_text("Type here").is_empty());
     assert!(!harness.find_text("Prompt").is_empty());
     assert_eq!(harness.cell_at(0, 0).fg.palette, theme.primary().palette);
+}
+
+fn row_text(harness: &WidgetHarness, row: u16, width: u16) -> String {
+    (0..width).map(|col| harness.cell_at(col, row).ch).collect()
 }
 
 #[test]

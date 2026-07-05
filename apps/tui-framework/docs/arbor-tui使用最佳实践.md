@@ -197,6 +197,72 @@ Border::new()
 
 如果 panel 要铺满父级剩余高度，Border 自己要 `.flex(1.0)`。
 
+### Divider
+
+Divider 用于一行分隔。默认样式是 `╭-------╯`。
+
+推荐：
+
+```rust
+Divider::new()
+    .flex(1.0)
+    .fg(theme.border())
+    .bg(panel_bg)
+    .build(factory, theme)
+```
+
+规则：
+
+- 不要用 `Text::new("------")` 手写分隔线。
+- 需要铺满父级宽度时使用 `.flex(1.0)`。
+- 需要固定宽度时使用 `.width(n)`。
+- 分隔线所在区域也要设置背景色。
+- 可以用 `.glyphs(left, fill, right)` 改成项目自己的样式。
+
+如果分隔线带标题，优先用 composites：
+
+```rust
+SectionDivider::new("Files")
+    .divider_width(8)
+    .bg(panel_bg)
+    .build(factory, theme)
+```
+
+如果分隔线后面总是跟一个内容区，使用 `DividerBlock`：
+
+```rust
+DividerBlock::new("Files", file_list)
+    .divider_width(8)
+    .bg(panel_bg)
+    .build(factory, theme)
+```
+
+### Transcript
+
+Transcript 用于聊天记录、Agent 输出和带 Markdown 的消息流。
+
+推荐：
+
+```rust
+let transcript = Transcript::new()
+    .messages(messages.iter().map(|message| {
+        TranscriptMessage::new(message.role_label(), theme.primary(), message.body())
+    }))
+    .empty_text("No messages")
+    .scroll_y(scroll_y.read_only())
+    .bg(panel_bg)
+    .flex(1.0)
+    .build(factory, theme);
+```
+
+规则：
+
+- 不要在应用里重复写 Markdown 解析、代码块边框和消息行数估算。
+- Markdown 到 `Span` 的转换放在 `arbor-tui-markdown`。
+- 聊天记录布局放在 `arbor-tui-composites::Transcript`。
+- 应用只负责把业务消息转换成 `TranscriptMessage`。
+- 错误、流中断等提示用 `TranscriptNotice`，不要混进业务消息列表。
+
 ### Input
 
 Input 是非受控组件。用户输入先存在组件内部。

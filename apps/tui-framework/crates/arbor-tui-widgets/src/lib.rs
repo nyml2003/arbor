@@ -3,6 +3,7 @@
 
 pub mod border;
 pub mod button;
+pub mod divider;
 pub mod input;
 pub mod list;
 pub mod rich_text;
