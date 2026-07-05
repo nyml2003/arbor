@@ -1,11 +1,11 @@
 // RichTextWidget — text with inline styling via Spans.
 // Each line is a Vec<Span>; each Span has its own fg/bg/attrs.
 
-use arbor_tui_primitives::cell::{Cell, Span};
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetId};
+use arbor_tui_domain::cell::{Cell, Span};
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetId};
 
 pub struct RichTextWidget {
     pub id: WidgetId,

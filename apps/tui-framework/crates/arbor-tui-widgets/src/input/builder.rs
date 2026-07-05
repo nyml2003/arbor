@@ -1,7 +1,7 @@
 use crate::input::widget::InputWidget;
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::layout::LayoutProps;
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::layout::LayoutProps;
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Input {
     placeholder: String,
@@ -50,7 +50,7 @@ impl Input {
     pub fn build(
         self,
         factory: &WidgetFactory,
-        _theme: &arbor_tui_render::theme::Theme,
+        _theme: &arbor_tui_domain::theme::Theme,
     ) -> WidgetNode {
         factory.wrap(|id| InputWidget {
             id,

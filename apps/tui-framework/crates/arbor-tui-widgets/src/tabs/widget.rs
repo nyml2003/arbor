@@ -1,12 +1,12 @@
 // TabsWidget — tabbed container. Reserves 2 rows for header + separator.
 
-use arbor_tui_primitives::cell::Cell;
-use arbor_tui_primitives::input::KeyHandleResult;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
-use arbor_tui_primitives::text::{self};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
+use arbor_tui_domain::cell::Cell;
+use arbor_tui_domain::input::KeyHandleResult;
+use arbor_tui_domain::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::text::{self};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId, WidgetNode};
 
 use std::collections::HashMap;
 
@@ -81,8 +81,8 @@ impl Widget for TabsWidget {
         SizeConstraint {
             min_w: self.props.width.unwrap_or(max_w).max(1),
             min_h: self.props.height.unwrap_or(header_h + max_h).max(1),
-            max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.w),
-            max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.h),
+            max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(available.w),
+            max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(available.h),
         }
     }
 

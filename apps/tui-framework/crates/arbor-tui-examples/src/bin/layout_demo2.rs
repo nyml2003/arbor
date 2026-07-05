@@ -10,17 +10,17 @@ use std::time::Duration;
 use crossterm::execute;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 
-use arbor_tui_primitives::cell::{Attrs, Span};
-use arbor_tui_primitives::input::InputReader;
-use arbor_tui_primitives::layout::RectOffset;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::cell::{Attrs, Span};
+use arbor_tui_domain::input::InputReader;
+use arbor_tui_domain::layout::RectOffset;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::WidgetNode;
 
-use arbor_tui::app::App;
-use arbor_tui::runtime::{runtime_step, RuntimeInput};
-use arbor_tui::TerminalBackend;
-use arbor_tui_backend::crossterm_backend::CrosstermBackend;
-use arbor_tui_backend::stdin_reader::StdinReader;
+use arbor_tui_adapters::crossterm_backend::CrosstermBackend;
+use arbor_tui_adapters::stdin_reader::StdinReader;
+use arbor_tui_application::app::App;
+use arbor_tui_application::runtime::{runtime_step, RuntimeInput};
+use arbor_tui_application::TerminalBackend;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::input::Input;
 use arbor_tui_widgets::rich_text::RichText;
@@ -134,9 +134,9 @@ fn build_ui(
 
     // ── Header ─────────────────────────────────────────────────
     let theme_name = match t.variant {
-        arbor_tui_render::theme::ThemeVariant::Dark => "dark",
-        arbor_tui_render::theme::ThemeVariant::Light => "light",
-        arbor_tui_render::theme::ThemeVariant::HighContrast => "hc",
+        arbor_tui_domain::theme::ThemeVariant::Dark => "dark",
+        arbor_tui_domain::theme::ThemeVariant::Light => "light",
+        arbor_tui_domain::theme::ThemeVariant::HighContrast => "hc",
     };
     let header = Border::new()
         .rounded()

@@ -1,12 +1,12 @@
 // TextWidget — styled text display with word wrapping and truncation.
 
-use arbor_tui_primitives::cell::{AnsiColor, Attrs, Cell};
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_primitives::text::{self, TruncateStrategy, WrapStrategy};
-use arbor_tui_reactive::signal::ReadSignal;
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetId};
+use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::text::{self, TruncateStrategy, WrapStrategy};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetId};
 
 pub struct TextWidget {
     pub id: WidgetId,
@@ -29,11 +29,11 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             fg: AnsiColor {
-                palette: arbor_tui_primitives::cell::PaletteColor(252),
+                palette: arbor_tui_domain::cell::PaletteColor(252),
                 true_color: None,
             },
             bg: AnsiColor {
-                palette: arbor_tui_primitives::cell::PaletteColor(0),
+                palette: arbor_tui_domain::cell::PaletteColor(0),
                 true_color: None,
             },
             attrs: Attrs::default(),
@@ -77,8 +77,8 @@ impl Widget for TextWidget {
                 SizeConstraint {
                     min_w: 1,
                     min_h: 1,
-                    max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(max_w.max(1)),
-                    max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(
+                    max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(max_w.max(1)),
+                    max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(
                         (lines.len() as u16).max(1),
                     ),
                 }

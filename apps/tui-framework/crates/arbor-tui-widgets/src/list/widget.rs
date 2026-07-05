@@ -1,12 +1,12 @@
 // ListWidget — scrollable item list.
 
-use arbor_tui_primitives::cell::{Attrs, Cell};
-use arbor_tui_primitives::input::KeyHandleResult;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_primitives::text::{self, TruncateStrategy};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
+use arbor_tui_domain::cell::{Attrs, Cell};
+use arbor_tui_domain::input::KeyHandleResult;
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::text::{self, TruncateStrategy};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId};
 
 pub struct ListWidget {
     pub id: WidgetId,
@@ -31,7 +31,7 @@ impl Widget for ListWidget {
     }
 
     fn measure(&self, available: Size) -> SizeConstraint {
-        let avail = arbor_tui_primitives::layout::SizeCalc::content_available(
+        let avail = arbor_tui_domain::layout::SizeCalc::content_available(
             available,
             self.props.padding,
             self.props.margin,
@@ -39,8 +39,8 @@ impl Widget for ListWidget {
         SizeConstraint {
             min_w: 1,
             min_h: 1,
-            max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(avail.w.max(1)),
-            max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(avail.h.max(1)),
+            max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(avail.w.max(1)),
+            max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(avail.h.max(1)),
         }
     }
 

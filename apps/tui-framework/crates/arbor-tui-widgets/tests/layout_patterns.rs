@@ -1,9 +1,9 @@
 // Layout pattern tests: Col, Row, nested flex layouts.
 
-use arbor_tui_render::theme::Theme;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::stack::{Col, Row};
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
@@ -34,7 +34,7 @@ fn col_stacks_children_vertically() {
 #[test]
 fn col_padding_offsets_children() {
     let (wm, t) = wm_and_theme();
-    use arbor_tui_primitives::layout::RectOffset;
+    use arbor_tui_domain::layout::RectOffset;
     let root = Col::new()
         .padding(RectOffset {
             top: 2,

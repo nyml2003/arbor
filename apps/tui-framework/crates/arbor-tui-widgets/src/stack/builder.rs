@@ -1,7 +1,7 @@
 use super::widget::StackWidget;
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::layout::{Direction, LayoutProps, RectOffset};
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::layout::{Direction, LayoutProps, RectOffset};
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Col {
     children: Vec<WidgetNode>,
@@ -57,7 +57,7 @@ impl Col {
     pub fn build(
         self,
         factory: &WidgetFactory,
-        _theme: &arbor_tui_render::theme::Theme,
+        _theme: &arbor_tui_domain::theme::Theme,
     ) -> WidgetNode {
         factory.wrap(|id| StackWidget {
             id,
@@ -120,7 +120,7 @@ impl Row {
     pub fn build(
         self,
         factory: &WidgetFactory,
-        _theme: &arbor_tui_render::theme::Theme,
+        _theme: &arbor_tui_domain::theme::Theme,
     ) -> WidgetNode {
         factory.wrap(|id| StackWidget {
             id,

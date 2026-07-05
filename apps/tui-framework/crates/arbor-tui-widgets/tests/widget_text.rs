@@ -1,11 +1,11 @@
 // Widget tests: Text + RichText rendering.
 // Covers content rendering, light/dark theme bg, wrapping, truncation.
 
-use arbor_tui_primitives::cell::Span;
-use arbor_tui_render::theme::Theme;
+use arbor_tui_domain::cell::Span;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::rich_text::RichText;
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 

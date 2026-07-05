@@ -2,14 +2,14 @@
 // These catch buffer overflows, layout instability, and memory leaks
 // that only surface at scale or across multiple frames.
 
-use arbor_tui_primitives::layout::Rect;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::layout_engine::{layout_tree, measure_tree};
-use arbor_tui_widget::render::render_tree;
+use arbor_tui_domain::layout::Rect;
+use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
+use arbor_tui_domain::render::render_tree;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::list::List;
 use arbor_tui_widgets::stack::Col;
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
@@ -193,7 +193,7 @@ fn rapid_resize_100_cycles() {
         let (cols, rows) = if i % 2 == 0 { (80, 24) } else { (100, 30) };
 
         // Manually run the pipeline for each resize
-        let size = arbor_tui_primitives::layout::Size { w: cols, h: rows };
+        let size = arbor_tui_domain::layout::Size { w: cols, h: rows };
         let constraints = measure_tree(&root, size);
         let layout = layout_tree(Rect::new(0, 0, cols, rows), &root, &constraints)
             .expect("layout must succeed");
@@ -210,7 +210,7 @@ fn rapid_resize_100_cycles() {
 
 // Helper needed because we're using render_tree directly, not WidgetHarness
 mod render_tree {
-    use arbor_tui_render::screen::VirtualScreen;
+    use arbor_tui_domain::screen::VirtualScreen;
 
     pub fn find_text_in_screen(screen: &VirtualScreen, needle: &str) -> Vec<(u16, u16)> {
         let mut positions = Vec::new();

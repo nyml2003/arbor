@@ -1,9 +1,9 @@
 // Widget tests: Border rendering.
 // Covers standalone borders, rounded/sharp, titles, custom fg/bg.
 
-use arbor_tui_render::theme::Theme;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 

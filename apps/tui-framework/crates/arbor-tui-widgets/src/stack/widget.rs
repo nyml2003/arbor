@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use arbor_tui_primitives::layout::{
+use arbor_tui_domain::layout::{
     Direction, LayoutProps, RectOffset, Size, SizeCalc, SizeConstraint,
 };
-use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
+use arbor_tui_domain::widget::{Widget, WidgetId, WidgetNode};
 
 pub struct StackWidget {
     pub id: WidgetId,
@@ -89,8 +89,8 @@ impl Widget for StackWidget {
         SizeConstraint {
             min_w: self.props.width.unwrap_or(outer.w).max(1),
             min_h: self.props.height.unwrap_or(outer.h).max(1),
-            max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.w),
-            max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.h),
+            max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(available.w),
+            max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(available.h),
         }
     }
 }

@@ -14,12 +14,9 @@ name = "layout_demo2"
 path = "src/bin/layout_demo2.rs"
 
 [dependencies]
-arbor-tui = { path = "../arbor-tui" }
-arbor-tui-primitives = { path = "../arbor-tui-primitives" }
-arbor-tui-reactive = { path = "../arbor-tui-reactive" }
-arbor-tui-render = { path = "../arbor-tui-render" }
-arbor-tui-widget = { path = "../arbor-tui-widget" }
-arbor-tui-backend = { path = "../arbor-tui-backend" }
+arbor-tui-application = { path = "../arbor-tui-application" }
+arbor-tui-domain = { path = "../arbor-tui-domain" }
+arbor-tui-adapters = { path = "../arbor-tui-adapters" }
 arbor-tui-widgets = { path = "../arbor-tui-widgets" }
 crossterm = "0.28"
 anyhow = "1"

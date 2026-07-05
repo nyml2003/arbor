@@ -1,11 +1,11 @@
 use crate::text::widget::{TextStyle, TextWidget};
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::cell::{AnsiColor, Attrs};
-use arbor_tui_primitives::layout::{LayoutProps, RectOffset};
-use arbor_tui_primitives::text::{TruncateStrategy, WrapStrategy};
-use arbor_tui_reactive::signal::ReadSignal;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::cell::{AnsiColor, Attrs};
+use arbor_tui_domain::layout::{LayoutProps, RectOffset};
+use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::text::{TruncateStrategy, WrapStrategy};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Text {
     content: String,

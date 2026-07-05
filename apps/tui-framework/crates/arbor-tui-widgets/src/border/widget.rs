@@ -1,11 +1,11 @@
 // BorderWidget — wraps a child with a Unicode-box border.
 // Supports rounded/sharp corners and optional title.
 
-use arbor_tui_primitives::cell::{AnsiColor, Cell};
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
+use arbor_tui_domain::cell::{AnsiColor, Cell};
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetId, WidgetNode};
 
 use std::collections::HashMap;
 
@@ -49,8 +49,8 @@ impl Widget for BorderWidget {
             SizeConstraint {
                 min_w: cc.min_w.saturating_add(border_w).max(3),
                 min_h: cc.min_h.saturating_add(border_h).max(2),
-                max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.w),
-                max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(available.h),
+                max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(available.w),
+                max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(available.h),
             }
         } else {
             SizeConstraint::bounded(available)

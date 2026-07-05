@@ -6,14 +6,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use arbor_tui_backend::simulated_input::SimulatedInput;
-use arbor_tui_primitives::input::{
+use arbor_tui_adapters::simulated_input::SimulatedInput;
+use arbor_tui_domain::input::{
     InputReader, Key, KeyEvent, KeyEventKind, KeyHandleResult, Modifiers,
 };
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::WidgetAction;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::WidgetAction;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::input::Input;
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 fn wm_and_theme() -> (WidgetFactory, Theme) {

@@ -5,12 +5,12 @@
 //
 // Run: cargo test -p arbor-tui-widgets --test regression_background
 
-use arbor_tui_primitives::cell::{AnsiColor, PaletteColor, Span};
-use arbor_tui_render::theme::Theme;
+use arbor_tui_domain::cell::{AnsiColor, PaletteColor, Span};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
 use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 

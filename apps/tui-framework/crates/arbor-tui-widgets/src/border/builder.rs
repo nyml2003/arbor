@@ -1,8 +1,8 @@
 use super::widget::BorderWidget;
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::cell::AnsiColor;
-use arbor_tui_primitives::layout::{LayoutProps, RectOffset};
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::cell::AnsiColor;
+use arbor_tui_domain::layout::{LayoutProps, RectOffset};
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Border {
     child: Option<WidgetNode>,
@@ -60,7 +60,7 @@ impl Border {
         self.padding = p;
         self
     }
-    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_domain::theme::Theme) -> WidgetNode {
         factory.wrap(|id| BorderWidget {
             id,
             props: LayoutProps {

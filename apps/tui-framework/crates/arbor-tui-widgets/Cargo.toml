@@ -9,10 +9,8 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-arbor-tui-primitives = { path = "../arbor-tui-primitives" }
-arbor-tui-reactive = { path = "../arbor-tui-reactive" }
-arbor-tui-render = { path = "../arbor-tui-render" }
-arbor-tui-widget = { path = "../arbor-tui-widget" }
+arbor-tui-domain = { path = "../arbor-tui-domain" }
 
 [dev-dependencies]
-arbor-tui-backend = { path = "../arbor-tui-backend" }
+arbor-tui-adapters = { path = "../arbor-tui-adapters" }
+arbor-tui-testing = { path = "../arbor-tui-testing" }

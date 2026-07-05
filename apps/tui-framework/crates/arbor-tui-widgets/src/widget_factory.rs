@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
-use arbor_tui_primitives::widget_id::WidgetId;
-use arbor_tui_widget::widget::{Widget, WidgetNode};
+use arbor_tui_domain::widget::{Widget, WidgetNode};
+use arbor_tui_domain::widget_id::WidgetId;
 
 pub struct WidgetFactory {
     next_id: Cell<u64>,

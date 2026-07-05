@@ -1,8 +1,8 @@
 use crate::rich_text::widget::RichTextWidget;
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::cell::{Cell, Span};
-use arbor_tui_primitives::layout::{LayoutProps, RectOffset};
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::cell::{Cell, Span};
+use arbor_tui_domain::layout::{LayoutProps, RectOffset};
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct RichText {
     lines: Vec<Vec<Span>>,
@@ -46,7 +46,7 @@ impl RichText {
         self.bg = Some(cell);
         self
     }
-    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_render::theme::Theme) -> WidgetNode {
+    pub fn build(self, factory: &WidgetFactory, t: &arbor_tui_domain::theme::Theme) -> WidgetNode {
         let default_bg = Cell {
             bg: t.surface(),
             ..Default::default()

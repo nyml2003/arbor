@@ -1,13 +1,13 @@
 // ButtonWidget — clickable button with style variants.
 
-use arbor_tui_primitives::cell::{Attrs, Cell};
-use arbor_tui_primitives::input::KeyHandleResult;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_primitives::text::{self, TruncateStrategy};
-use arbor_tui_reactive::signal::ReadSignal;
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
+use arbor_tui_domain::cell::{Attrs, Cell};
+use arbor_tui_domain::input::KeyHandleResult;
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::text::{self, TruncateStrategy};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ButtonStyle {

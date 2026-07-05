@@ -1,12 +1,10 @@
 [workspace]
 members = [
-    "crates/arbor-tui-primitives",
-    "crates/arbor-tui-reactive",
-    "crates/arbor-tui-render",
-    "crates/arbor-tui-widget",
-    "crates/arbor-tui-backend",
+    "crates/arbor-tui-domain",
+    "crates/arbor-tui-application",
+    "crates/arbor-tui-adapters",
     "crates/arbor-tui-widgets",
-    "crates/arbor-tui",
+    "crates/arbor-tui-testing",
     "crates/arbor-tui-examples",
 ]
 resolver = "2"

@@ -9,27 +9,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
-name = "arbor-tui"
+name = "arbor-tui-adapters"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-domain",
+ "crossterm",
+ "thiserror",
+]
+
+[[package]]
+name = "arbor-tui-application"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arbor-tui-backend",
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
+ "arbor-tui-adapters",
+ "arbor-tui-domain",
  "arbor-tui-widgets",
  "libc",
 ]
 
 [[package]]
-name = "arbor-tui-backend"
+name = "arbor-tui-domain"
 version = "0.1.0"
 dependencies = [
- "arbor-tui-primitives",
- "arbor-tui-render",
- "crossterm",
  "thiserror",
+ "unicode-width",
 ]
 
 [[package]]
@@ -37,58 +41,31 @@ name = "arbor-tui-examples"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arbor-tui",
- "arbor-tui-backend",
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
+ "arbor-tui-adapters",
+ "arbor-tui-application",
+ "arbor-tui-domain",
  "arbor-tui-widgets",
  "crossterm",
 ]
 
 [[package]]
-name = "arbor-tui-primitives"
+name = "arbor-tui-testing"
 version = "0.1.0"
 dependencies = [
- "thiserror",
- "unicode-width",
-]
-
-[[package]]
-name = "arbor-tui-reactive"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
-]
-
-[[package]]
-name = "arbor-tui-render"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
- "unicode-width",
-]
-
-[[package]]
-name = "arbor-tui-widget"
-version = "0.1.0"
-dependencies = [
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "thiserror",
+ "anyhow",
+ "arbor-tui-adapters",
+ "arbor-tui-application",
+ "arbor-tui-domain",
+ "arbor-tui-widgets",
 ]
 
 [[package]]
 name = "arbor-tui-widgets"
 version = "0.1.0"
 dependencies = [
- "arbor-tui-backend",
- "arbor-tui-primitives",
- "arbor-tui-reactive",
- "arbor-tui-render",
- "arbor-tui-widget",
+ "arbor-tui-adapters",
+ "arbor-tui-domain",
+ "arbor-tui-testing",
 ]
 
 [[package]]

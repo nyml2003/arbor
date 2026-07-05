@@ -1,12 +1,12 @@
 // InputWidget — single-line text input with cursor.
 
-use arbor_tui_primitives::cell::{Attrs, Cell};
-use arbor_tui_primitives::input::KeyHandleResult;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
-use arbor_tui_primitives::text::{self, TruncateStrategy};
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetAction, WidgetId};
+use arbor_tui_domain::cell::{Attrs, Cell};
+use arbor_tui_domain::input::KeyHandleResult;
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::text::{self, TruncateStrategy};
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId};
 
 pub struct InputWidget {
     pub id: WidgetId,
@@ -43,8 +43,8 @@ impl Widget for InputWidget {
             SizeConstraint {
                 min_w: 1,
                 min_h: 1,
-                max_w: arbor_tui_primitives::layout::AxisConstraint::Fixed(avail.w.max(1)),
-                max_h: arbor_tui_primitives::layout::AxisConstraint::Fixed(1),
+                max_w: arbor_tui_domain::layout::AxisConstraint::Fixed(avail.w.max(1)),
+                max_h: arbor_tui_domain::layout::AxisConstraint::Fixed(1),
             }
         }
     }

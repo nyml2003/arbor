@@ -3,12 +3,12 @@
 // copies only the visible portion. renders_children() = true so the
 // engine does NOT recurse into the child during render.
 
-use arbor_tui_primitives::cell::Cell;
-use arbor_tui_primitives::layout::{LayoutProps, Rect, Size, SizeConstraint};
-use arbor_tui_reactive::signal::ReadSignal;
-use arbor_tui_render::screen::VirtualScreen;
-use arbor_tui_render::theme::Theme;
-use arbor_tui_widget::widget::{Widget, WidgetId, WidgetNode};
+use arbor_tui_domain::cell::Cell;
+use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
+use arbor_tui_domain::screen::VirtualScreen;
+use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_domain::widget::{Widget, WidgetId, WidgetNode};
 
 use std::collections::HashMap;
 

@@ -1,10 +1,10 @@
 // Widget tests: Button + List + Tabs rendering.
 
-use arbor_tui_render::theme::Theme;
+use arbor_tui_domain::theme::Theme;
+use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::button::{Button, ButtonStyle};
 use arbor_tui_widgets::list::List;
 use arbor_tui_widgets::tabs::{TabDef, Tabs};
-use arbor_tui_widgets::testing::WidgetHarness;
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 

@@ -1,7 +1,7 @@
 use crate::list::widget::ListWidget;
 use crate::widget_factory::WidgetFactory;
-use arbor_tui_primitives::layout::{LayoutProps, RectOffset};
-use arbor_tui_widget::widget::WidgetNode;
+use arbor_tui_domain::layout::{LayoutProps, RectOffset};
+use arbor_tui_domain::widget::WidgetNode;
 
 pub struct List {
     items: Vec<String>,
@@ -38,7 +38,7 @@ impl List {
     pub fn build(
         self,
         factory: &WidgetFactory,
-        _theme: &arbor_tui_render::theme::Theme,
+        _theme: &arbor_tui_domain::theme::Theme,
     ) -> WidgetNode {
         factory.wrap(|id| ListWidget {
             id,
