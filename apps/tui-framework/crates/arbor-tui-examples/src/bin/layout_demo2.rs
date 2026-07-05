@@ -5,14 +5,15 @@
 use std::cell::{Cell as StdCell, RefCell};
 use std::rc::Rc;
 
-use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell, Span};
+use arbor_tui_domain::cell::AnsiColor;
 use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::theme::{Theme, ThemeVariant};
 use arbor_tui_domain::widget::WidgetNode;
 
-use arbor_tui_composites::{FuzzyPanel, Panel, PromptBar, SectionDivider, StatusLine};
+use arbor_tui_composites::{
+    FuzzyPanel, Panel, PromptBar, SectionDivider, SectionedPanel, SectionedPanelSection, StatusLine,
+};
 use arbor_tui_runtime::{run_crossterm_terminal_app, TerminalApp};
-use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
 use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
@@ -80,7 +81,6 @@ fn build_ui(
     let left_w = cols / 5;
     let right_w = cols / 4;
     let panel_bg = demo_panel_bg(t);
-    let panel_cell = demo_panel_cell(t);
 
     // ── Header ─────────────────────────────────────────────────
     let theme_name = match t.variant {
@@ -177,53 +177,20 @@ fn build_ui(
     .empty_text("No files match")
     .build(factory, t);
 
-    let right = Panel::new(
-        RichText::new()
-            .bg(panel_cell)
-            .line(vec![Span::new(
-                format!(" {cols}x{rows}"),
-                t.text(),
-                panel_bg,
-                Attrs::default(),
-            )])
-            .line(vec![])
-            .line(vec![Span::new(
-                " accent",
-                t.accent(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                " primary",
-                t.primary(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                " success",
-                t.success(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                " danger",
-                t.danger(),
-                panel_bg,
-                Default::default(),
-            )])
-            .line(vec![Span::new(
-                " warning",
-                t.warning(),
-                panel_bg,
-                Default::default(),
-            )])
-            .build(factory, t),
-    )
-    .rounded()
+    let right = SectionedPanel::new([
+        SectionedPanelSection::new("上方主信息区")
+            .line("系统名称：TUI 控制面板")
+            .line("当前模式：编辑模式")
+            .line("连接状态：在线"),
+        SectionedPanelSection::new("下方详情分区")
+            .line(format!("{cols}x{rows}"))
+            .line("CPU 占用：27%    内存占用：42%")
+            .line("磁盘读写：2.3MB/s")
+            .line("在线客户端：5 台"),
+    ])
     .flex(1.0)
     .fg(demo_border_fg(t, t.success()))
     .bg(panel_bg)
-    .title(" Info ")
     .build(factory, t);
 
     let body = Row::new()
@@ -261,13 +228,6 @@ fn demo_border_fg(t: &Theme, fallback: AnsiColor) -> AnsiColor {
     match t.variant {
         ThemeVariant::Light => t.border(),
         ThemeVariant::Dark | ThemeVariant::HighContrast => fallback,
-    }
-}
-
-fn demo_panel_cell(t: &Theme) -> Cell {
-    Cell {
-        bg: demo_panel_bg(t),
-        ..Default::default()
     }
 }
 

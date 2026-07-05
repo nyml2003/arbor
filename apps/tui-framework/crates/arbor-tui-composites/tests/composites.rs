@@ -3,7 +3,8 @@ use std::rc::Rc;
 
 use arbor_tui_composites::{
     ContentBlock, DividerBlock, FuzzyPanel, FuzzyPanelSelection, Panel, PromptBar, ScrollColumn,
-    SectionDivider, StatusLine, Transcript, TranscriptMessage, TranscriptNotice,
+    SectionDivider, SectionedPanel, SectionedPanelSection, StatusLine, Transcript,
+    TranscriptMessage, TranscriptNotice,
 };
 use arbor_tui_domain::input::Key;
 use arbor_tui_domain::layout::RectOffset;
@@ -223,6 +224,42 @@ fn divider_block_stacks_section_divider_and_body() {
 }
 
 #[test]
+fn sectioned_panel_draws_connected_sections() {
+    let (factory, theme) = wm_and_theme();
+    let root = SectionedPanel::new([
+        SectionedPanelSection::new("上方主信息区")
+            .line("系统名称：TUI 控制面板")
+            .line("连接状态：在线"),
+        SectionedPanelSection::new("下方详情分区").line("CPU 占用：27%"),
+    ])
+    .width(36)
+    .fg(theme.border())
+    .bg(theme.surface_alt())
+    .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 36, 8, &theme);
+
+    assert_eq!(
+        row_text(&harness, 0, 36),
+        "╭──────────────────────────────────╮"
+    );
+    assert_eq!(
+        row_text(&harness, 4, 36),
+        "╰─────────────────────────────────╭╯"
+    );
+    assert_eq!(
+        row_text(&harness, 7, 36),
+        "╰──────────────────────────────────╯"
+    );
+    let visible_text = visible_screen_text(&harness);
+    assert!(visible_text.contains("【上方主信息区】"));
+    assert!(visible_text.contains("系统名称：TUI 控制面板"));
+    assert!(visible_text.contains("【下方详情分区】"));
+    assert_eq!(harness.cell_at(0, 4).fg, theme.border());
+    assert_eq!(harness.cell_at(1, 1).bg, theme.surface_alt());
+}
+
+#[test]
 fn prompt_bar_renders_placeholder_inside_border() {
     let (factory, theme) = wm_and_theme();
     let root = PromptBar::new()
@@ -242,6 +279,22 @@ fn prompt_bar_renders_placeholder_inside_border() {
 
 fn row_text(harness: &WidgetHarness, row: u16, width: u16) -> String {
     (0..width).map(|col| harness.cell_at(col, row).ch).collect()
+}
+
+fn visible_screen_text(harness: &WidgetHarness) -> String {
+    let mut text = String::new();
+    for row in 0..harness.rows() {
+        for col in 0..harness.cols() {
+            let cell = harness.cell_at(col, row);
+            if !cell.phantom {
+                text.push(cell.ch);
+            }
+        }
+        if row + 1 < harness.rows() {
+            text.push('\n');
+        }
+    }
+    text
 }
 
 #[test]

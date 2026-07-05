@@ -237,6 +237,29 @@ DividerBlock::new("Files", file_list)
     .build(factory, theme)
 ```
 
+如果多个文本分区需要共用一个外框，并且中间要用 `╰────╭╯` 这种连接线，使用 `SectionedPanel`：
+
+```rust
+SectionedPanel::new([
+    SectionedPanelSection::new("上方主信息区")
+        .line("系统名称：TUI 控制面板")
+        .line("连接状态：在线"),
+    SectionedPanelSection::new("下方详情分区")
+        .line("CPU 占用：27%")
+        .line("在线客户端：5 台"),
+])
+.fg(theme.border())
+.bg(panel_bg)
+.build(factory, theme)
+```
+
+规则：
+
+- 单行标题分隔用 `SectionDivider`。
+- 标题后跟任意 widget 内容用 `DividerBlock`。
+- 多段文本共享一个边框用 `SectionedPanel`。
+- 不要在业务代码里手写整块 box drawing 字符串。
+
 ### Transcript
 
 Transcript 用于聊天记录、Agent 输出和带 Markdown 的消息流。

@@ -9,6 +9,7 @@ mod panel;
 mod prompt_bar;
 mod scroll_column;
 mod section_divider;
+mod sectioned_panel;
 mod status_line;
 mod transcript;
 
@@ -18,6 +19,7 @@ pub use panel::Panel;
 pub use prompt_bar::PromptBar;
 pub use scroll_column::{ContentBlock, ScrollColumn};
 pub use section_divider::SectionDivider;
+pub use sectioned_panel::{SectionedPanel, SectionedPanelSection};
 pub use status_line::StatusLine;
 pub use transcript::{Transcript, TranscriptMessage, TranscriptNotice};
 
