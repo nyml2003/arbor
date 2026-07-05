@@ -1,20 +1,7 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use arbor_tui_composites::{
-    FuzzyPanel, FuzzyPanelSelection, Transcript, TranscriptMessage, TranscriptNotice,
-};
-use arbor_tui_domain::layout::RectOffset;
-use arbor_tui_domain::signal::ReadSignal;
-use arbor_tui_domain::theme::Theme;
-use arbor_tui_domain::widget::WidgetNode;
-use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::input::Input;
-use arbor_tui_widgets::stack::Col;
-use arbor_tui_widgets::text::Text;
-use arbor_tui_widgets::widget_factory::WidgetFactory;
+use arbor_tui::prelude::*;
 use aster_domain::{ChatMessage, ChatRole, ConversationStatus};
 
+use crate::runner::AsterAction;
 use crate::state::{AppState, CommandPalette};
 
 pub fn estimate_line_count(
@@ -22,120 +9,319 @@ pub fn estimate_line_count(
     state: &ConversationStatus,
     theme: &Theme,
 ) -> usize {
-    build_transcript(theme, messages, state, ReadSignal::constant(0)).line_count(theme)
+    transcript_component(theme, messages, state).line_count(theme)
 }
 
 pub fn build_ui(
-    factory: &WidgetFactory,
-    theme: &Theme,
-    state: &Rc<RefCell<AppState>>,
+    ui: &Ui<AsterAction>,
+    state: &AppState,
     scroll_y: ReadSignal<u16>,
     loading_phase: usize,
-    cols: u16,
-    rows: u16,
-) -> WidgetNode {
-    let snapshot = UiSnapshot::from_state(&state.borrow());
-    let panel_bg = theme.surface();
-    let title = title_for(&snapshot.conversation_state);
-    let line_count = estimate_line_count(&snapshot.messages, &snapshot.conversation_state, theme);
-    let transcript = build_transcript(
-        theme,
-        &snapshot.messages,
-        &snapshot.conversation_state,
+) -> Node<AsterAction> {
+    ui.component(AsterPage::new(
+        UiSnapshot::from_state(state),
         scroll_y,
-    )
-    .bg(panel_bg)
-    .flex(1.0)
-    .build(factory, theme);
-
-    let state_for_change = Rc::clone(state);
-    let state_for_submit = Rc::clone(state);
-    let input_placeholder = if snapshot.is_streaming {
-        "Aster is responding - Esc/Enter interrupts"
-    } else {
-        "Type a message or /theme /model"
-    };
-    let input = Border::new()
-        .fg(theme.border())
-        .bg(panel_bg)
-        .child(
-            Input::new()
-                .value(snapshot.draft.clone())
-                .placeholder(input_placeholder)
-                .loading(snapshot.is_streaming)
-                .loading_phase(loading_phase)
-                .on_change(move |message| {
-                    state_for_change.borrow_mut().update_draft(message);
-                })
-                .on_submit(move |message| {
-                    state_for_submit.borrow_mut().submit_input(message);
-                })
-                .build(factory, theme),
-        )
-        .build(factory, theme);
-
-    let footer = Text::new(footer_text(
-        line_count,
-        &snapshot.theme_name,
-        &snapshot.model,
-        snapshot.status_message.as_deref(),
-        snapshot.is_streaming,
+        loading_phase,
     ))
-    .fg(theme.text_dim())
-    .bg(panel_bg)
-    .padding(RectOffset {
-        left: 1,
-        ..Default::default()
-    })
-    .build(factory, theme);
+}
 
-    let mut children = vec![transcript, input];
-    if let Some(palette) = snapshot.palette {
-        let state_for_palette = Rc::clone(state);
-        let panel = FuzzyPanel::new(palette.items)
-            .title(" Commands ")
-            .placeholder("Filter")
-            .empty_text("No command matches")
-            .query(palette.query)
-            .selected_index(palette.selected)
-            .rounded()
-            .fg(theme.border())
-            .bg(panel_bg)
-            .accent(theme.accent())
-            .on_submit(move |selection: FuzzyPanelSelection| {
-                state_for_palette
-                    .borrow_mut()
-                    .accept_palette_value(&selection.item);
-            })
-            .build(factory, theme);
-        children.push(panel);
-    }
-    children.push(footer);
+struct AsterPage {
+    props: AsterPageProps,
+}
 
-    let inner = Col::new()
-        .flex(1.0)
-        .children(children)
-        .build(factory, theme);
+struct AsterPageProps {
+    snapshot: UiSnapshot,
+    scroll_y: ReadSignal<u16>,
+    loading_phase: usize,
+}
 
-    let page = Border::new()
-        .title(title)
-        .rounded()
-        .flex(1.0)
-        .padding(RectOffset {
-            top: 1,
-            bottom: 1,
-            left: 1,
-            right: 1,
+impl AsterPage {
+    fn new(snapshot: UiSnapshot, scroll_y: ReadSignal<u16>, loading_phase: usize) -> Self {
+        Self::from_props(AsterPageProps {
+            snapshot,
+            scroll_y,
+            loading_phase,
         })
-        .fg(title_color(&snapshot.conversation_state, theme))
-        .bg(panel_bg)
-        .child(inner)
-        .build(factory, theme);
+    }
+}
 
-    Col::new()
-        .size(cols, rows)
-        .children([page])
-        .build(factory, theme)
+impl PropsComponent<AsterAction> for AsterPage {
+    type Props = AsterPageProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AsterAction> for AsterPage {
+    fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+        let theme = ui.theme();
+        let panel_bg = theme.surface();
+        let snapshot = self.props.snapshot;
+        let title = title_for(&snapshot.conversation_state);
+        let line_count =
+            estimate_line_count(&snapshot.messages, &snapshot.conversation_state, theme);
+
+        let mut body = Col::new()
+            .fill()
+            .child(TranscriptPane::new(
+                snapshot.messages.clone(),
+                snapshot.conversation_state.clone(),
+                self.props.scroll_y,
+            ))
+            .child(ChatInputPanel::new(
+                snapshot.draft.clone(),
+                snapshot.is_streaming,
+                self.props.loading_phase,
+            ));
+
+        if let Some(palette) = snapshot.palette.clone() {
+            body = body.child(CommandPalettePanel::new(palette));
+        }
+
+        body = body.child(FooterLine::new(
+            line_count,
+            snapshot.theme_name,
+            snapshot.model,
+            snapshot.status_message,
+            snapshot.is_streaming,
+        ));
+
+        ui.component(
+            Panel::new(body)
+                .title(title)
+                .rounded()
+                .fill()
+                .padding(RectOffset {
+                    top: 1,
+                    bottom: 1,
+                    left: 1,
+                    right: 1,
+                })
+                .fg(title_color(&snapshot.conversation_state, theme))
+                .bg(panel_bg),
+        )
+    }
+}
+
+struct TranscriptPane {
+    props: TranscriptPaneProps,
+}
+
+struct TranscriptPaneProps {
+    messages: Vec<ChatMessage>,
+    conversation_state: ConversationStatus,
+    scroll_y: ReadSignal<u16>,
+}
+
+impl TranscriptPane {
+    fn new(
+        messages: Vec<ChatMessage>,
+        conversation_state: ConversationStatus,
+        scroll_y: ReadSignal<u16>,
+    ) -> Self {
+        Self::from_props(TranscriptPaneProps {
+            messages,
+            conversation_state,
+            scroll_y,
+        })
+    }
+}
+
+impl PropsComponent<AsterAction> for TranscriptPane {
+    type Props = TranscriptPaneProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AsterAction> for TranscriptPane {
+    fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+        let theme = ui.theme();
+        ui.component(
+            transcript_component(theme, &self.props.messages, &self.props.conversation_state)
+                .scroll_y(self.props.scroll_y)
+                .bg(theme.surface())
+                .fill(),
+        )
+    }
+}
+
+struct ChatInputPanel {
+    props: ChatInputPanelProps,
+}
+
+struct ChatInputPanelProps {
+    draft: String,
+    is_streaming: bool,
+    loading_phase: usize,
+}
+
+impl ChatInputPanel {
+    fn new(draft: String, is_streaming: bool, loading_phase: usize) -> Self {
+        Self::from_props(ChatInputPanelProps {
+            draft,
+            is_streaming,
+            loading_phase,
+        })
+    }
+}
+
+impl PropsComponent<AsterAction> for ChatInputPanel {
+    type Props = ChatInputPanelProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AsterAction> for ChatInputPanel {
+    fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+        let theme = ui.theme();
+        let input_placeholder = if self.props.is_streaming {
+            "Aster is responding - Esc/Enter interrupts"
+        } else {
+            "Type a message or /theme /model"
+        };
+
+        ui.component(
+            Panel::new(
+                Input::new()
+                    .value(self.props.draft)
+                    .placeholder(input_placeholder)
+                    .loading(self.props.is_streaming)
+                    .loading_phase(self.props.loading_phase)
+                    .on_change(AsterAction::DraftChanged)
+                    .on_submit(AsterAction::SubmitInput),
+            )
+            .fg(theme.border())
+            .bg(theme.surface()),
+        )
+    }
+}
+
+struct CommandPalettePanel {
+    props: CommandPalettePanelProps,
+}
+
+struct CommandPalettePanelProps {
+    palette: PaletteSnapshot,
+}
+
+impl CommandPalettePanel {
+    fn new(palette: PaletteSnapshot) -> Self {
+        Self::from_props(CommandPalettePanelProps { palette })
+    }
+}
+
+impl PropsComponent<AsterAction> for CommandPalettePanel {
+    type Props = CommandPalettePanelProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AsterAction> for CommandPalettePanel {
+    fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+        let theme = ui.theme();
+        let palette = self.props.palette;
+        ui.component(
+            FuzzyPanel::new(palette.items)
+                .title(" Commands ")
+                .placeholder("Filter")
+                .empty_text("No command matches")
+                .query(palette.query)
+                .selected_index(palette.selected)
+                .rounded()
+                .fg(theme.border())
+                .bg(theme.surface())
+                .accent(theme.accent())
+                .on_submit(|selection: FuzzyPanelSelection| {
+                    AsterAction::AcceptPaletteValue(selection.item)
+                }),
+        )
+    }
+}
+
+struct FooterLine {
+    props: FooterLineProps,
+}
+
+struct FooterLineProps {
+    line_count: usize,
+    theme_name: String,
+    model: String,
+    status_message: Option<String>,
+    is_streaming: bool,
+}
+
+impl FooterLine {
+    fn new(
+        line_count: usize,
+        theme_name: String,
+        model: String,
+        status_message: Option<String>,
+        is_streaming: bool,
+    ) -> Self {
+        Self::from_props(FooterLineProps {
+            line_count,
+            theme_name,
+            model,
+            status_message,
+            is_streaming,
+        })
+    }
+}
+
+impl PropsComponent<AsterAction> for FooterLine {
+    type Props = FooterLineProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AsterAction> for FooterLine {
+    fn render(self, ui: &Ui<AsterAction>) -> Node<AsterAction> {
+        let theme = ui.theme();
+        ui.component(
+            TextBlock::new(footer_text(
+                self.props.line_count,
+                &self.props.theme_name,
+                &self.props.model,
+                self.props.status_message.as_deref(),
+                self.props.is_streaming,
+            ))
+            .fg(theme.text_dim())
+            .bg(theme.surface())
+            .padding(RectOffset {
+                left: 1,
+                ..Default::default()
+            }),
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -188,11 +374,10 @@ impl From<&CommandPalette> for PaletteSnapshot {
     }
 }
 
-fn build_transcript(
+fn transcript_component(
     theme: &Theme,
     messages: &[ChatMessage],
     state: &ConversationStatus,
-    scroll_y: ReadSignal<u16>,
 ) -> Transcript {
     Transcript::new()
         .messages(
@@ -202,7 +387,6 @@ fn build_transcript(
         )
         .empty_text("Welcome to Aster. Type a message and press Enter.")
         .notice(transcript_notice(theme, state))
-        .scroll_y(scroll_y)
 }
 
 fn transcript_message(theme: &Theme, message: &ChatMessage) -> TranscriptMessage {
@@ -236,7 +420,7 @@ fn title_for(state: &ConversationStatus) -> String {
     }
 }
 
-fn title_color(state: &ConversationStatus, theme: &Theme) -> arbor_tui_domain::cell::AnsiColor {
+fn title_color(state: &ConversationStatus, theme: &Theme) -> AnsiColor {
     match state {
         ConversationStatus::Error { .. } => theme.danger(),
         ConversationStatus::Streaming { .. } => theme.primary(),
@@ -266,8 +450,7 @@ fn footer_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arbor_tui_domain::signal::Signal;
-    use arbor_tui_testing::WidgetHarness;
+    use arbor_tui::testing::TestApp;
     use aster_application::{ChatRequestOptions, ChatStreamError, ChatStreamPort, StreamReceiver};
     use aster_domain::ChatMessage;
 
@@ -292,63 +475,61 @@ mod tests {
 
     #[test]
     fn welcome_screen_has_no_black_text_background_in_light_theme() {
-        let factory = WidgetFactory::new();
-        let theme = Theme::light();
-        let state = Rc::new(RefCell::new(AppState::new(FakeClient { events: vec![] })));
-        let scroll = Signal::new(0u16);
+        let mut app = test_app(AppState::new(FakeClient { events: vec![] })).theme(Theme::light());
 
-        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 0, 80, 24);
-        let harness = WidgetHarness::render(&root, 80, 24, &theme);
-
-        assert!(!harness.find_text("Welcome to Aster").is_empty());
-        harness.assert_no_black_bg_on_text().unwrap();
+        app.render(80, 24)
+            .assert_text("Welcome to Aster")
+            .assert_no_default_bg();
     }
 
     #[test]
     fn clamped_scroll_offset_keeps_short_reply_visible() {
-        let factory = WidgetFactory::new();
-        let theme = Theme::dark();
-        let state = Rc::new(RefCell::new(AppState::new(FakeClient {
+        let mut state = AppState::new(FakeClient {
             events: vec![
                 aster_application::StreamEvent::Token("visible reply".to_string()),
                 aster_application::StreamEvent::Done,
             ],
-        })));
-        state.borrow_mut().submit_input("hello".to_string());
-        state.borrow_mut().poll_stream_and_take_changed();
-        let scroll = Signal::new(0u16);
+        });
+        state.submit_input("hello".to_string());
+        state.poll_stream_and_take_changed();
+        let mut app = test_app(state);
 
-        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 0, 80, 24);
-        let harness = WidgetHarness::render(&root, 80, 24, &theme);
-
-        assert!(!harness.find_text("visible reply").is_empty());
+        app.render(80, 24).assert_text("visible reply");
     }
 
     #[test]
     fn streaming_state_sets_input_loading_copy() {
-        let factory = WidgetFactory::new();
-        let theme = Theme::dark();
-        let state = Rc::new(RefCell::new(AppState::new(FakeClient { events: vec![] })));
-        state.borrow_mut().submit_input("hello".to_string());
-        let scroll = Signal::new(0u16);
+        let mut state = AppState::new(FakeClient { events: vec![] });
+        state.submit_input("hello".to_string());
+        let mut app = test_app(state);
 
-        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 1, 80, 24);
-        let harness = WidgetHarness::render(&root, 80, 24, &theme);
-
-        assert!(!harness.find_text("responding").is_empty());
+        app.render(80, 24).assert_text("responding");
     }
 
     #[test]
     fn slash_draft_renders_fuzzy_panel() {
-        let factory = WidgetFactory::new();
-        let theme = Theme::dark();
-        let state = Rc::new(RefCell::new(AppState::new(FakeClient { events: vec![] })));
-        state.borrow_mut().update_draft("/th".to_string());
-        let scroll = Signal::new(0u16);
+        let mut state = AppState::new(FakeClient { events: vec![] });
+        state.update_draft("/th".to_string());
+        let mut app = test_app(state);
 
-        let root = build_ui(&factory, &theme, &state, scroll.read_only(), 0, 80, 24);
-        let harness = WidgetHarness::render(&root, 80, 24, &theme);
+        app.render(80, 24).assert_text("/theme");
+    }
 
-        assert!(!harness.find_text("/theme").is_empty());
+    fn test_app(state: AppState) -> TestApp<AppState, AsterAction> {
+        TestApp::new(
+            state,
+            |_state, _action, _ctx| {},
+            |state, ui| {
+                build_ui(
+                    ui,
+                    state,
+                    ReadSignal::constant(0),
+                    usize::from(matches!(
+                        state.chat().state(),
+                        ConversationStatus::Streaming { .. }
+                    )),
+                )
+            },
+        )
     }
 }

@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 anyhow = "1"
 arbor-tui-composites = { path = "../arbor-tui-composites" }
+arbor-tui-application = { path = "../arbor-tui-application" }
 arbor-tui-domain = { path = "../arbor-tui-domain" }
 arbor-tui-runtime = { path = "../arbor-tui-runtime" }
 arbor-tui-testing = { path = "../arbor-tui-testing" }

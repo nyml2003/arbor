@@ -24,6 +24,7 @@ ofsh = { path = "crates/ofsh" }
 arbor-tui-domain = { path = "../tui-framework/crates/arbor-tui-domain" }
 arbor-tui-application = { path = "../tui-framework/crates/arbor-tui-application" }
 arbor-tui-adapters = { path = "../tui-framework/crates/arbor-tui-adapters" }
+arbor-tui = { path = "../tui-framework/crates/arbor-tui" }
 arbor-tui-composites = { path = "../tui-framework/crates/arbor-tui-composites" }
 arbor-tui-runtime = { path = "../tui-framework/crates/arbor-tui-runtime" }
 arbor-tui-widgets = { path = "../tui-framework/crates/arbor-tui-widgets" }

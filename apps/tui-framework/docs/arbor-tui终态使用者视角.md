@@ -165,7 +165,7 @@ fn main() -> Result<()> {
         .run()
 }
 
-fn update(state: &mut AppState, action: AppAction, ctx: &mut AppContext) {
+fn update(state: &mut AppState, action: AppAction, ctx: &mut AppContext<AppAction>) {
     match action {
         AppAction::Submit(text) => state.submit(text),
         AppAction::ToggleTheme => ctx.set_theme(state.next_theme()),
@@ -173,11 +173,21 @@ fn update(state: &mut AppState, action: AppAction, ctx: &mut AppContext) {
     }
 }
 
-fn view(state: &AppState, ui: &mut Ui) -> Node<AppAction> {
-    ui.page()
-        .header(ui.status_line("Aster"))
-        .body(ui.transcript(&state.messages).fill())
-        .footer(ui.prompt("Type a message", AppAction::Submit))
+fn view(state: &AppState, ui: &Ui<AppAction>) -> Node<AppAction> {
+    ui.component(
+        Page::new()
+            .header(StatusLine::new("Aster"))
+            .body(
+                Transcript::new()
+                    .messages(state.messages.iter().map(to_transcript_message))
+                    .fill(),
+            )
+            .footer(
+                PromptBar::new()
+                    .placeholder("Type a message")
+                    .on_submit(AppAction::Submit),
+            ),
+    )
 }
 ```
 
@@ -216,14 +226,40 @@ fn view(state: &AppState, ui: &mut Ui) -> Node<AppAction> {
 示例：
 
 ```rust
-fn job_card(job: &Job, ui: &mut Ui) -> Node<AppAction> {
-    ui.panel()
-        .title(job.name())
-        .body(
-            ui.col()
-                .child(ui.text(job.status_label()).fg(job.status_color()))
-                .child(ui.text(job.last_log_line()).dim())
+struct JobCard {
+    props: JobCardProps,
+}
+
+struct JobCardProps {
+    name: String,
+    status_label: String,
+    status_color: AnsiColor,
+    last_log_line: String,
+}
+
+impl PropsComponent<AppAction> for JobCard {
+    type Props = JobCardProps;
+
+    fn from_props(props: Self::Props) -> Self {
+        Self { props }
+    }
+
+    fn into_props(self) -> Self::Props {
+        self.props
+    }
+}
+
+impl UiComponent<AppAction> for JobCard {
+    fn render(self, ui: &Ui<AppAction>) -> Node<AppAction> {
+        ui.component(
+            Panel::new(
+                Col::new()
+                    .child(TextBlock::new(self.props.status_label).fg(self.props.status_color))
+                    .child(TextBlock::new(self.props.last_log_line).dim()),
+            )
+            .title(self.props.name),
         )
+    }
 }
 ```
 
@@ -279,13 +315,22 @@ impl Component<AppAction> for Sparkline {
 
 ```rust
 fn view(state: &AppState, ui: &mut Ui) -> Node<Action> {
-    ui.page()
+    ui.component(
+        Page::new()
         .body(
-            ui.row()
-                .child(ui.panel().title("CPU").body(ui.custom(CpuGauge::new(&state.cpu))))
-                .child(ui.panel().title("Logs").body(ui.transcript(&state.logs).fill()))
+            Row::new()
+                .child(Panel::new(CpuGauge::from_state(&state.cpu)).title("CPU"))
+                .child(
+                    Panel::new(
+                        Transcript::new()
+                            .messages(state.logs.iter().map(to_transcript_message))
+                            .fill(),
+                    )
+                    .title("Logs"),
+                )
         )
-        .footer(ui.prompt("command").on_submit(Action::Submit))
+        .footer(PromptBar::new().placeholder("command").on_submit(Action::Submit))
+    )
 }
 ```
 
@@ -309,10 +354,11 @@ fn view(state: &AppState, ui: &mut Ui) -> Node<Action> {
 正确用法应短：
 
 ```rust
-ui.panel()
-    .title("Jobs")
-    .body(ui.table(&state.jobs))
-    .fill()
+ui.component(
+    Panel::new(JobTable::from_jobs(&state.jobs))
+        .title("Jobs")
+        .fill(),
+)
 ```
 
 ### 6. 测试和调试层
@@ -405,7 +451,7 @@ fn main() -> Result<()> {
         .run()
 }
 
-fn update(state: &mut AppState, action: Action, ctx: &mut AppContext) {
+fn update(state: &mut AppState, action: Action, ctx: &mut AppContext<Action>) {
     match action {
         Action::SubmitPrompt(text) => {
             state.messages.push(Message::user(text.clone()));
@@ -422,28 +468,32 @@ fn update(state: &mut AppState, action: Action, ctx: &mut AppContext) {
     }
 }
 
-fn view(state: &AppState, ui: &mut Ui) -> Node<Action> {
-    ui.page()
+fn view(state: &AppState, ui: &Ui<Action>) -> Node<Action> {
+    ui.component(
+        Page::new()
         .title("Arbor Agent Console")
-        .header(ui.status_line(format!(
+        .header(StatusLine::new(format!(
             "Task: {}  Status: {}",
             state.current_task_name(),
             if state.running { "Running" } else { "Idle" }
         )))
         .body(
-            ui.row()
-                .child(ui.task_list(&state.tasks).selected(state.selected_task).width(24))
-                .child(ui.transcript(&state.messages).fill())
-                .child(ui.file_context(&state.context_files).width(28))
+            Row::new()
+                .child(TaskList::new(state.tasks.clone()).selected(state.selected_task).width(24))
+                .child(
+                    Transcript::new()
+                        .messages(state.messages.iter().map(to_transcript_message))
+                        .fill(),
+                )
+                .child(FileContext::new(state.context_files.clone()).width(28))
         )
         .footer(
-            ui.prompt("ask agent / run test / switch task")
+            PromptBar::new()
+                .placeholder("ask agent / run test / switch task")
                 .loading(state.running)
                 .on_submit(Action::SubmitPrompt)
         )
-        .on_key(Key::Up, Action::SelectPrevTask)
-        .on_key(Key::Down, Action::SelectNextTask)
-        .on_key(Key::Esc, Action::Quit)
+    )
 }
 ```
 

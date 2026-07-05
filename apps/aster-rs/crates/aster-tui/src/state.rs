@@ -1,4 +1,4 @@
-use arbor_tui_domain::theme::Theme;
+use arbor_tui::prelude::Theme;
 use aster_application::{ChatRequestOptions, ChatSession, ChatStreamPort};
 use aster_domain::ConversationStatus;
 use ofsh::{
@@ -17,7 +17,6 @@ pub struct AppState {
     draft: String,
     palette: Option<CommandPalette>,
     status_message: Option<String>,
-    changed: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -108,7 +107,6 @@ impl AppState {
             draft: String::new(),
             palette: None,
             status_message: None,
-            changed: true,
         }
     }
 
@@ -141,12 +139,8 @@ impl AppState {
     }
 
     pub fn update_draft(&mut self, draft: String) {
-        let was_open = self.palette.is_some();
         self.draft = draft;
         self.refresh_palette();
-        if was_open || self.palette.is_some() {
-            self.changed = true;
-        }
     }
 
     pub fn submit_input(&mut self, message: String) {
@@ -169,7 +163,6 @@ impl AppState {
         if !matches!(self.chat.state(), ConversationStatus::Idle) {
             self.status_message =
                 Some("Agent is responding. Press Esc or Enter to interrupt.".to_string());
-            self.changed = true;
             return;
         }
 
@@ -178,11 +171,9 @@ impl AppState {
             Ok(()) => {
                 self.status_message = None;
                 self.clear_draft();
-                self.changed = true;
             }
             Err(error) => {
                 self.status_message = Some(error.to_string());
-                self.changed = true;
             }
         }
     }
@@ -191,21 +182,17 @@ impl AppState {
         if matches!(self.chat.state(), ConversationStatus::Streaming { .. }) {
             self.chat.cancel_stream();
             self.status_message = Some("Response interrupted.".to_string());
-            self.changed = true;
         }
     }
 
     pub fn dismiss_error(&mut self) {
         if matches!(self.chat.state(), ConversationStatus::Error { .. }) {
             self.chat.dismiss_error();
-            self.changed = true;
         }
     }
 
     pub fn close_palette(&mut self) {
-        if self.palette.take().is_some() {
-            self.changed = true;
-        }
+        self.palette = None;
     }
 
     pub fn move_palette_selection(&mut self, delta: i32) {
@@ -220,7 +207,6 @@ impl AppState {
         let current = palette.selected as i32;
         let max_index = item_count.saturating_sub(1) as i32;
         palette.selected = current.saturating_add(delta).clamp(0, max_index) as usize;
-        self.changed = true;
     }
 
     pub fn accept_palette_selection(&mut self) -> bool {
@@ -259,22 +245,15 @@ impl AppState {
             }
         }
 
-        self.changed = true;
         true
     }
 
     pub fn poll_stream_and_take_changed(&mut self) -> StreamPollOutcome {
         let before = self.chat.state().clone();
         let streamed_tokens = self.chat.poll();
-        if streamed_tokens > 0 || self.chat.state() != &before {
-            self.changed = true;
-        }
-
-        let state_changed = self.changed;
-        self.changed = false;
         StreamPollOutcome {
             streamed_tokens,
-            state_changed,
+            state_changed: self.chat.state() != &before,
         }
     }
 
@@ -283,7 +262,6 @@ impl AppState {
             Ok(statement) => self.apply_command(statement),
             Err(message) => {
                 self.status_message = Some(message);
-                self.changed = true;
             }
         }
     }
@@ -320,7 +298,6 @@ impl AppState {
             "/model" => self.apply_model_command(&args),
             other => {
                 self.status_message = Some(format!("Unknown command: {other}"));
-                self.changed = true;
             }
         }
     }
@@ -328,38 +305,32 @@ impl AppState {
     fn apply_theme_command(&mut self, args: &[&str]) {
         if args.len() != 1 {
             self.status_message = Some("Usage: /theme <dark|light|high-contrast>".to_string());
-            self.changed = true;
             return;
         }
 
         let Some(theme) = AsterTheme::from_name(args[0]) else {
             self.status_message = Some(format!("Unknown theme: {}", args[0]));
-            self.changed = true;
             return;
         };
 
         self.active_theme = theme;
         self.status_message = Some(format!("Theme switched to {}.", theme.name()));
-        self.changed = true;
     }
 
     fn apply_model_command(&mut self, args: &[&str]) {
         if args.len() != 1 {
             self.status_message =
                 Some("Usage: /model <deepseek-chat|deepseek-reasoner>".to_string());
-            self.changed = true;
             return;
         }
 
         if !MODEL_CHOICES.contains(&args[0]) {
             self.status_message = Some(format!("Unknown model: {}", args[0]));
-            self.changed = true;
             return;
         }
 
         self.active_model = args[0].to_string();
         self.status_message = Some(format!("Model switched to {}.", self.active_model));
-        self.changed = true;
     }
 
     fn refresh_palette(&mut self) {
@@ -393,18 +364,8 @@ impl AppState {
     }
 
     fn clear_draft(&mut self) {
-        if !self.draft.is_empty() || self.palette.is_some() {
-            self.draft.clear();
-            self.palette = None;
-            self.changed = true;
-        }
-    }
-
-    #[cfg(test)]
-    fn take_changed(&mut self) -> bool {
-        let changed = self.changed;
-        self.changed = false;
-        changed
+        self.draft.clear();
+        self.palette = None;
     }
 }
 
@@ -476,10 +437,12 @@ mod tests {
     fn submitting_message_marks_state_changed() {
         let mut state = AppState::new(FakeClient);
 
-        state.take_changed();
         state.submit_input("hi".to_string());
 
-        assert!(state.take_changed());
+        assert!(matches!(
+            state.chat().state(),
+            ConversationStatus::Streaming { .. }
+        ));
     }
 
     #[test]
@@ -487,7 +450,6 @@ mod tests {
         let mut state = AppState::new(FakeClient);
 
         state.submit_input("hi".to_string());
-        state.take_changed();
         let outcome = state.poll_stream_and_take_changed();
 
         assert_eq!(outcome.streamed_tokens, 1);
@@ -499,7 +461,6 @@ mod tests {
         let mut state = AppState::new(DoneOnlyClient);
 
         state.submit_input("hi".to_string());
-        state.take_changed();
         let outcome = state.poll_stream_and_take_changed();
 
         assert_eq!(outcome.streamed_tokens, 0);
@@ -512,23 +473,20 @@ mod tests {
         let mut state = AppState::new(FakeClient);
 
         state.submit_input("hi".to_string());
-        state.take_changed();
         state.cancel_stream();
 
         assert_eq!(state.chat().state(), &ConversationStatus::Idle);
-        assert!(state.take_changed());
+        assert_eq!(state.status_message(), Some("Response interrupted."));
     }
 
     #[test]
     fn slash_theme_command_switches_theme() {
         let mut state = AppState::new(FakeClient);
 
-        state.take_changed();
         state.submit_input("/theme light".to_string());
 
         assert_eq!(state.active_theme(), AsterTheme::Light);
         assert_eq!(state.status_message(), Some("Theme switched to light."));
-        assert!(state.take_changed());
     }
 
     #[test]
@@ -544,13 +502,11 @@ mod tests {
     fn command_draft_opens_completion_palette() {
         let mut state = AppState::new(FakeClient);
 
-        state.take_changed();
         state.update_draft("/th".to_string());
 
         let palette = state.palette().expect("palette should open");
         assert_eq!(palette.query(), "/th");
         assert_eq!(palette.items()[0].value(), "/theme");
-        assert!(state.take_changed());
     }
 
     #[test]

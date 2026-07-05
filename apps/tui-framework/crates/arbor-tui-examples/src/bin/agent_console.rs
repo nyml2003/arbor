@@ -45,44 +45,41 @@ fn view(state: &AgentState, ui: &Ui<Action>) -> Node<Action> {
         state.messages.join("\n")
     };
 
-    ui.page()
-        .title("Arbor Agent Console")
-        .header(ui.status_line(if state.running {
-            "Status: Running"
-        } else {
-            "Status: Idle"
-        }))
-        .body(
-            ui.row()
-                .fill()
-                .child(
-                    ui.panel(ui.text("Tasks\n> build ui\n  run tests\n  review"))
-                        .title(" Tasks ")
-                        .fill()
-                        .build(),
-                )
-                .child(
-                    ui.panel(ui.text(transcript))
-                        .title(" Transcript ")
-                        .fill()
-                        .build(),
-                )
-                .child(
-                    ui.panel(ui.text("Files\nCargo.toml\nui.rs\nstate.rs"))
-                        .title(" Context ")
-                        .fill()
-                        .build(),
-                )
-                .build(),
-        )
-        .footer(
-            ui.prompt("ask agent / type /done")
-                .loading(state.running)
-                .loading_phase(state.loading_phase)
-                .on_submit(Action::SubmitPrompt)
-                .build(),
-        )
-        .build()
+    ui.component(
+        Page::new()
+            .title("Arbor Agent Console")
+            .header(StatusLine::new(if state.running {
+                "Status: Running"
+            } else {
+                "Status: Idle"
+            }))
+            .body(
+                Row::new()
+                    .fill()
+                    .child(
+                        Panel::new(TextBlock::new("Tasks\n> build ui\n  run tests\n  review"))
+                            .title(" Tasks ")
+                            .fill(),
+                    )
+                    .child(
+                        Panel::new(TextBlock::new(transcript))
+                            .title(" Transcript ")
+                            .fill(),
+                    )
+                    .child(
+                        Panel::new(TextBlock::new("Files\nCargo.toml\nui.rs\nstate.rs"))
+                            .title(" Context ")
+                            .fill(),
+                    ),
+            )
+            .footer(
+                PromptBar::new()
+                    .placeholder("ask agent / type /done")
+                    .loading(state.running)
+                    .loading_phase(state.loading_phase)
+                    .on_submit(Action::SubmitPrompt),
+            ),
+    )
 }
 
 #[cfg(test)]

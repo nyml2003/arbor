@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arbor-tui-adapters",
+ "arbor-tui-application",
  "arbor-tui-composites",
  "arbor-tui-domain",
  "arbor-tui-runtime",
