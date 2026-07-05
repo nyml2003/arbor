@@ -14,6 +14,8 @@ pub struct PromptBar {
     on_submit: Option<Box<dyn Fn(String)>>,
     fg: Option<AnsiColor>,
     bg: Option<AnsiColor>,
+    loading: bool,
+    loading_phase: usize,
     padding: RectOffset,
     flex: f32,
 }
@@ -33,6 +35,8 @@ impl PromptBar {
             on_submit: None,
             fg: None,
             bg: None,
+            loading: false,
+            loading_phase: 0,
             padding: RectOffset::default(),
             flex: 0.0,
         }
@@ -68,6 +72,16 @@ impl PromptBar {
         self
     }
 
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+
+    pub fn loading_phase(mut self, phase: usize) -> Self {
+        self.loading_phase = phase;
+        self
+    }
+
     pub fn padding(mut self, padding: RectOffset) -> Self {
         self.padding = padding;
         self
@@ -79,7 +93,10 @@ impl PromptBar {
     }
 
     pub fn build(self, factory: &WidgetFactory, theme: &Theme) -> WidgetNode {
-        let mut input = Input::new().placeholder(self.placeholder);
+        let mut input = Input::new()
+            .placeholder(self.placeholder)
+            .loading(self.loading)
+            .loading_phase(self.loading_phase);
         if let Some(callback) = self.on_submit {
             input = input.on_submit(callback);
         }

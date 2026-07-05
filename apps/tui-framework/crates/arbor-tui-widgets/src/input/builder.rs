@@ -7,6 +7,8 @@ pub struct Input {
     placeholder: String,
     password: bool,
     width: Option<u16>,
+    loading: bool,
+    loading_phase: usize,
     on_change: Option<Box<dyn Fn(String)>>,
     on_submit: Option<Box<dyn Fn(String)>>,
 }
@@ -23,6 +25,8 @@ impl Input {
             placeholder: String::new(),
             password: false,
             width: None,
+            loading: false,
+            loading_phase: 0,
             on_change: None,
             on_submit: None,
         }
@@ -37,6 +41,14 @@ impl Input {
     }
     pub fn width(mut self, w: u16) -> Self {
         self.width = Some(w);
+        self
+    }
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+    pub fn loading_phase(mut self, phase: usize) -> Self {
+        self.loading_phase = phase;
         self
     }
     pub fn on_change(mut self, f: impl Fn(String) + 'static) -> Self {
@@ -62,6 +74,8 @@ impl Input {
             cursor: 0,
             placeholder: self.placeholder,
             password: self.password,
+            loading: self.loading,
+            loading_phase: self.loading_phase,
             on_change: self.on_change,
             on_submit: self.on_submit,
         })

@@ -29,7 +29,7 @@ fn renders_prompt() {
     let (wm, t) = wm_and_theme();
     let input = Input::new().placeholder("type").build(&wm, &t);
     let h = WidgetHarness::render(&input, 40, 1, &t);
-    assert_eq!(h.cell_at(0, 0).ch, '>');
+    assert_eq!(h.cell_at(0, 0).ch, '›');
     assert_eq!(h.cell_at(1, 0).ch, ' ');
 }
 
@@ -39,6 +39,72 @@ fn renders_placeholder_when_empty() {
     let input = Input::new().placeholder("search...").build(&wm, &t);
     let h = WidgetHarness::render(&input, 40, 1, &t);
     assert!(!h.find_text("search...").is_empty());
+}
+
+#[test]
+fn idle_state_uses_dim_prompt_and_placeholder() {
+    let (wm, t) = wm_and_theme();
+    let input = Input::new().placeholder("search...").build(&wm, &t);
+    let h = WidgetHarness::render(&input, 40, 1, &t);
+
+    assert_eq!(h.cell_at(0, 0).fg.palette, t.text_dim().palette);
+    let (col, row) = h.find_text("search...")[0];
+    assert_eq!(h.cell_at(col, row).fg.palette, t.text_dim().palette);
+}
+
+#[test]
+fn focused_state_uses_accent_prompt_and_primary_cursor() {
+    let (wm, t) = wm_and_theme();
+    let input = Input::new().placeholder("search...").build(&wm, &t);
+    let h = WidgetHarness::render_with_focus(&input, 40, 1, &t, Some(input.id()));
+
+    assert_eq!(h.cell_at(0, 0).fg.palette, t.accent().palette);
+    assert_eq!(h.cell_at(2, 0).bg.palette, t.primary().palette);
+}
+
+#[test]
+fn focused_empty_input_keeps_placeholder_visible_after_cursor() {
+    let (wm, t) = wm_and_theme();
+    let input = Input::new().placeholder("blank").build(&wm, &t);
+    let h = WidgetHarness::render_with_focus(&input, 40, 1, &t, Some(input.id()));
+
+    assert!(!h.find_text("blank").is_empty());
+    assert_eq!(h.cell_at(2, 0).bg.palette, t.primary().palette);
+}
+
+#[test]
+fn loading_state_renders_spinner_with_warning_style() {
+    let (wm, t) = wm_and_theme();
+    let input = Input::new()
+        .placeholder("waiting")
+        .loading(true)
+        .loading_phase(1)
+        .build(&wm, &t);
+    let h = WidgetHarness::render(&input, 40, 1, &t);
+
+    assert_eq!(h.cell_at(0, 0).ch, '◐');
+    assert_eq!(h.cell_at(0, 0).fg.palette, t.warning().palette);
+    let (col, row) = h.find_text("waiting")[0];
+    assert_eq!(h.cell_at(col, row).fg.palette, t.text_dim().palette);
+}
+
+#[test]
+fn loading_state_blocks_submit() {
+    let (wm, t) = wm_and_theme();
+    let submitted = Rc::new(RefCell::new(String::new()));
+    let submitted2 = submitted.clone();
+    let mut input = Input::new()
+        .loading(true)
+        .on_submit(move |s| {
+            let _ = submitted2.replace(s);
+        })
+        .build(&wm, &t);
+
+    input.perform(&WidgetAction::TypeChar('x'));
+    let result = input.perform(&WidgetAction::Activate);
+
+    assert_eq!(result, KeyHandleResult::Handled);
+    assert_eq!(submitted.borrow().as_str(), "");
 }
 
 #[test]
@@ -58,8 +124,8 @@ fn renders_empty_buffer_without_placeholder() {
     let (wm, t) = wm_and_theme();
     let input = Input::new().build(&wm, &t);
     let h = WidgetHarness::render(&input, 40, 1, &t);
-    // Prompt "> " should be visible; nothing else
-    assert_eq!(h.cell_at(0, 0).ch, '>');
+    // Prompt "› " should be visible; nothing else
+    assert_eq!(h.cell_at(0, 0).ch, '›');
 }
 
 #[test]
@@ -186,7 +252,7 @@ fn backspace_at_start_is_noop() {
     assert_eq!(result, KeyHandleResult::Handled);
     let h = WidgetHarness::render(&input, 40, 1, &t);
     // Still just the prompt
-    assert_eq!(h.cell_at(0, 0).ch, '>');
+    assert_eq!(h.cell_at(0, 0).ch, '›');
 }
 
 #[test]
@@ -391,7 +457,7 @@ fn focused_shows_cursor_highlight() {
     // Render with focus on this widget
     let h = WidgetHarness::render_with_focus(&input, 40, 1, &t, Some(input.id()));
     // Cursor should be highlighted. After typing 'a' the cursor is at col 3
-    // ("> a"). The cursor cell bg should be the primary color.
+    // ("▸ a"). The cursor cell bg should be the primary color.
     let cursor_col: u16 = 3; // "> " + 'a' + cursor
     assert_eq!(
         h.cell_at(cursor_col, 0).bg.palette,

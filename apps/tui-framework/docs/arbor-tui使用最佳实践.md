@@ -303,10 +303,26 @@ Input::new()
 
 使用建议：
 
+- 默认 Input 有三种视觉状态：未聚焦态 `›`、聚焦态 `▸`、loading 态 spinner。
 - 命令行输入放 footer。
 - 表单字段用明确 placeholder。
 - 不要把长篇帮助文本塞进 placeholder。
 - password 输入使用 `.password()`。
+- 等待 Agent 或后端回复时，设置 `.loading(true)`，并在状态层递增 `.loading_phase(n)` 形成 spinner 动画。
+- loading 态不会触发 submit。避免重复提交同一条命令。
+
+如果用 footer 命令栏，优先让 `PromptBar` 透传等待态：
+
+```rust
+PromptBar::new()
+    .placeholder("ask agent")
+    .loading(state.waiting_for_agent)
+    .loading_phase(state.loading_phase)
+    .on_submit(move |cmd| {
+        // send command
+    })
+    .build(factory, theme)
+```
 
 ### List 和 Table
 

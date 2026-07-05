@@ -293,6 +293,22 @@ fn prompt_bar_renders_placeholder_inside_border() {
     assert_eq!(harness.cell_at(0, 0).fg.palette, theme.primary().palette);
 }
 
+#[test]
+fn prompt_bar_forwards_loading_state_to_input() {
+    let (factory, theme) = wm_and_theme();
+    let root = PromptBar::new()
+        .placeholder("waiting for agent")
+        .loading(true)
+        .loading_phase(1)
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 32, 3, &theme);
+
+    assert!(!harness.find_text("◐ waiting for agent").is_empty());
+    let (col, row) = harness.find_text("◐").first().copied().unwrap();
+    assert_eq!(harness.cell_at(col, row).fg, theme.warning());
+}
+
 fn row_text(harness: &WidgetHarness, row: u16, width: u16) -> String {
     (0..width).map(|col| harness.cell_at(col, row).ch).collect()
 }
