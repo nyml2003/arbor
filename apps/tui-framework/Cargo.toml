@@ -4,6 +4,7 @@ members = [
     "crates/arbor-tui-application",
     "crates/arbor-tui-adapters",
     "crates/arbor-tui-widgets",
+    "crates/arbor-tui-composites",
     "crates/arbor-tui-testing",
     "crates/arbor-tui-examples",
 ]

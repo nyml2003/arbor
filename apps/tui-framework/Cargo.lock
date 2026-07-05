@@ -29,6 +29,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arbor-tui-composites"
+version = "0.1.0"
+dependencies = [
+ "arbor-tui-domain",
+ "arbor-tui-testing",
+ "arbor-tui-widgets",
+]
+
+[[package]]
 name = "arbor-tui-domain"
 version = "0.1.0"
 dependencies = [
@@ -43,6 +52,7 @@ dependencies = [
  "anyhow",
  "arbor-tui-adapters",
  "arbor-tui-application",
+ "arbor-tui-composites",
  "arbor-tui-domain",
  "arbor-tui-testing",
  "arbor-tui-widgets",

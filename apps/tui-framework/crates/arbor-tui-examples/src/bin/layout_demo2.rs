@@ -21,11 +21,9 @@ use arbor_tui_adapters::stdin_reader::StdinReader;
 use arbor_tui_application::app::App;
 use arbor_tui_application::runtime::{runtime_step, RuntimeInput};
 use arbor_tui_application::TerminalBackend;
-use arbor_tui_widgets::border::Border;
-use arbor_tui_widgets::input::Input;
+use arbor_tui_composites::{Panel, PromptBar, StatusLine};
 use arbor_tui_widgets::rich_text::RichText;
 use arbor_tui_widgets::stack::{Col, Row};
-use arbor_tui_widgets::text::Text;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
 fn main() {
@@ -140,193 +138,186 @@ fn build_ui(
         ThemeVariant::Light => "light",
         ThemeVariant::HighContrast => "hc",
     };
-    let header = Border::new()
-        .rounded()
-        .fg(demo_border_fg(t, t.accent()))
-        .bg(panel_bg)
-        .title(" Arbor TUI ")
-        .child(
-            Text::new(format!("Theme: {theme_name}  |  ^C/q to quit"))
-                .fg(t.text_dim())
-                .bg(panel_bg)
-                .build(factory, t),
-        )
-        .build(factory, t);
+    let header = Panel::new(
+        StatusLine::new(format!("Theme: {theme_name}  |  ^C/q to quit"))
+            .fg(t.text_dim())
+            .bg(panel_bg)
+            .padding(RectOffset::default())
+            .build(factory, t),
+    )
+    .rounded()
+    .fg(demo_border_fg(t, t.accent()))
+    .bg(panel_bg)
+    .title(" Arbor TUI ")
+    .build(factory, t);
 
     // ── Footer with theme-switching input ──────────────────────
     let t_clone = theme_rc.clone();
     let changed = theme_changed.clone();
-    let footer = Border::new()
+    let footer = PromptBar::new()
         .rounded()
         .fg(demo_border_fg(t, t.accent()))
         .bg(panel_bg)
         .title(" Commands ")
-        .child(
-            Input::new()
-                .placeholder("type /theme dark  |  /theme light")
-                .on_submit(move |cmd| {
-                    let cmd = cmd.trim();
-                    if cmd == "/theme dark" {
-                        *t_clone.borrow_mut() = Theme::dark();
-                    } else if cmd == "/theme light" {
-                        *t_clone.borrow_mut() = Theme::light();
-                    }
-                    changed.set(true);
-                })
-                .build(factory, t),
-        )
+        .placeholder("type /theme dark  |  /theme light")
+        .on_submit(move |cmd| {
+            let cmd = cmd.trim();
+            if cmd == "/theme dark" {
+                *t_clone.borrow_mut() = Theme::dark();
+            } else if cmd == "/theme light" {
+                *t_clone.borrow_mut() = Theme::light();
+            }
+            changed.set(true);
+        })
         .build(factory, t);
 
     // ── Body: 3 columns ────────────────────────────────────────
-    let left = Border::new()
-        .rounded()
-        .flex(1.0)
-        .fg(demo_border_fg(t, t.primary()))
-        .bg(panel_bg)
-        .title(" Nav ")
-        .child(
-            RichText::new()
-                .bg(panel_cell)
-                .line(vec![Span::new(
-                    "  Home",
-                    t.text(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    "  Projects",
-                    t.text(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    "  Settings",
-                    t.text(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![])
-                .line(vec![Span::new(
-                    " Status:",
-                    t.text_dim(),
-                    panel_bg,
-                    Attrs {
-                        italic: true,
-                        ..Default::default()
-                    },
-                )])
-                .line(vec![Span::new(
-                    "  CPU  12%",
-                    t.text_dim(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    "  RAM  3.2G",
-                    t.text_dim(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .build(factory, t),
-        )
-        .build(factory, t);
+    let left = Panel::new(
+        RichText::new()
+            .bg(panel_cell)
+            .line(vec![Span::new(
+                "  Home",
+                t.text(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                "  Projects",
+                t.text(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                "  Settings",
+                t.text(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![])
+            .line(vec![Span::new(
+                " Status:",
+                t.text_dim(),
+                panel_bg,
+                Attrs {
+                    italic: true,
+                    ..Default::default()
+                },
+            )])
+            .line(vec![Span::new(
+                "  CPU  12%",
+                t.text_dim(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                "  RAM  3.2G",
+                t.text_dim(),
+                panel_bg,
+                Default::default(),
+            )])
+            .build(factory, t),
+    )
+    .rounded()
+    .flex(1.0)
+    .fg(demo_border_fg(t, t.primary()))
+    .bg(panel_bg)
+    .title(" Nav ")
+    .build(factory, t);
 
-    let center = Border::new()
-        .rounded()
-        .flex(1.0)
-        .fg(demo_border_fg(t, t.accent()))
-        .bg(panel_bg)
-        .title(" Content ")
-        .child(
-            RichText::new()
-                .bg(panel_cell)
-                .padding(RectOffset::all(1))
-                .line(vec![Span::new(
-                    "═══ Welcome ═══",
-                    t.primary(),
-                    panel_bg,
-                    Attrs {
-                        bold: true,
-                        ..Default::default()
-                    },
-                )])
-                .line(vec![])
-                .line(vec![Span::new(
-                    "3-column layout with rounded borders.",
-                    t.text(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![])
-                .line(vec![Span::new(
-                    format!("Left {left_w} | Center flex | Right {right_w}"),
-                    t.text_dim(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![])
-                .line(vec![Span::new(
-                    "Use footer: /theme dark | /theme light",
-                    t.success(),
-                    panel_bg,
-                    Attrs {
-                        italic: true,
-                        ..Default::default()
-                    },
-                )])
-                .build(factory, t),
-        )
-        .build(factory, t);
+    let center = Panel::new(
+        RichText::new()
+            .bg(panel_cell)
+            .padding(RectOffset::all(1))
+            .line(vec![Span::new(
+                "═══ Welcome ═══",
+                t.primary(),
+                panel_bg,
+                Attrs {
+                    bold: true,
+                    ..Default::default()
+                },
+            )])
+            .line(vec![])
+            .line(vec![Span::new(
+                "3-column layout with rounded borders.",
+                t.text(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![])
+            .line(vec![Span::new(
+                format!("Left {left_w} | Center flex | Right {right_w}"),
+                t.text_dim(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![])
+            .line(vec![Span::new(
+                "Use footer: /theme dark | /theme light",
+                t.success(),
+                panel_bg,
+                Attrs {
+                    italic: true,
+                    ..Default::default()
+                },
+            )])
+            .build(factory, t),
+    )
+    .rounded()
+    .flex(1.0)
+    .fg(demo_border_fg(t, t.accent()))
+    .bg(panel_bg)
+    .title(" Content ")
+    .build(factory, t);
 
-    let right = Border::new()
-        .rounded()
-        .flex(1.0)
-        .fg(demo_border_fg(t, t.success()))
-        .bg(panel_bg)
-        .title(" Info ")
-        .child(
-            RichText::new()
-                .bg(panel_cell)
-                .line(vec![Span::new(
-                    format!(" {cols}x{rows}"),
-                    t.text(),
-                    panel_bg,
-                    Attrs::default(),
-                )])
-                .line(vec![])
-                .line(vec![Span::new(
-                    " accent",
-                    t.accent(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    " primary",
-                    t.primary(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    " success",
-                    t.success(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    " danger",
-                    t.danger(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .line(vec![Span::new(
-                    " warning",
-                    t.warning(),
-                    panel_bg,
-                    Default::default(),
-                )])
-                .build(factory, t),
-        )
-        .build(factory, t);
+    let right = Panel::new(
+        RichText::new()
+            .bg(panel_cell)
+            .line(vec![Span::new(
+                format!(" {cols}x{rows}"),
+                t.text(),
+                panel_bg,
+                Attrs::default(),
+            )])
+            .line(vec![])
+            .line(vec![Span::new(
+                " accent",
+                t.accent(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                " primary",
+                t.primary(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                " success",
+                t.success(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                " danger",
+                t.danger(),
+                panel_bg,
+                Default::default(),
+            )])
+            .line(vec![Span::new(
+                " warning",
+                t.warning(),
+                panel_bg,
+                Default::default(),
+            )])
+            .build(factory, t),
+    )
+    .rounded()
+    .flex(1.0)
+    .fg(demo_border_fg(t, t.success()))
+    .bg(panel_bg)
+    .title(" Info ")
+    .build(factory, t);
 
     let body = Row::new()
         .flex(1.0)
