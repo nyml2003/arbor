@@ -23,6 +23,7 @@ arbor-tui-domain.workspace = true
 arbor-tui-runtime.workspace = true
 arbor-tui-widgets.workspace = true
 anyhow.workspace = true
+ofsh.workspace = true
 
 [dev-dependencies]
 arbor-tui-testing.workspace = true

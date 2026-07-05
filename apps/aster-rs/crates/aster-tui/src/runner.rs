@@ -35,28 +35,40 @@ impl Default for ScrollConfig {
 
 #[derive(Clone)]
 struct AsterRuntime {
-    factory: Rc<WidgetFactory>,
     state: Rc<RefCell<AppState>>,
     scroll_y: Rc<Signal<u16>>,
+    loading_phase: Rc<Signal<usize>>,
     scroll: ScrollConfig,
 }
 
 impl AsterRuntime {
+    #[cfg(test)]
     fn new(client: impl ChatStreamPort + 'static) -> Self {
         Self {
-            factory: Rc::new(WidgetFactory::new()),
             state: Rc::new(RefCell::new(AppState::new(client))),
             scroll_y: Rc::new(Signal::new(0)),
+            loading_phase: Rc::new(Signal::new(0)),
+            scroll: ScrollConfig::default(),
+        }
+    }
+
+    fn with_model(client: impl ChatStreamPort + 'static, model: impl Into<String>) -> Self {
+        Self {
+            state: Rc::new(RefCell::new(AppState::with_model(client, model))),
+            scroll_y: Rc::new(Signal::new(0)),
+            loading_phase: Rc::new(Signal::new(0)),
             scroll: ScrollConfig::default(),
         }
     }
 
     fn build_ui(&self, theme: &Theme, cols: u16, rows: u16) -> WidgetNode {
+        let factory = WidgetFactory::new();
         build_ui(
-            &self.factory,
+            &factory,
             theme,
             &self.state,
             self.scroll_y.read_only(),
+            self.loading_phase.get(),
             cols,
             rows,
         )
@@ -70,13 +82,37 @@ impl AsterRuntime {
 
         for event in events.drain(..) {
             let consumed = match &event.key {
+                Key::Enter if self.is_streaming() => {
+                    self.state.borrow_mut().cancel_stream();
+                    needs_render = true;
+                    true
+                }
                 Key::Escape if self.is_streaming() => {
                     self.state.borrow_mut().cancel_stream();
                     needs_render = true;
                     true
                 }
+                Key::Escape if self.is_palette_open() => {
+                    self.state.borrow_mut().close_palette();
+                    needs_render = true;
+                    true
+                }
                 Key::Escape if self.is_error() => {
                     self.state.borrow_mut().dismiss_error();
+                    needs_render = true;
+                    true
+                }
+                Key::Enter if self.is_palette_open() => {
+                    needs_render |= self.state.borrow_mut().accept_palette_selection();
+                    true
+                }
+                Key::ArrowUp if self.is_palette_open() => {
+                    self.state.borrow_mut().move_palette_selection(-1);
+                    needs_render = true;
+                    true
+                }
+                Key::ArrowDown if self.is_palette_open() => {
+                    self.state.borrow_mut().move_palette_selection(1);
                     needs_render = true;
                     true
                 }
@@ -121,11 +157,23 @@ impl AsterRuntime {
         needs_render
     }
 
-    fn before_render(&self, app: &mut App, root: &mut WidgetNode, theme: &Theme) -> bool {
+    fn before_render(&self, app: &mut App, root: &mut WidgetNode, theme: &mut Theme) -> bool {
         let (cols, rows) = app.screen_size();
         let viewport = MessageViewport::from_rows(rows);
         let outcome = self.state.borrow_mut().poll_stream_and_take_changed();
         let mut needs_rebuild = false;
+        let desired_theme = self.state.borrow().active_theme().to_theme();
+
+        if theme.variant != desired_theme.variant {
+            *theme = desired_theme;
+            needs_rebuild = true;
+        }
+
+        if self.is_streaming() {
+            needs_rebuild |= self.advance_loading_phase(app);
+        } else {
+            needs_rebuild |= self.reset_loading_phase(app);
+        }
 
         if outcome.streamed_tokens > 0 {
             self.scroll_to_bottom(app, theme, viewport);
@@ -158,6 +206,25 @@ impl AsterRuntime {
             self.state.borrow().chat().state(),
             ConversationStatus::Error { .. }
         )
+    }
+
+    fn is_palette_open(&self) -> bool {
+        self.state.borrow().is_palette_open()
+    }
+
+    fn advance_loading_phase(&self, app: &mut App) -> bool {
+        let next = self.loading_phase.get().wrapping_add(1);
+        app.update_signal(&self.loading_phase, next);
+        true
+    }
+
+    fn reset_loading_phase(&self, app: &mut App) -> bool {
+        if self.loading_phase.get() == 0 {
+            return false;
+        }
+
+        app.update_signal(&self.loading_phase, 0);
+        true
     }
 
     fn move_scroll(
@@ -232,11 +299,16 @@ impl MessageViewport {
 pub fn run() -> anyhow::Result<()> {
     let theme = Theme::dark();
     let client = DeepSeekClient::from_env().context("failed to create DeepSeek client")?;
-    run_with_client(client, theme)
+    let initial_model = client.model().to_string();
+    run_with_client(client, theme, initial_model)
 }
 
-fn run_with_client(client: impl ChatStreamPort + 'static, theme: Theme) -> anyhow::Result<()> {
-    let runtime = AsterRuntime::new(client);
+fn run_with_client(
+    client: impl ChatStreamPort + 'static,
+    theme: Theme,
+    initial_model: impl Into<String>,
+) -> anyhow::Result<()> {
+    let runtime = AsterRuntime::with_model(client, initial_model);
 
     let build_runtime = runtime.clone();
     let app = TerminalApp::with_builder(theme, move |cols, rows, active_theme| {
@@ -277,7 +349,7 @@ fn i32_to_u16_saturating(value: i32) -> u16 {
 mod tests {
     use super::*;
     use arbor_tui_domain::input::{KeyEventKind, Modifiers};
-    use aster_application::{ChatStreamError, StreamEvent, StreamReceiver};
+    use aster_application::{ChatRequestOptions, ChatStreamError, StreamEvent, StreamReceiver};
     use aster_domain::ChatMessage;
     use std::sync::mpsc;
 
@@ -286,15 +358,31 @@ mod tests {
         events: Vec<StreamEvent>,
     }
 
+    #[derive(Clone)]
+    struct PendingClient;
+
     impl ChatStreamPort for FakeClient {
         fn start_stream(
             &self,
             _messages: &[ChatMessage],
+            _options: &ChatRequestOptions,
         ) -> Result<StreamReceiver, ChatStreamError> {
             let (tx, rx) = mpsc::channel();
             for event in self.events.clone() {
                 tx.send(event).unwrap();
             }
+            Ok(StreamReceiver::new(rx))
+        }
+    }
+
+    impl ChatStreamPort for PendingClient {
+        fn start_stream(
+            &self,
+            _messages: &[ChatMessage],
+            _options: &ChatRequestOptions,
+        ) -> Result<StreamReceiver, ChatStreamError> {
+            let (tx, rx) = mpsc::channel();
+            std::mem::forget(tx);
             Ok(StreamReceiver::new(rx))
         }
     }
@@ -331,10 +419,7 @@ mod tests {
     #[test]
     fn streaming_escape_cancels_stream_without_quitting() {
         let runtime = AsterRuntime::new(FakeClient { events: vec![] });
-        runtime
-            .state
-            .borrow_mut()
-            .submit_message("hello".to_string());
+        runtime.state.borrow_mut().submit_input("hello".to_string());
         let theme = Theme::dark();
         let mut app = App::new(80, 24);
         app.run();
@@ -349,6 +434,57 @@ mod tests {
             runtime.state.borrow().chat().state(),
             &ConversationStatus::Idle
         );
+    }
+
+    #[test]
+    fn streaming_enter_cancels_stream_without_quitting() {
+        let runtime = AsterRuntime::new(FakeClient { events: vec![] });
+        runtime.state.borrow_mut().submit_input("hello".to_string());
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut events = vec![key_event(Key::Enter)];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert!(app.is_running());
+        assert_eq!(
+            runtime.state.borrow().chat().state(),
+            &ConversationStatus::Idle
+        );
+    }
+
+    #[test]
+    fn palette_enter_accepts_completion_before_widget_submit() {
+        let runtime = AsterRuntime::new(FakeClient { events: vec![] });
+        runtime.state.borrow_mut().update_draft("/th".to_string());
+        let theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut events = vec![key_event(Key::Enter)];
+
+        let needs_render = runtime.handle_events(&mut app, &theme, &mut events);
+
+        assert!(events.is_empty());
+        assert!(needs_render);
+        assert_eq!(runtime.state.borrow().draft(), "/theme ");
+    }
+
+    #[test]
+    fn before_render_advances_loading_phase_while_streaming() {
+        let runtime = AsterRuntime::new(PendingClient);
+        runtime.state.borrow_mut().submit_input("hello".to_string());
+        let mut theme = Theme::dark();
+        let mut app = App::new(80, 24);
+        app.run();
+        let mut root = runtime.build_ui(&theme, 80, 24);
+
+        let needs_render = runtime.before_render(&mut app, &mut root, &mut theme);
+
+        assert!(needs_render);
+        assert_eq!(runtime.loading_phase.get(), 1);
     }
 
     #[test]
@@ -372,10 +508,7 @@ mod tests {
         let runtime = AsterRuntime::new(FakeClient {
             events: vec![StreamEvent::Token("line\n".repeat(40)), StreamEvent::Done],
         });
-        runtime
-            .state
-            .borrow_mut()
-            .submit_message("hello".to_string());
+        runtime.state.borrow_mut().submit_input("hello".to_string());
         runtime.state.borrow_mut().poll_stream_and_take_changed();
         let theme = Theme::dark();
         let mut app = App::new(80, 24);
@@ -398,10 +531,7 @@ mod tests {
         let runtime = AsterRuntime::new(FakeClient {
             events: vec![StreamEvent::Error("network down".to_string())],
         });
-        runtime
-            .state
-            .borrow_mut()
-            .submit_message("hello".to_string());
+        runtime.state.borrow_mut().submit_input("hello".to_string());
         runtime.state.borrow_mut().poll_stream_and_take_changed();
         assert!(matches!(
             runtime.state.borrow().chat().state(),

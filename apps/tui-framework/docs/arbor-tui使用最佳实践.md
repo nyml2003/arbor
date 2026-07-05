@@ -25,7 +25,55 @@ arbor-tui 适合做键盘驱动的终端工具：
 
 ## 推荐应用结构
 
-把应用分成三部分：
+普通应用优先使用 facade crate：
+
+```rust
+use arbor_tui::prelude::*;
+```
+
+推荐模型：
+
+```text
+State -> Action -> update -> view -> run
+```
+
+最小结构：
+
+```rust
+fn main() -> Result<()> {
+    ArborApp::new(AppState::default())
+        .theme(Theme::dark())
+        .update(update)
+        .view(view)
+        .run()
+}
+
+fn update(state: &mut AppState, action: AppAction, ctx: &mut AppContext<AppAction>) {
+    match action {
+        AppAction::Submit(text) => state.submit(text),
+        AppAction::Quit => ctx.quit(),
+    }
+}
+
+fn view(state: &AppState, ui: &Ui<AppAction>) -> Node<AppAction> {
+    ui.page()
+        .title("Arbor Agent Console")
+        .body(ui.text(state.status_text()))
+        .footer(ui.prompt("ask agent").on_submit(AppAction::Submit).build())
+        .build()
+}
+```
+
+这个入口负责：
+
+- 隐藏常规 crate 拆分。
+- 把组件回调转换成应用 `Action`。
+- 在 action 后自动调用 `update` 并重建 view。
+- 让应用代码不再手写 `Rc<RefCell<State>> + changed flag`。
+
+如果需要直接操作底层 widget，仍可使用 `arbor_tui_widgets`、`arbor_tui_composites` 和 `TerminalApp`。
+
+底层应用可以继续分成三部分：
 
 ```text
 状态模型 -> build_ui -> TerminalApp
@@ -42,6 +90,8 @@ src/
 ```
 
 小 demo 可以放在一个文件里。正式工具不要把状态、UI 和事件循环全塞进 `main.rs`。
+
+新的高层入口示例见 `crates/arbor-tui-examples/src/bin/agent_console.rs`。
 
 ## 从 build_ui 开始
 

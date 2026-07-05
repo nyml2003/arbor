@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/arbor-tui",
     "crates/arbor-tui-domain",
     "crates/arbor-tui-markdown",
     "crates/arbor-tui-application",

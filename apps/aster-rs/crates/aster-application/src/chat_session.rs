@@ -3,7 +3,9 @@ use std::sync::mpsc;
 use aster_domain::{ChatMessage, Conversation, ConversationError, ConversationStatus};
 use thiserror::Error;
 
-use crate::port::{ChatStreamError, ChatStreamPort, StreamEvent, StreamReceiver};
+use crate::port::{
+    ChatRequestOptions, ChatStreamError, ChatStreamPort, StreamEvent, StreamReceiver,
+};
 
 pub struct ChatSession<C> {
     conversation: Conversation,
@@ -36,14 +38,21 @@ impl<C: ChatStreamPort> ChatSession<C> {
         self.conversation.messages()
     }
 
-    pub fn send(&mut self, content: String) -> Result<(), ChatSessionError> {
+    pub fn send(
+        &mut self,
+        content: String,
+        options: ChatRequestOptions,
+    ) -> Result<(), ChatSessionError> {
         match self.conversation.push_user_message(content) {
             Ok(()) => {}
             Err(ConversationError::EmptyUserMessage) => return Ok(()),
             Err(error) => return Err(error.into()),
         }
 
-        match self.client.start_stream(self.conversation.messages()) {
+        match self
+            .client
+            .start_stream(self.conversation.messages(), &options)
+        {
             Ok(rx) => {
                 self.conversation.start_assistant_stream()?;
                 self.stream_rx = Some(rx);
@@ -120,6 +129,7 @@ mod tests {
         fn start_stream(
             &self,
             _messages: &[ChatMessage],
+            _options: &ChatRequestOptions,
         ) -> Result<StreamReceiver, ChatStreamError> {
             let (tx, rx) = mpsc::channel();
             for event in self.events.clone() {
@@ -133,7 +143,9 @@ mod tests {
     fn empty_message_is_ignored() {
         let mut session = ChatSession::new(FakeClient { events: vec![] });
 
-        session.send("   ".to_string()).unwrap();
+        session
+            .send("   ".to_string(), ChatRequestOptions::new("test-model"))
+            .unwrap();
 
         assert!(session.messages().is_empty());
         assert_eq!(session.state(), &ConversationStatus::Idle);
@@ -149,7 +161,9 @@ mod tests {
             ],
         });
 
-        session.send("hi".to_string()).unwrap();
+        session
+            .send("hi".to_string(), ChatRequestOptions::new("test-model"))
+            .unwrap();
         let count = session.poll();
 
         assert_eq!(count, 2);
@@ -164,7 +178,9 @@ mod tests {
             events: vec![StreamEvent::Error("network down".to_string())],
         });
 
-        session.send("hi".to_string()).unwrap();
+        session
+            .send("hi".to_string(), ChatRequestOptions::new("test-model"))
+            .unwrap();
         session.poll();
 
         assert_eq!(
@@ -181,10 +197,44 @@ mod tests {
             events: vec![StreamEvent::Token("hello".to_string())],
         });
 
-        session.send("hi".to_string()).unwrap();
+        session
+            .send("hi".to_string(), ChatRequestOptions::new("test-model"))
+            .unwrap();
         session.cancel_stream();
 
         assert_eq!(session.state(), &ConversationStatus::Idle);
         assert_eq!(session.poll(), 0);
+    }
+
+    #[derive(Clone)]
+    struct RecordingClient {
+        tx: mpsc::Sender<String>,
+    }
+
+    impl ChatStreamPort for RecordingClient {
+        fn start_stream(
+            &self,
+            _messages: &[ChatMessage],
+            options: &ChatRequestOptions,
+        ) -> Result<StreamReceiver, ChatStreamError> {
+            self.tx.send(options.model.clone()).unwrap();
+            let (_tx, rx) = mpsc::channel();
+            Ok(StreamReceiver::new(rx))
+        }
+    }
+
+    #[test]
+    fn send_passes_request_options_to_client() {
+        let (tx, rx) = mpsc::channel();
+        let mut session = ChatSession::new(RecordingClient { tx });
+
+        session
+            .send(
+                "hi".to_string(),
+                ChatRequestOptions::new("deepseek-reasoner"),
+            )
+            .unwrap();
+
+        assert_eq!(rx.try_recv().unwrap(), "deepseek-reasoner");
     }
 }

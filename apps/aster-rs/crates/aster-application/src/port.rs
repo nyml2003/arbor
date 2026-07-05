@@ -7,6 +7,19 @@ use std::sync::{
 use aster_domain::ChatMessage;
 use thiserror::Error;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatRequestOptions {
+    pub model: String,
+}
+
+impl ChatRequestOptions {
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+        }
+    }
+}
+
 pub struct StreamReceiver {
     rx: mpsc::Receiver<StreamEvent>,
     cancel: StreamCancelToken,
@@ -74,11 +87,19 @@ impl ChatStreamError {
 }
 
 pub trait ChatStreamPort {
-    fn start_stream(&self, messages: &[ChatMessage]) -> Result<StreamReceiver, ChatStreamError>;
+    fn start_stream(
+        &self,
+        messages: &[ChatMessage],
+        options: &ChatRequestOptions,
+    ) -> Result<StreamReceiver, ChatStreamError>;
 }
 
 impl<T: ChatStreamPort + ?Sized> ChatStreamPort for Box<T> {
-    fn start_stream(&self, messages: &[ChatMessage]) -> Result<StreamReceiver, ChatStreamError> {
-        (**self).start_stream(messages)
+    fn start_stream(
+        &self,
+        messages: &[ChatMessage],
+        options: &ChatRequestOptions,
+    ) -> Result<StreamReceiver, ChatStreamError> {
+        (**self).start_stream(messages, options)
     }
 }

@@ -11,6 +11,8 @@ pub struct FuzzyPanel {
     title: Option<String>,
     placeholder: String,
     empty_text: String,
+    query: String,
+    selected_match: usize,
     rounded: bool,
     fg: Option<AnsiColor>,
     bg: Option<AnsiColor>,
@@ -28,6 +30,8 @@ impl FuzzyPanel {
             title: None,
             placeholder: "Search".to_string(),
             empty_text: "No matches".to_string(),
+            query: String::new(),
+            selected_match: 0,
             rounded: false,
             fg: None,
             bg: None,
@@ -51,6 +55,16 @@ impl FuzzyPanel {
 
     pub fn empty_text(mut self, empty_text: impl Into<String>) -> Self {
         self.empty_text = empty_text.into();
+        self
+    }
+
+    pub fn query(mut self, query: impl Into<String>) -> Self {
+        self.query = query.into();
+        self
+    }
+
+    pub fn selected_index(mut self, index: usize) -> Self {
+        self.selected_match = index;
         self
     }
 
@@ -106,8 +120,8 @@ impl FuzzyPanel {
             title: self.title,
             placeholder: self.placeholder,
             empty_text: self.empty_text,
-            query: String::new(),
-            selected_match: 0,
+            query: self.query,
+            selected_match: self.selected_match,
             rounded: self.rounded,
             fg: self.fg,
             bg: self.bg,

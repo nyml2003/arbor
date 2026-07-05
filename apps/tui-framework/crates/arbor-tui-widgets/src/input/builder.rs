@@ -4,6 +4,7 @@ use arbor_tui_domain::layout::LayoutProps;
 use arbor_tui_domain::widget::WidgetNode;
 
 pub struct Input {
+    value: String,
     placeholder: String,
     password: bool,
     width: Option<u16>,
@@ -22,6 +23,7 @@ impl Default for Input {
 impl Input {
     pub fn new() -> Self {
         Self {
+            value: String::new(),
             placeholder: String::new(),
             password: false,
             width: None,
@@ -33,6 +35,10 @@ impl Input {
     }
     pub fn placeholder(mut self, p: impl Into<String>) -> Self {
         self.placeholder = p.into();
+        self
+    }
+    pub fn value(mut self, value: impl Into<String>) -> Self {
+        self.value = value.into();
         self
     }
     pub fn password(mut self) -> Self {
@@ -64,14 +70,15 @@ impl Input {
         factory: &WidgetFactory,
         _theme: &arbor_tui_domain::theme::Theme,
     ) -> WidgetNode {
+        let cursor = self.value.chars().count();
         factory.wrap(|id| InputWidget {
             id,
             props: LayoutProps {
                 width: self.width,
                 ..Default::default()
             },
-            buffer: String::new(),
-            cursor: 0,
+            buffer: self.value,
+            cursor,
             placeholder: self.placeholder,
             password: self.password,
             loading: self.loading,

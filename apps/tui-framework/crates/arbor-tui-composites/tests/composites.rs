@@ -387,6 +387,22 @@ fn fuzzy_panel_filters_items_from_typed_query() {
 }
 
 #[test]
+fn fuzzy_panel_accepts_initial_query_and_selection() {
+    let (factory, theme) = wm_and_theme();
+    let root = FuzzyPanel::new(["alpha", "beta", "gamma"])
+        .query("ga")
+        .selected_index(0)
+        .build(&factory, &theme);
+
+    let harness = WidgetHarness::render(&root, 48, 8, &theme);
+
+    assert!(!harness.find_text("ga").is_empty());
+    assert!(!harness.find_text("gamma").is_empty());
+    assert!(harness.find_text("alpha").is_empty());
+    assert!(!harness.find_text("1/1 matches").is_empty());
+}
+
+#[test]
 fn fuzzy_panel_renders_empty_text_when_no_items_match() {
     let (factory, theme) = wm_and_theme();
     let root = FuzzyPanel::new(["src/main.rs", "README.md"])

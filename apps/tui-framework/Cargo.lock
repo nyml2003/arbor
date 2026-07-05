@@ -24,6 +24,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "arbor-tui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arbor-tui-adapters",
+ "arbor-tui-composites",
+ "arbor-tui-domain",
+ "arbor-tui-runtime",
+ "arbor-tui-testing",
+ "arbor-tui-widgets",
+]
+
+[[package]]
 name = "arbor-tui-adapters"
 version = "0.1.0"
 dependencies = [
@@ -66,6 +79,7 @@ name = "arbor-tui-examples"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arbor-tui",
  "arbor-tui-composites",
  "arbor-tui-domain",
  "arbor-tui-runtime",

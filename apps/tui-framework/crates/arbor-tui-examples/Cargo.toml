@@ -13,7 +13,12 @@ workspace = true
 name = "layout_demo2"
 path = "src/bin/layout_demo2.rs"
 
+[[bin]]
+name = "agent_console"
+path = "src/bin/agent_console.rs"
+
 [dependencies]
+arbor-tui = { path = "../arbor-tui" }
 arbor-tui-domain = { path = "../arbor-tui-domain" }
 arbor-tui-widgets = { path = "../arbor-tui-widgets" }
 arbor-tui-composites = { path = "../arbor-tui-composites" }

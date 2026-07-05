@@ -120,6 +120,15 @@ fn renders_typed_content_after_input() {
 }
 
 #[test]
+fn renders_initial_value_from_builder() {
+    let (wm, t) = wm_and_theme();
+    let input = Input::new().value("/theme light").build(&wm, &t);
+    let h = WidgetHarness::render(&input, 40, 1, &t);
+
+    assert!(!h.find_text("/theme light").is_empty());
+}
+
+#[test]
 fn renders_empty_buffer_without_placeholder() {
     let (wm, t) = wm_and_theme();
     let input = Input::new().build(&wm, &t);

@@ -3,7 +3,8 @@ use std::sync::mpsc;
 use std::thread;
 
 use aster_application::{
-    ChatStreamError, ChatStreamPort, StreamCancelToken, StreamEvent, StreamReceiver,
+    ChatRequestOptions, ChatStreamError, ChatStreamPort, StreamCancelToken, StreamEvent,
+    StreamReceiver,
 };
 use aster_domain::ChatMessage;
 use serde::{Deserialize, Serialize};
@@ -93,12 +94,20 @@ impl DeepSeekClient {
             model,
         }
     }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
 }
 
 impl ChatStreamPort for DeepSeekClient {
-    fn start_stream(&self, messages: &[ChatMessage]) -> Result<StreamReceiver, ChatStreamError> {
+    fn start_stream(
+        &self,
+        messages: &[ChatMessage],
+        options: &ChatRequestOptions,
+    ) -> Result<StreamReceiver, ChatStreamError> {
         let request = ChatRequest {
-            model: self.model.clone(),
+            model: options.model.clone(),
             messages: messages.iter().map(ApiMessage::from).collect(),
             stream: true,
             max_tokens: Some(4096),
