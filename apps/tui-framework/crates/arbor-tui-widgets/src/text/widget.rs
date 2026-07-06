@@ -1,12 +1,15 @@
 // TextWidget — styled text display with word wrapping and truncation.
 
 use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_domain::component::PropsRevisionBuilder;
+use arbor_tui_domain::identity::DirtyKind;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_domain::screen::VirtualScreen;
-use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::signal::{ReadSignal, SignalDep};
 use arbor_tui_domain::text::{self, TruncateStrategy, WrapStrategy};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetId};
+use arbor_tui_domain::PropsRevision;
 
 pub struct TextWidget {
     pub id: WidgetId,
@@ -49,9 +52,26 @@ impl Widget for TextWidget {
         &self.props
     }
 
+    fn props_revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        write_layout_revision(&mut revision, &self.props);
+        write_wrap_strategy(&mut revision, self.wrap);
+        write_truncate_strategy(&mut revision, self.truncate);
+        revision.finish()
+    }
+
+    fn signal_deps(&self) -> Vec<SignalDep> {
+        vec![
+            self.text.dep(DirtyKind::Layout),
+            self.style.dep(DirtyKind::Render),
+        ]
+    }
+
     fn on_mount(&mut self) {
-        self.text.subscribe(self.id);
-        self.style.subscribe(self.id);
+        self.text
+            .subscribe_with_dirty_kind(self.id, DirtyKind::Layout);
+        self.style
+            .subscribe_with_dirty_kind(self.id, DirtyKind::Render);
     }
 
     fn on_unmount(&mut self) {
@@ -131,4 +151,37 @@ impl Drop for TextWidget {
         self.text.unsubscribe(self.id);
         self.style.unsubscribe(self.id);
     }
+}
+
+fn write_layout_revision(builder: &mut PropsRevisionBuilder, props: &LayoutProps) {
+    builder
+        .field_tag(1)
+        .write_f32(props.flex)
+        .field_tag(2)
+        .write_option_u16(props.width)
+        .field_tag(3)
+        .write_option_u16(props.height)
+        .field_tag(4)
+        .write_u16(props.padding.top)
+        .write_u16(props.padding.right)
+        .write_u16(props.padding.bottom)
+        .write_u16(props.padding.left);
+}
+
+fn write_wrap_strategy(builder: &mut PropsRevisionBuilder, wrap: WrapStrategy) {
+    let value = match wrap {
+        WrapStrategy::None => 0,
+        WrapStrategy::Word => 1,
+        WrapStrategy::Char => 2,
+    };
+    builder.field_tag(5).write_u8(value);
+}
+
+fn write_truncate_strategy(builder: &mut PropsRevisionBuilder, truncate: TruncateStrategy) {
+    let value = match truncate {
+        TruncateStrategy::End => 0,
+        TruncateStrategy::Middle => 1,
+        TruncateStrategy::None => 2,
+    };
+    builder.field_tag(6).write_u8(value);
 }

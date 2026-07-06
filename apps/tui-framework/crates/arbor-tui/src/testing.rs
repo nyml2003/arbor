@@ -198,6 +198,15 @@ where
         self
     }
 
+    pub fn cache_shadow(mut self, enabled: bool) -> Self {
+        self.runtime.enable_cache_shadow(enabled);
+        self
+    }
+
+    pub fn enable_cache_shadow(&mut self, enabled: bool) {
+        self.runtime.enable_cache_shadow(enabled);
+    }
+
     pub fn before_events(
         mut self,
         callback: impl FnMut(

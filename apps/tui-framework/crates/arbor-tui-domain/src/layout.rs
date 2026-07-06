@@ -64,7 +64,7 @@ pub enum AxisConstraint {
 }
 
 /// Size constraints reported by `Widget::measure()`.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct SizeConstraint {
     pub min_w: u16,
     pub min_h: u16,

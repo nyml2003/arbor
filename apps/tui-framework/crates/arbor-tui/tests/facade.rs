@@ -157,6 +157,8 @@ struct HitCounterProps {
     hits: usize,
 }
 
+impl ComponentProps for HitCounterProps {}
+
 impl HitCounter {
     fn new(hits: usize) -> Self {
         Self::from_props(HitCounterProps { hits })
@@ -226,6 +228,74 @@ fn built_in_components_expose_props_contract() {
     assert_component_props(TextBlock::new("text").into_props());
     assert_component_props(Input::<Action>::new().into_props());
     assert_component_props(Panel::<Action>::new(TextBlock::new("panel")).into_props());
+}
+
+#[test]
+fn props_revision_changes_for_visible_props() {
+    let before = TextBlock::new("one").into_props();
+    let after = TextBlock::new("two").into_props();
+
+    assert_ne!(before.revision(), after.revision());
+}
+
+#[test]
+fn callback_change_does_not_change_input_props_revision() {
+    let left = Input::new()
+        .value("same")
+        .on_change(|_| Action::Done)
+        .into_props();
+    let right = Input::new()
+        .value("same")
+        .on_change(|_| Action::Quit)
+        .into_props();
+
+    assert_eq!(left.revision(), right.revision());
+}
+
+#[test]
+fn keyed_node_keeps_explicit_identity_until_mount() {
+    let theme = Theme::dark();
+    let mut app = TestApp::new(AppState::default(), update, move |_state, ui| {
+        ui.component(TextBlock::new("keyed")).key("stable:title")
+    })
+    .theme(theme);
+
+    app.render(20, 2).assert_text("keyed");
+}
+
+#[test]
+fn duplicate_sibling_keys_fail_during_mount() {
+    let result = std::panic::catch_unwind(|| {
+        let mut app = TestApp::new(AppState::default(), update, |_state, ui| {
+            ui.component(
+                Col::new()
+                    .child(TextBlock::new("first").key("dup"))
+                    .child(TextBlock::new("second").key("dup")),
+            )
+        });
+
+        let _ = app.render(30, 3);
+    });
+
+    assert!(
+        result.is_err(),
+        "duplicate sibling keys should panic in tests"
+    );
+}
+
+#[test]
+fn unkeyed_nodes_receive_path_identity_on_mount() {
+    let theme = Theme::dark();
+    let mut app = TestApp::new(AppState::default(), update, move |_state, ui| {
+        ui.component(
+            Col::new()
+                .child(TextBlock::new("first"))
+                .child(TextBlock::new("second")),
+        )
+    })
+    .theme(theme);
+
+    app.render(30, 4).assert_text("first").assert_text("second");
 }
 
 #[test]

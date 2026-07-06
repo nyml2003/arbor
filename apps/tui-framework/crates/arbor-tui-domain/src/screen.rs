@@ -7,7 +7,7 @@ use crate::layout::Rect;
 ///
 /// All rendering happens into a VirtualScreen. The diff algorithm compares two
 /// VirtualScreens and the backend emits only the changed regions.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct VirtualScreen {
     cells: Vec<Cell>,
     cols: u16,

@@ -14,6 +14,9 @@ use arbor_tui_composites::{
     StatusLine as RawStatusLine, Transcript as RawTranscript, TranscriptMessage, TranscriptNotice,
 };
 use arbor_tui_domain::cell::{AnsiColor, Attrs};
+pub use arbor_tui_domain::component::ComponentProps;
+use arbor_tui_domain::component::{PropsRevision, PropsRevisionBuilder};
+use arbor_tui_domain::identity::WidgetKey;
 use arbor_tui_domain::layout::RectOffset;
 use arbor_tui_domain::signal::ReadSignal;
 use arbor_tui_domain::theme::Theme;
@@ -22,14 +25,6 @@ use arbor_tui_widgets::stack::{Col as RawCol, Row as RawRow};
 use arbor_tui_widgets::text::Text as RawText;
 
 use crate::ui::{Node, Ui};
-
-/// Marker for props that can safely enter a nested component tree.
-///
-/// This means "owned or otherwise `'static`". Nested components are stored
-/// before rendering, so props must not borrow transient application state.
-pub trait ComponentProps: 'static {}
-
-impl<T: 'static> ComponentProps for T {}
 
 /// Application-facing component protocol.
 ///
@@ -43,6 +38,31 @@ impl<T: 'static> ComponentProps for T {}
 /// 6. The next render pass creates a fresh component tree.
 pub trait UiComponent<Action>: 'static {
     fn render(self, ui: &Ui<Action>) -> Node<Action>;
+}
+
+pub struct KeyedComponent<Component> {
+    component: Component,
+    key: WidgetKey,
+}
+
+pub trait KeyedComponentExt: Sized {
+    fn key(self, key: impl Into<WidgetKey>) -> KeyedComponent<Self> {
+        KeyedComponent {
+            component: self,
+            key: key.into(),
+        }
+    }
+}
+
+impl<Component> KeyedComponentExt for Component {}
+
+impl<Action: 'static, Component> UiComponent<Action> for KeyedComponent<Component>
+where
+    Component: UiComponent<Action>,
+{
+    fn render(self, ui: &Ui<Action>) -> Node<Action> {
+        self.component.render(ui).key(self.key)
+    }
 }
 
 /// Component protocol for exported components with explicit props.
@@ -84,6 +104,66 @@ impl<Action: 'static> UiComponent<Action> for Node<Action> {
     }
 }
 
+fn write_optional_color(revision: &mut PropsRevisionBuilder, tag: u8, color: Option<AnsiColor>) {
+    revision.field_tag(tag);
+    match color {
+        Some(color) => {
+            revision.write_bool(true).write_u8(color.palette.0);
+        }
+        None => {
+            revision.write_bool(false);
+        }
+    }
+}
+
+fn write_attrs(revision: &mut PropsRevisionBuilder, tag: u8, attrs: Attrs) {
+    revision
+        .field_tag(tag)
+        .write_bool(attrs.bold)
+        .write_bool(attrs.dim)
+        .write_bool(attrs.italic)
+        .write_bool(attrs.underline)
+        .write_bool(attrs.reverse);
+}
+
+fn write_padding(revision: &mut PropsRevisionBuilder, tag: u8, padding: RectOffset) {
+    revision
+        .field_tag(tag)
+        .write_u16(padding.top)
+        .write_u16(padding.right)
+        .write_u16(padding.bottom)
+        .write_u16(padding.left);
+}
+
+fn write_optional_padding(
+    revision: &mut PropsRevisionBuilder,
+    tag: u8,
+    padding: Option<RectOffset>,
+) {
+    revision.field_tag(tag);
+    match padding {
+        Some(padding) => {
+            revision.write_bool(true);
+            write_padding(revision, tag, padding);
+        }
+        None => {
+            revision.write_bool(false);
+        }
+    }
+}
+
+fn write_optional_string(revision: &mut PropsRevisionBuilder, tag: u8, value: Option<&str>) {
+    revision.field_tag(tag);
+    match value {
+        Some(value) => {
+            revision.write_bool(true).write_str(value);
+        }
+        None => {
+            revision.write_bool(false);
+        }
+    }
+}
+
 pub struct TextBlockProps {
     content: String,
     fg: Option<AnsiColor>,
@@ -109,6 +189,23 @@ impl TextBlockProps {
 
     pub fn content(&self) -> &str {
         &self.content
+    }
+}
+
+impl ComponentProps for TextBlockProps {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision.field_tag(1).write_str(&self.content);
+        write_optional_color(&mut revision, 2, self.fg);
+        write_optional_color(&mut revision, 3, self.bg);
+        write_attrs(&mut revision, 4, self.attrs);
+        write_padding(&mut revision, 5, self.padding);
+        revision
+            .field_tag(6)
+            .write_f32(self.flex)
+            .field_tag(7)
+            .write_option_u16(self.width)
+            .finish()
     }
 }
 
@@ -246,6 +343,17 @@ impl StatusLineProps {
     }
 }
 
+impl ComponentProps for StatusLineProps {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision.field_tag(1).write_str(&self.text);
+        write_optional_color(&mut revision, 2, self.fg);
+        write_optional_color(&mut revision, 3, self.bg);
+        write_optional_padding(&mut revision, 4, self.padding);
+        revision.field_tag(5).write_f32(self.flex).finish()
+    }
+}
+
 pub struct StatusLine {
     props: StatusLineProps,
 }
@@ -346,6 +454,26 @@ impl<Action> InputProps<Action> {
             on_change: None,
             on_submit: None,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for InputProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_str(&self.value)
+            .field_tag(2)
+            .write_str(&self.placeholder)
+            .field_tag(3)
+            .write_bool(self.password)
+            .field_tag(4)
+            .write_option_u16(self.width)
+            .field_tag(5)
+            .write_bool(self.loading)
+            .field_tag(6)
+            .write_usize(self.loading_phase)
+            .finish()
     }
 }
 
@@ -486,6 +614,24 @@ impl<Action> PromptBarProps<Action> {
             padding: RectOffset::default(),
             flex: 0.0,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for PromptBarProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision.field_tag(1).write_str(&self.placeholder);
+        write_optional_string(&mut revision, 2, self.title.as_deref());
+        revision.field_tag(3).write_bool(self.rounded);
+        write_optional_color(&mut revision, 4, self.fg);
+        write_optional_color(&mut revision, 5, self.bg);
+        revision
+            .field_tag(6)
+            .write_bool(self.loading)
+            .field_tag(7)
+            .write_usize(self.loading_phase);
+        write_padding(&mut revision, 8, self.padding);
+        revision.field_tag(9).write_f32(self.flex).finish()
     }
 }
 
@@ -642,6 +788,31 @@ impl<Action> FuzzyPanelProps<Action> {
             on_query_change: None,
             on_submit: None,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for FuzzyPanelProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_usize(self.items.len())
+            .field_tag(2)
+            .write_str(&self.placeholder)
+            .field_tag(3)
+            .write_str(&self.empty_text)
+            .field_tag(4)
+            .write_str(&self.query)
+            .field_tag(5)
+            .write_usize(self.selected_index)
+            .field_tag(6)
+            .write_bool(self.rounded);
+        write_optional_string(&mut revision, 7, self.title.as_deref());
+        write_optional_color(&mut revision, 8, self.fg);
+        write_optional_color(&mut revision, 9, self.bg);
+        write_optional_color(&mut revision, 10, self.accent);
+        write_padding(&mut revision, 11, self.padding);
+        revision.field_tag(12).write_f32(self.flex).finish()
     }
 }
 
@@ -821,6 +992,21 @@ impl TranscriptProps {
     }
 }
 
+impl ComponentProps for TranscriptProps {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_usize(self.messages.len())
+            .field_tag(2)
+            .write_str(&self.empty_text)
+            .field_tag(3)
+            .write_bool(self.notice.is_some());
+        write_optional_color(&mut revision, 4, self.bg);
+        revision.field_tag(5).write_f32(self.flex).finish()
+    }
+}
+
 pub struct Transcript {
     props: TranscriptProps,
 }
@@ -926,6 +1112,20 @@ impl<Action> ColProps<Action> {
             flex: 0.0,
             width: None,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for ColProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision.field_tag(1).write_usize(self.children.len());
+        write_padding(&mut revision, 2, self.padding);
+        revision
+            .field_tag(3)
+            .write_f32(self.flex)
+            .field_tag(4)
+            .write_option_u16(self.width)
+            .finish()
     }
 }
 
@@ -1052,6 +1252,20 @@ impl<Action> RowProps<Action> {
             flex: 0.0,
             width: None,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for RowProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision.field_tag(1).write_usize(self.children.len());
+        write_padding(&mut revision, 2, self.padding);
+        revision
+            .field_tag(3)
+            .write_f32(self.flex)
+            .field_tag(4)
+            .write_option_u16(self.width)
+            .finish()
     }
 }
 
@@ -1184,6 +1398,18 @@ impl<Action: 'static> PanelProps<Action> {
     }
 }
 
+impl<Action: 'static> ComponentProps for PanelProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        write_optional_string(&mut revision, 1, self.title.as_deref());
+        revision.field_tag(2).write_bool(self.rounded);
+        write_optional_color(&mut revision, 3, self.fg);
+        write_optional_color(&mut revision, 4, self.bg);
+        write_padding(&mut revision, 5, self.padding);
+        revision.field_tag(6).write_f32(self.flex).finish()
+    }
+}
+
 pub struct Panel<Action> {
     props: PanelProps<Action>,
 }
@@ -1311,6 +1537,21 @@ impl<Action> PageProps<Action> {
             body: None,
             footer: None,
         }
+    }
+}
+
+impl<Action: 'static> ComponentProps for PageProps<Action> {
+    fn revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        write_optional_string(&mut revision, 1, self.title.as_deref());
+        revision
+            .field_tag(2)
+            .write_bool(self.header.is_some())
+            .field_tag(3)
+            .write_bool(self.body.is_some())
+            .field_tag(4)
+            .write_bool(self.footer.is_some())
+            .finish()
     }
 }
 

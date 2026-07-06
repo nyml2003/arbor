@@ -4,13 +4,16 @@
 // the child during render.
 
 use arbor_tui_domain::cell::Cell;
+use arbor_tui_domain::component::PropsRevisionBuilder;
+use arbor_tui_domain::identity::DirtyKind;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
 use arbor_tui_domain::render::render_tree_viewport;
 use arbor_tui_domain::screen::VirtualScreen;
-use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::signal::{ReadSignal, SignalDep};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetId, WidgetNode};
+use arbor_tui_domain::PropsRevision;
 
 use std::collections::HashMap;
 
@@ -46,9 +49,37 @@ impl Widget for ScrollViewWidget {
         true
     }
 
+    fn props_revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_u16(self.content_h)
+            .field_tag(2)
+            .write_f32(self.props.flex)
+            .field_tag(3)
+            .write_option_u16(self.props.width)
+            .field_tag(4)
+            .write_option_u16(self.props.height)
+            .field_tag(5)
+            .write_u16(self.props.padding.top)
+            .write_u16(self.props.padding.right)
+            .write_u16(self.props.padding.bottom)
+            .write_u16(self.props.padding.left)
+            .finish()
+    }
+
+    fn signal_deps(&self) -> Vec<SignalDep> {
+        vec![
+            self.scroll_x.dep(DirtyKind::Render),
+            self.scroll_y.dep(DirtyKind::Render),
+        ]
+    }
+
     fn on_mount(&mut self) {
-        self.scroll_x.subscribe(self.id);
-        self.scroll_y.subscribe(self.id);
+        self.scroll_x
+            .subscribe_with_dirty_kind(self.id, DirtyKind::Render);
+        self.scroll_y
+            .subscribe_with_dirty_kind(self.id, DirtyKind::Render);
     }
 
     fn on_unmount(&mut self) {

@@ -1,6 +1,7 @@
 // TabsWidget — tabbed container. Reserves 2 rows for header + separator.
 
 use arbor_tui_domain::cell::Cell;
+use arbor_tui_domain::identity::DirtyKind;
 use arbor_tui_domain::input::KeyHandleResult;
 use arbor_tui_domain::layout::{LayoutProps, Rect, RectOffset, Size, SizeCalc, SizeConstraint};
 use arbor_tui_domain::screen::VirtualScreen;
@@ -152,5 +153,12 @@ impl Widget for TabsWidget {
             }
         }
         KeyHandleResult::Handled
+    }
+
+    fn dirty_on_action(&self, action: &WidgetAction) -> DirtyKind {
+        match action {
+            WidgetAction::NavigateLeft | WidgetAction::NavigateRight => DirtyKind::Structure,
+            _ => DirtyKind::Render,
+        }
     }
 }

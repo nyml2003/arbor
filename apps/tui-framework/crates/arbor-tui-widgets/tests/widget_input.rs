@@ -34,6 +34,15 @@ fn renders_prompt() {
 }
 
 #[test]
+fn input_callback_change_does_not_change_widget_revision() {
+    let (wm, t) = wm_and_theme();
+    let left = Input::new().value("same").on_change(|_| {}).build(&wm, &t);
+    let right = Input::new().value("same").on_change(|_| {}).build(&wm, &t);
+
+    assert_eq!(left.props_revision(), right.props_revision());
+}
+
+#[test]
 fn renders_placeholder_when_empty() {
     let (wm, t) = wm_and_theme();
     let input = Input::new().placeholder("search...").build(&wm, &t);

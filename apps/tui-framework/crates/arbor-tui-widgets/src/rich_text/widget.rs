@@ -2,10 +2,12 @@
 // Each line is a Vec<Span>; each Span has its own fg/bg/attrs.
 
 use arbor_tui_domain::cell::{Cell, Span};
+use arbor_tui_domain::component::PropsRevisionBuilder;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_domain::screen::VirtualScreen;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetId};
+use arbor_tui_domain::PropsRevision;
 
 pub struct RichTextWidget {
     pub id: WidgetId,
@@ -24,6 +26,42 @@ impl Widget for RichTextWidget {
     }
     fn layout_props(&self) -> &LayoutProps {
         &self.props
+    }
+
+    fn props_revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_usize(self.lines.len())
+            .field_tag(2)
+            .write_bool(self.clip)
+            .field_tag(3)
+            .write_u16(self.props.padding.top)
+            .write_u16(self.props.padding.right)
+            .write_u16(self.props.padding.bottom)
+            .write_u16(self.props.padding.left)
+            .field_tag(4)
+            .write_f32(self.props.flex)
+            .field_tag(5)
+            .write_u32(self.bg.ch as u32)
+            .write_u8(self.bg.fg.palette.0)
+            .write_u8(self.bg.bg.palette.0);
+        for (line_index, spans) in self.lines.iter().enumerate() {
+            revision.field_tag(10).write_usize(line_index);
+            for span in spans {
+                revision
+                    .field_tag(11)
+                    .write_str(&span.text)
+                    .write_u8(span.fg.palette.0)
+                    .write_u8(span.bg.palette.0)
+                    .write_bool(span.attrs.bold)
+                    .write_bool(span.attrs.dim)
+                    .write_bool(span.attrs.italic)
+                    .write_bool(span.attrs.underline)
+                    .write_bool(span.attrs.reverse);
+            }
+        }
+        revision.finish()
     }
 
     fn measure(&self, _available: Size) -> SizeConstraint {

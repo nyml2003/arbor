@@ -29,7 +29,7 @@ pub enum WidgetAction {
 }
 
 /// Layout info for a single widget — DTO between layout engine and render engine.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct WidgetLayoutInfo {
     pub id: WidgetId,
     /// Outer rect including margin.

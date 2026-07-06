@@ -1,13 +1,14 @@
 // DirtyTracker — tracks which widgets need re-rendering.
 // Owned by the App context, NOT a global static.
 
+use crate::identity::DirtyKind;
 use crate::widget_id::WidgetId;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 /// Accumulates dirty widget IDs during an event processing cycle.
 /// At the end of the cycle, `drain()` is called to get the set and clear it.
 pub struct DirtyTracker {
-    dirty_widgets: HashSet<WidgetId>,
+    dirty_widgets: HashMap<WidgetId, DirtyKind>,
     /// When true, forces the next render regardless of dirty set.
     /// Set by SIGWINCH / SIGTSTP resume to ensure full relayout.
     force: bool,
@@ -22,23 +23,30 @@ impl Default for DirtyTracker {
 impl DirtyTracker {
     pub fn new() -> Self {
         Self {
-            dirty_widgets: HashSet::new(),
+            dirty_widgets: HashMap::new(),
             force: false,
         }
     }
 
     /// Mark a widget as needing re-render.
     pub fn mark_dirty(&mut self, widget_id: WidgetId) {
-        self.dirty_widgets.insert(widget_id);
+        self.mark_dirty_kind(widget_id, DirtyKind::Render);
+    }
+
+    pub fn mark_dirty_kind(&mut self, widget_id: WidgetId, kind: DirtyKind) {
+        self.dirty_widgets
+            .entry(widget_id)
+            .and_modify(|existing| *existing = existing.merge(kind))
+            .or_insert(kind);
     }
 
     /// Check if a widget is dirty.
     pub fn is_dirty(&self, widget_id: WidgetId) -> bool {
-        self.dirty_widgets.contains(&widget_id)
+        self.dirty_widgets.contains_key(&widget_id)
     }
 
     /// Take all dirty widget IDs and reset the tracker.
-    pub fn drain(&mut self) -> HashSet<WidgetId> {
+    pub fn drain(&mut self) -> HashMap<WidgetId, DirtyKind> {
         self.force = false;
         std::mem::take(&mut self.dirty_widgets)
     }
@@ -46,7 +54,7 @@ impl DirtyTracker {
     /// Mark all widgets dirty (used after SIGTSTP resume / SIGWINCH).
     pub fn mark_all(&mut self, widget_ids: &[WidgetId]) {
         for id in widget_ids {
-            self.dirty_widgets.insert(*id);
+            self.mark_dirty_kind(*id, DirtyKind::Full);
         }
     }
 
@@ -69,12 +77,25 @@ mod tests {
     fn mark_and_drain() {
         let mut dt = DirtyTracker::new();
         dt.mark_dirty(WidgetId(1));
-        dt.mark_dirty(WidgetId(2));
+        dt.mark_dirty_kind(WidgetId(2), DirtyKind::Layout);
         assert!(dt.is_dirty(WidgetId(1)));
 
         let drained = dt.drain();
         assert_eq!(drained.len(), 2);
+        assert_eq!(drained[&WidgetId(1)], DirtyKind::Render);
+        assert_eq!(drained[&WidgetId(2)], DirtyKind::Layout);
         assert!(dt.is_empty());
+    }
+
+    #[test]
+    fn dirty_kind_upgrades_existing_entry() {
+        let mut dt = DirtyTracker::new();
+
+        dt.mark_dirty_kind(WidgetId(1), DirtyKind::Render);
+        dt.mark_dirty_kind(WidgetId(1), DirtyKind::Structure);
+
+        let drained = dt.drain();
+        assert_eq!(drained[&WidgetId(1)], DirtyKind::Structure);
     }
 
     #[test]

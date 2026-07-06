@@ -1,6 +1,7 @@
 // Diff algorithm — row-by-row comparison of two VirtualScreens.
 // Outputs a list of DirtyRegion for the backend to emit.
 
+use crate::layout::Rect;
 use crate::screen::VirtualScreen;
 
 /// A dirty (changed) region within a single row.
@@ -81,6 +82,66 @@ pub fn diff(old: &VirtualScreen, new: &VirtualScreen) -> Vec<DirtyRegion> {
     }
 
     regions
+}
+
+/// Compare only selected screen regions.
+///
+/// Callers must include both old and new widget rects when a widget can move or
+/// shrink. Passing only the new rect is not enough to clear stale cells from
+/// the old area.
+pub fn diff_regions(
+    old: &VirtualScreen,
+    new: &VirtualScreen,
+    regions: &[Rect],
+) -> Vec<DirtyRegion> {
+    let mut dirty = Vec::new();
+    if regions.is_empty() {
+        return dirty;
+    }
+
+    let max_cols = old.cols().max(new.cols());
+    let max_rows = old.rows().max(new.rows());
+
+    for rect in regions {
+        let y0 = rect.y.min(max_rows);
+        let y1 = rect.y.saturating_add(rect.h).min(max_rows);
+        let x0 = rect.x.min(max_cols);
+        let x1 = rect.x.saturating_add(rect.w).min(max_cols);
+        if x0 >= x1 || y0 >= y1 {
+            continue;
+        }
+
+        for row in y0..y1 {
+            let mut in_dirty = false;
+            let mut dirty_start = x0;
+
+            for col in x0..x1 {
+                let changed = old.cell_at(col, row) != new.cell_at(col, row);
+                if changed && !in_dirty {
+                    in_dirty = true;
+                    dirty_start = col;
+                } else if !changed && in_dirty {
+                    in_dirty = false;
+                    dirty.push(DirtyRegion {
+                        row,
+                        start_col: dirty_start,
+                        end_col: col,
+                    });
+                }
+            }
+
+            if in_dirty {
+                dirty.push(DirtyRegion {
+                    row,
+                    start_col: dirty_start,
+                    end_col: x1,
+                });
+            }
+        }
+    }
+
+    merge_regions(&mut dirty);
+    dirty
 }
 
 /// Merge adjacent dirty regions (same row, touching or overlapping).
@@ -182,6 +243,51 @@ mod tests {
                 start_col: 0,
                 end_col: 5
             }
+        );
+    }
+
+    #[test]
+    fn diff_regions_limits_comparison_to_requested_rects() {
+        let old = VirtualScreen::new(10, 3);
+        let mut new = VirtualScreen::new(10, 3);
+        new.cell_at_mut(2, 1).unwrap().ch = 'X';
+        new.cell_at_mut(8, 1).unwrap().ch = 'Y';
+
+        let r = diff_regions(&old, &new, &[Rect::new(0, 0, 5, 3)]);
+
+        assert_eq!(
+            r,
+            vec![DirtyRegion {
+                row: 1,
+                start_col: 2,
+                end_col: 3,
+            }]
+        );
+    }
+
+    #[test]
+    fn diff_regions_clears_old_area_when_old_rect_is_included() {
+        let mut old = VirtualScreen::new(8, 1);
+        old.cell_at_mut(0, 0).unwrap().ch = 'a';
+        old.cell_at_mut(1, 0).unwrap().ch = 'b';
+        old.cell_at_mut(2, 0).unwrap().ch = 'c';
+        old.cell_at_mut(3, 0).unwrap().ch = 'd';
+
+        let mut new = VirtualScreen::new(8, 1);
+        new.cell_at_mut(0, 0).unwrap().ch = 'a';
+        new.cell_at_mut(1, 0).unwrap().ch = 'b';
+
+        let new_only = diff_regions(&old, &new, &[Rect::new(0, 0, 2, 1)]);
+        assert!(new_only.is_empty());
+
+        let with_old = diff_regions(&old, &new, &[Rect::new(0, 0, 4, 1), Rect::new(0, 0, 2, 1)]);
+        assert_eq!(
+            with_old,
+            vec![DirtyRegion {
+                row: 0,
+                start_col: 2,
+                end_col: 4,
+            }]
         );
     }
 }

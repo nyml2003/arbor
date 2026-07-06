@@ -2,6 +2,9 @@
 // Covers content rendering, light/dark theme bg, wrapping, truncation.
 
 use arbor_tui_domain::cell::Span;
+use arbor_tui_domain::focus::mount_tree;
+use arbor_tui_domain::identity::DirtyKind;
+use arbor_tui_domain::signal::Signal;
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_testing::WidgetHarness;
 use arbor_tui_widgets::border::Border;
@@ -68,6 +71,27 @@ fn text_bg_matches_theme_surface_dark() {
     // In dark theme, text bg should be theme.surface() (palette 0).
     let (col, row) = h.find_text("dark mode text")[0];
     assert_eq!(h.cell_at(col, row).bg.palette, t.surface().palette);
+}
+
+#[test]
+fn text_signal_dependency_declares_layout_dirty() {
+    let (wm, t) = wm_and_theme();
+    let content = Signal::new("reactive".to_string());
+    let mut root = Text::new("").content_from(&content).build(&wm, &t);
+
+    let deps = root.signal_deps();
+
+    assert!(deps.iter().any(|dep| {
+        dep.signal_id == content.id()
+            && dep.generation == content.generation()
+            && dep.dirty_kind == DirtyKind::Layout
+    }));
+
+    mount_tree(&mut root);
+    assert_eq!(
+        content.subscriber_dirty_kind(root.id()),
+        Some(DirtyKind::Layout)
+    );
 }
 
 // ── RichText ──────────────────────────────────────────────────────

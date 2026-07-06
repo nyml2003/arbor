@@ -3,8 +3,9 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use arbor_tui_domain::identity::{NodeIdentity, WidgetKey};
 use arbor_tui_domain::theme::Theme;
-use arbor_tui_domain::widget::WidgetNode;
+use arbor_tui_domain::widget::{assign_tree_identity, WidgetNode};
 use arbor_tui_widgets::stack::Col;
 use arbor_tui_widgets::widget_factory::WidgetFactory;
 
@@ -53,6 +54,15 @@ impl<Action> Node<Action> {
 
     pub fn into_widget(self) -> WidgetNode {
         self.widget
+    }
+
+    pub fn key(mut self, key: impl Into<WidgetKey>) -> Self {
+        self.widget.set_key(key);
+        self
+    }
+
+    pub fn identity(&self) -> Option<NodeIdentity> {
+        self.widget.identity()
     }
 }
 
@@ -118,8 +128,29 @@ pub(crate) fn build_root<Action: 'static>(
     rows: u16,
     node: Node<Action>,
 ) -> WidgetNode {
-    Col::new()
+    let mut root = Col::new()
         .size(cols, rows)
         .children([node.into_widget()])
-        .build(factory, theme)
+        .build(factory, theme);
+    assign_tree_identity(&mut root).expect("widget tree identity assignment failed");
+    root
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arbor_tui_widgets::text::Text;
+
+    #[test]
+    fn node_key_sets_widget_identity_metadata() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let node =
+            Node::<()>::from_widget(Text::new("hello").build(&factory, &theme)).key("greeting");
+
+        assert_eq!(
+            node.identity(),
+            Some(NodeIdentity::Keyed(WidgetKey::new("greeting")))
+        );
+    }
 }

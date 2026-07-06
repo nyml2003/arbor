@@ -28,7 +28,13 @@ pub(crate) fn run_from_env() -> Result<()> {
     let config = BenchConfig::from_args(std::env::args().skip(1));
     let out_path = config.output_path();
     let client = ScriptedClient::default();
-    let driver = BenchmarkDriver::new(client, config.loops, config.profile, config.budget);
+    let driver = BenchmarkDriver::new(
+        client,
+        config.loops,
+        config.profile,
+        config.budget,
+        config.cache_shadow,
+    );
     let outcome = driver.run_all(&out_path)?;
     eprintln!("{}", outcome.report);
     eprintln!("Bench finished, log saved to {}", out_path.display());
@@ -48,6 +54,7 @@ struct BenchConfig {
     profile: BenchProfile,
     budget: BenchBudget,
     no_fail: bool,
+    cache_shadow: bool,
 }
 
 impl BenchConfig {
@@ -57,12 +64,16 @@ impl BenchConfig {
         let mut profile = BenchProfile::HeadlessStrict;
         let mut budget = BenchBudget::for_profile(profile);
         let mut no_fail = false;
+        let mut cache_shadow = false;
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--bench" => {}
                 "--bench-no-fail" => {
                     no_fail = true;
+                }
+                "--bench-cache-shadow" => {
+                    cache_shadow = true;
                 }
                 "--bench-out" => {
                     if let Some(value) = args.next() {
@@ -106,6 +117,7 @@ impl BenchConfig {
             profile,
             budget,
             no_fail,
+            cache_shadow,
         }
     }
 
@@ -130,10 +142,12 @@ impl BenchmarkDriver {
         loops: usize,
         profile: BenchProfile,
         budget: BenchBudget,
+        cache_shadow: bool,
     ) -> Self {
         let state = AsterState::with_model(client.clone(), "deepseek-chat");
         let app = HeadlessApp::new(state, update, view, DEFAULT_COLS, DEFAULT_ROWS)
             .theme(Theme::dark())
+            .cache_shadow(cache_shadow)
             .before_events(before_events)
             .before_render(before_render);
         Self {
@@ -404,6 +418,7 @@ mod tests {
             1,
             BenchProfile::HeadlessStrict,
             BenchBudget::for_profile(BenchProfile::HeadlessStrict),
+            false,
         );
 
         let outcome = driver.run_all(&out).unwrap();
@@ -429,6 +444,7 @@ mod tests {
             "--bench-max-c-pct".to_string(),
             "7".to_string(),
             "--bench-no-fail".to_string(),
+            "--bench-cache-shadow".to_string(),
         ]);
 
         assert_eq!(config.profile, BenchProfile::Interactive);
@@ -436,5 +452,6 @@ mod tests {
         assert_eq!(config.budget.max_p99_ms, 4.5);
         assert_eq!(config.budget.max_c_frame_pct, 7);
         assert!(config.no_fail);
+        assert!(config.cache_shadow);
     }
 }

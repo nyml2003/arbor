@@ -3,14 +3,18 @@
 // reactive state, and backend ports. No concrete terminal adapter lives here.
 
 pub mod backend;
+pub mod cache;
 pub mod cell;
+pub mod component;
 pub mod diff;
 pub mod dirty;
 pub mod focus;
+pub mod identity;
 pub mod input;
 pub mod layout;
 pub mod layout_engine;
 pub mod layout_error;
+pub mod reconcile;
 pub mod render;
 pub mod screen;
 pub mod signal;
@@ -22,5 +26,8 @@ pub mod widget_id;
 #[cfg(feature = "profile")]
 pub mod events;
 
+pub use component::{ComponentProps, PropsRevision, PropsRevisionBuilder};
+pub use identity::{DirtyKind, IdentityError, NodeIdentity, ReconcileReport, WidgetKey};
 pub use layout_error::LayoutError;
+pub use signal::{SignalDep, SignalId, SignalSource};
 pub use widget_id::{WidgetAction, WidgetId, WidgetLayoutInfo};

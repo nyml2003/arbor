@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::widget::WidgetNode;
+use crate::widget::{assign_tree_identity, WidgetNode};
 use crate::widget_id::WidgetId;
 
 /// Errors from the focus system.
@@ -161,9 +161,14 @@ impl FocusManager {
 
 /// Walk the tree and call `on_mount()` on every widget (parent before children).
 pub fn mount_tree(root: &mut WidgetNode) {
+    assign_tree_identity(root).expect("widget tree identity assignment failed");
+    mount_tree_inner(root);
+}
+
+fn mount_tree_inner(root: &mut WidgetNode) {
     root.on_mount();
     for child in root.children_mut() {
-        mount_tree(child);
+        mount_tree_inner(child);
     }
 }
 

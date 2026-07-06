@@ -1,13 +1,16 @@
 // ButtonWidget — clickable button with style variants.
 
 use arbor_tui_domain::cell::{Attrs, Cell};
+use arbor_tui_domain::component::PropsRevisionBuilder;
+use arbor_tui_domain::identity::DirtyKind;
 use arbor_tui_domain::input::KeyHandleResult;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_domain::screen::VirtualScreen;
-use arbor_tui_domain::signal::ReadSignal;
+use arbor_tui_domain::signal::{ReadSignal, SignalDep};
 use arbor_tui_domain::text::{self, TruncateStrategy};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId};
+use arbor_tui_domain::PropsRevision;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ButtonStyle {
@@ -36,8 +39,35 @@ impl Widget for ButtonWidget {
         true
     }
 
+    fn props_revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_u8(match self.style {
+                ButtonStyle::Primary => 1,
+                ButtonStyle::Secondary => 2,
+                ButtonStyle::Danger => 3,
+                ButtonStyle::Default => 4,
+            })
+            .field_tag(2)
+            .write_option_u16(self.props.width)
+            .field_tag(3)
+            .write_option_u16(self.props.height)
+            .field_tag(4)
+            .write_u16(self.props.padding.top)
+            .write_u16(self.props.padding.right)
+            .write_u16(self.props.padding.bottom)
+            .write_u16(self.props.padding.left)
+            .finish()
+    }
+
+    fn signal_deps(&self) -> Vec<SignalDep> {
+        vec![self.label.dep(DirtyKind::Layout)]
+    }
+
     fn on_mount(&mut self) {
-        self.label.subscribe(self.id);
+        self.label
+            .subscribe_with_dirty_kind(self.id, DirtyKind::Layout);
     }
     fn on_unmount(&mut self) {
         self.label.unsubscribe(self.id);

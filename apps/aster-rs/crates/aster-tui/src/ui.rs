@@ -45,6 +45,8 @@ struct AsterPageProps {
     line_count: usize,
 }
 
+impl ComponentProps for AsterPageProps {}
+
 impl AsterPage {
     fn from_state(
         state: &AppState,
@@ -143,6 +145,8 @@ struct TranscriptPaneProps {
     scroll_y: ReadSignal<u16>,
 }
 
+impl ComponentProps for TranscriptPaneProps {}
+
 impl TranscriptPane {
     fn new(
         messages: Vec<ChatMessage>,
@@ -190,6 +194,8 @@ struct ChatInputPanelProps {
     is_streaming: bool,
     loading_phase: usize,
 }
+
+impl ComponentProps for ChatInputPanelProps {}
 
 impl ChatInputPanel {
     fn new(draft: String, is_streaming: bool, loading_phase: usize) -> Self {
@@ -246,6 +252,8 @@ struct CommandPalettePanelProps {
     palette: PaletteSnapshot,
 }
 
+impl ComponentProps for CommandPalettePanelProps {}
+
 impl CommandPalettePanel {
     fn new(palette: PaletteSnapshot) -> Self {
         Self::from_props(CommandPalettePanelProps { palette })
@@ -297,6 +305,8 @@ struct FooterLineProps {
     status_message: Option<String>,
     is_streaming: bool,
 }
+
+impl ComponentProps for FooterLineProps {}
 
 impl FooterLine {
     fn new(

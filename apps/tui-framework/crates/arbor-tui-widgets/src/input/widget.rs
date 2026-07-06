@@ -1,12 +1,14 @@
 // InputWidget — single-line text input with cursor and visual states.
 
 use arbor_tui_domain::cell::{AnsiColor, Attrs, Cell};
+use arbor_tui_domain::component::PropsRevisionBuilder;
 use arbor_tui_domain::input::KeyHandleResult;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeCalc, SizeConstraint};
 use arbor_tui_domain::screen::VirtualScreen;
 use arbor_tui_domain::text::{self, TruncateStrategy};
 use arbor_tui_domain::theme::Theme;
 use arbor_tui_domain::widget::{Widget, WidgetAction, WidgetId};
+use arbor_tui_domain::PropsRevision;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum InputVisualState {
@@ -47,6 +49,24 @@ impl Widget for InputWidget {
     }
     fn focusable(&self) -> bool {
         true
+    }
+
+    fn props_revision(&self) -> PropsRevision {
+        let mut revision = PropsRevisionBuilder::new();
+        revision
+            .field_tag(1)
+            .write_str(&self.buffer)
+            .field_tag(2)
+            .write_str(&self.placeholder)
+            .field_tag(3)
+            .write_bool(self.password)
+            .field_tag(4)
+            .write_option_u16(self.props.width)
+            .field_tag(5)
+            .write_bool(self.loading)
+            .field_tag(6)
+            .write_usize(self.loading_phase)
+            .finish()
     }
 
     fn on_mount(&mut self) {
