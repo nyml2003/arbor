@@ -22,9 +22,13 @@ pub type LayoutResult = HashMap<WidgetId, WidgetLayoutInfo>;
 
 /// Measure the entire widget tree. Returns constraints keyed by WidgetId.
 pub fn measure_tree(root: &WidgetNode, available: Size) -> HashMap<WidgetId, SizeConstraint> {
-    let mut constraints = HashMap::new();
+    let mut constraints = HashMap::with_capacity(count_nodes(root));
     measure_node(root, available, &mut constraints);
     constraints
+}
+
+fn count_nodes(node: &WidgetNode) -> usize {
+    1 + node.children().iter().map(count_nodes).sum::<usize>()
 }
 
 fn measure_node(
@@ -54,7 +58,7 @@ pub fn layout_tree(
     root: &WidgetNode,
     constraints: &HashMap<WidgetId, SizeConstraint>,
 ) -> Result<HashMap<WidgetId, WidgetLayoutInfo>, LayoutError> {
-    let mut widgets = HashMap::new();
+    let mut widgets = HashMap::with_capacity(count_nodes(root));
     layout_node(root_rect, root, constraints, &mut widgets)?;
     Ok(widgets)
 }

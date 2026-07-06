@@ -31,9 +31,9 @@ impl Widget for RichTextWidget {
         let w = self
             .lines
             .iter()
-            .flat_map(|spans| {
+            .map(|spans| {
                 let len: usize = spans.iter().map(|s| s.text.chars().count()).sum();
-                Some(len as u16)
+                len as u16
             })
             .max()
             .unwrap_or(1)

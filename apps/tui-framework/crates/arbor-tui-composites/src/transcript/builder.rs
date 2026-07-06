@@ -112,10 +112,12 @@ impl Transcript {
 
     pub fn build(self, factory: &WidgetFactory, theme: &Theme) -> WidgetNode {
         let bg = self.bg.unwrap_or_else(|| theme.surface());
-        let line_count = self.line_count(theme).max(1);
+        let notice_lines = self.notice.as_ref().map_or(0, |_| 2);
+        let mut line_count = notice_lines;
         let mut widgets = Vec::new();
 
         if self.messages.is_empty() {
+            line_count += 1;
             widgets.push(
                 RichText::new()
                     .bg(bg_cell(bg))
@@ -128,10 +130,16 @@ impl Transcript {
                     .build(factory, theme),
             );
         } else {
-            for message in &self.messages {
-                push_message_label(&mut widgets, message, bg, theme, factory);
-                push_message_content(&mut widgets, message.body(), bg, theme, factory);
+            for message in self.messages {
+                push_message_label(&mut widgets, &message, bg, theme, factory);
+                line_count += 1;
+
+                let blocks = parse_markdown_blocks(message.body(), theme);
+                line_count += count_markdown_block_lines(&blocks);
+                push_message_content_blocks(&mut widgets, blocks, bg, theme, factory);
+
                 widgets.push(blank_line(bg, theme, factory));
+                line_count += 1;
             }
         }
 
@@ -160,7 +168,7 @@ impl Transcript {
         let stack = Col::new().flex(1.0).children(widgets).build(factory, theme);
         let mut scroll = Scroll::new()
             .flex(self.flex)
-            .content_h(usize_to_u16_saturating(line_count))
+            .content_h(usize_to_u16_saturating(line_count.max(1)))
             .child(stack);
         if let Some(scroll_y) = self.scroll_y {
             scroll = scroll.scroll_y(scroll_y);
@@ -188,12 +196,24 @@ fn estimate_line_count(
 }
 
 fn estimate_markdown_lines(content: &str, theme: &Theme) -> usize {
+    count_markdown_block_lines(&parse_markdown_blocks(content, theme))
+}
+
+fn parse_markdown_blocks(content: &str, theme: &Theme) -> Vec<MarkdownBlock> {
     if content.is_empty() {
+        Vec::new()
+    } else {
+        parse_blocks(content, theme)
+    }
+}
+
+fn count_markdown_block_lines(blocks: &[MarkdownBlock]) -> usize {
+    if blocks.is_empty() {
         return 1;
     }
 
-    parse_blocks(content, theme)
-        .into_iter()
+    blocks
+        .iter()
         .map(|block| match block {
             MarkdownBlock::Text(lines) => lines.len(),
             MarkdownBlock::Code { lines, .. } => lines.len() + 4,
@@ -227,19 +247,19 @@ fn push_message_label(
     );
 }
 
-fn push_message_content(
+fn push_message_content_blocks(
     widgets: &mut Vec<WidgetNode>,
-    content: &str,
+    blocks: Vec<MarkdownBlock>,
     bg: AnsiColor,
     theme: &Theme,
     factory: &WidgetFactory,
 ) {
-    if content.is_empty() {
+    if blocks.is_empty() {
         widgets.push(blank_line(bg, theme, factory));
         return;
     }
 
-    for block in parse_blocks(content, theme) {
+    for block in blocks {
         match block {
             MarkdownBlock::Text(lines) => {
                 widgets.push(

@@ -20,28 +20,35 @@ pub fn diff(old: &VirtualScreen, new: &VirtualScreen) -> Vec<DirtyRegion> {
     let mut regions = Vec::new();
     let rows = old.rows().min(new.rows());
     let cols = old.cols().min(new.cols());
+    let cols_usize = cols as usize;
 
     for row in 0..rows {
+        let old_row = old
+            .row_cells(row)
+            .expect("row is bounded by old screen size");
+        let new_row = new
+            .row_cells(row)
+            .expect("row is bounded by new screen size");
+        let old_row = &old_row[..cols_usize];
+        let new_row = &new_row[..cols_usize];
+
+        if old_row == new_row {
+            continue;
+        }
+
         let mut in_dirty = false;
         let mut dirty_start: u16 = 0;
 
-        for col in 0..cols {
-            let a = old
-                .cell_at_ref(col, row)
-                .expect("col and row are bounded by old screen size");
-            let b = new
-                .cell_at_ref(col, row)
-                .expect("col and row are bounded by new screen size");
-
+        for (col, (a, b)) in old_row.iter().zip(new_row).enumerate() {
             if a != b && !in_dirty {
                 in_dirty = true;
-                dirty_start = col;
+                dirty_start = col as u16;
             } else if a == b && in_dirty {
                 in_dirty = false;
                 regions.push(DirtyRegion {
                     row,
                     start_col: dirty_start,
-                    end_col: col,
+                    end_col: col as u16,
                 });
             }
         }

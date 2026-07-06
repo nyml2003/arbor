@@ -1,12 +1,12 @@
 // ScrollViewWidget — scrollable viewport over a child.
-// The child is rendered at its full natural size; the scroll widget
-// copies only the visible portion. renders_children() = true so the
-// engine does NOT recurse into the child during render.
+// The child is laid out at its natural height, then only the visible viewport
+// is rendered. renders_children() = true so the engine does NOT recurse into
+// the child during render.
 
 use arbor_tui_domain::cell::Cell;
 use arbor_tui_domain::layout::{LayoutProps, Rect, Size, SizeConstraint};
 use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
-use arbor_tui_domain::render::render_tree;
+use arbor_tui_domain::render::render_tree_viewport;
 use arbor_tui_domain::screen::VirtualScreen;
 use arbor_tui_domain::signal::ReadSignal;
 use arbor_tui_domain::theme::Theme;
@@ -86,44 +86,45 @@ impl ScrollViewWidget {
         theme: &Theme,
         focused: Option<WidgetId>,
     ) -> VirtualScreen {
-        let mut screen = VirtualScreen::new(rect.w.max(1), rect.h.max(1));
+        let viewport_w = rect.w.max(1);
+        let viewport_h = rect.h.max(1);
 
-        // 先用背景色填充整个视口，避免子组件比视口小时 Cell::default() 黑底覆盖父组件。
-        let fill = Cell {
-            bg: theme.surface(),
-            ..Default::default()
-        };
-        screen.fill_rect(Rect::new(0, 0, rect.w.max(1), rect.h.max(1)), &fill);
-
-        // Render child at its full natural size (larger than viewport)
+        // Layout child at its full natural size, but render only the visible window.
         let child_h = self.content_h.max(rect.h).max(1);
-        let child_rect = Rect::new(0, 0, rect.w.max(1), child_h);
+        let child_rect = Rect::new(0, 0, viewport_w, child_h);
         let child = self.child.as_ref();
         let child_size = Size::new(child_rect.w, child_rect.h);
         let constraints = measure_tree(child, child_size);
-        let child_screen = match layout_tree(child_rect, child, &constraints) {
-            Ok(layout) => render_tree((child_rect.w, child_rect.h), child, &layout, theme, focused),
-            Err(_) => child.render(child_rect, theme),
-        };
-
-        // Copy visible viewport
-        let copy_w = rect
-            .w
-            .min(child_screen.cols().saturating_sub(self.scroll_x.get()));
-        let copy_h = rect
-            .h
-            .min(child_screen.rows().saturating_sub(self.scroll_y.get()));
-
-        for row in 0..copy_h {
-            for col in 0..copy_w {
-                let src_cell =
-                    child_screen.cell_at(self.scroll_x.get() + col, self.scroll_y.get() + row);
-                if let Some(dest) = screen.cell_at_mut(col, row) {
-                    *dest = src_cell;
-                }
+        match layout_tree(child_rect, child, &constraints) {
+            Ok(layout) => render_tree_viewport(
+                (viewport_w, viewport_h),
+                child,
+                &layout,
+                theme,
+                focused,
+                Rect::new(
+                    self.scroll_x.get(),
+                    self.scroll_y.get(),
+                    viewport_w,
+                    viewport_h,
+                ),
+            ),
+            Err(_) => {
+                let mut screen = VirtualScreen::new(viewport_w, viewport_h);
+                let fill = Cell {
+                    bg: theme.surface(),
+                    ..Default::default()
+                };
+                screen.fill_rect(Rect::new(0, 0, viewport_w, viewport_h), &fill);
+                let child_screen = child.render(child_rect, theme);
+                screen.blit_region(
+                    Rect::new(0, 0, viewport_w, viewport_h),
+                    &child_screen,
+                    (self.scroll_x.get(), self.scroll_y.get()),
+                );
+                screen
             }
         }
-        screen
     }
 }
 

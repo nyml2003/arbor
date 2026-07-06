@@ -144,6 +144,7 @@ impl TerminalApp {
         app.run();
         let mut root = self.initial_root(cols, rows)?;
         mount_tree(&mut root);
+        app.request_focus_rebuild();
 
         let mut first_frame = true;
         let mut needs_render = true;
@@ -167,6 +168,7 @@ impl TerminalApp {
                     let (cols, rows) = app.screen_size();
                     root = rebuild(cols, rows, &self.theme);
                     mount_tree(&mut root);
+                    app.request_focus_rebuild();
                 }
                 needs_render = true;
             }
@@ -178,6 +180,7 @@ impl TerminalApp {
             if let Some(before_render) = self.before_render.as_mut() {
                 if before_render(&mut app, &mut root, &mut self.theme) {
                     mount_tree(&mut root);
+                    app.request_focus_rebuild();
                     app.request_render();
                     needs_render = true;
                 }

@@ -50,6 +50,15 @@ impl VirtualScreen {
         self.cells.get(idx)
     }
 
+    pub(crate) fn row_cells(&self, row: u16) -> Option<&[Cell]> {
+        if row >= self.rows {
+            return None;
+        }
+        let row_len = self.cols as usize;
+        let start = row as usize * row_len;
+        Some(&self.cells[start..start + row_len])
+    }
+
     /// Get a mutable reference to a cell. Returns None for out-of-bounds.
     pub fn cell_at_mut(&mut self, col: u16, row: u16) -> Option<&mut Cell> {
         if col >= self.cols || row >= self.rows {
@@ -169,6 +178,33 @@ impl VirtualScreen {
         }
     }
 
+    /// Blit a rectangular source region into this screen.
+    pub fn blit_region(&mut self, dest: Rect, source: &VirtualScreen, source_origin: (u16, u16)) {
+        if dest.x >= self.cols || dest.y >= self.rows {
+            return;
+        }
+
+        let (source_x, source_y) = source_origin;
+        if source_x >= source.cols || source_y >= source.rows {
+            return;
+        }
+
+        let copy_cols = dest.w.min(source.cols - source_x).min(self.cols - dest.x) as usize;
+        let copy_rows = dest.h.min(source.rows - source_y).min(self.rows - dest.y);
+        if copy_cols == 0 || copy_rows == 0 {
+            return;
+        }
+
+        let source_row_len = source.cols as usize;
+        let dest_row_len = self.cols as usize;
+        for row in 0..copy_rows {
+            let source_start = (source_y + row) as usize * source_row_len + source_x as usize;
+            let dest_start = (dest.y + row) as usize * dest_row_len + dest.x as usize;
+            self.cells[dest_start..dest_start + copy_cols]
+                .copy_from_slice(&source.cells[source_start..source_start + copy_cols]);
+        }
+    }
+
     /// Resize the screen. Newly visible areas are filled with default cells.
     /// Shrinking discards cells outside the new bounds.
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -269,6 +305,28 @@ mod tests {
         assert_eq!(dest.cell_at(2, 1).ch, 'a');
         assert_eq!(dest.cell_at(3, 1).ch, 'b');
         assert_eq!(dest.cell_at(2, 1).fg, AnsiColor::from_palette(1));
+    }
+
+    #[test]
+    fn blit_region_copies_source_window() {
+        let mut dest = VirtualScreen::new(4, 2);
+        let mut source = VirtualScreen::new(5, 3);
+        source.write_str(
+            0,
+            1,
+            "abcde",
+            AnsiColor::from_palette(1),
+            AnsiColor::from_palette(2),
+            Attrs::default(),
+        );
+
+        dest.blit_region(Rect::new(1, 0, 3, 1), &source, (2, 1));
+
+        assert_eq!(dest.cell_at(0, 0).ch, ' ');
+        assert_eq!(dest.cell_at(1, 0).ch, 'c');
+        assert_eq!(dest.cell_at(2, 0).ch, 'd');
+        assert_eq!(dest.cell_at(3, 0).ch, 'e');
+        assert_eq!(dest.cell_at(1, 0).bg, AnsiColor::from_palette(2));
     }
 
     #[test]

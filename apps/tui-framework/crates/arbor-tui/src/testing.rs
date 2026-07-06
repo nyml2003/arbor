@@ -272,7 +272,9 @@ where
         };
         let step = runtime_step(
             &mut self.runtime,
-            self.root.as_mut().context("headless app root was not mounted")?,
+            self.root
+                .as_mut()
+                .context("headless app root was not mounted")?,
             &self.backend,
             runtime_input,
         )?;
@@ -293,8 +295,7 @@ where
         let mut hook_changed = false;
         if let Some(before_render) = self.before_render.as_mut() {
             let mut ctx = AppContext::new(self.actions.clone());
-            hook_changed =
-                before_render(&mut self.state, &mut ctx, &mut self.runtime, &self.theme);
+            hook_changed = before_render(&mut self.state, &mut ctx, &mut self.runtime, &self.theme);
             self.apply_context(ctx);
         }
         let pre_render_us = pre_render_start.elapsed().as_micros() as u64;
@@ -322,7 +323,9 @@ where
             let result = self
                 .runtime
                 .render_widget_tree(
-                    self.root.as_ref().context("headless app root was not mounted")?,
+                    self.root
+                        .as_ref()
+                        .context("headless app root was not mounted")?,
                     &self.theme,
                     &mut self.backend,
                 )
@@ -365,6 +368,7 @@ where
         let mut root = build_root(&factory, &self.theme, cols, rows, node);
         mount_tree(&mut root);
         self.root = Some(root);
+        self.runtime.request_focus_rebuild();
         self.root_dirty = false;
     }
 

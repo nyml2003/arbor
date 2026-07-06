@@ -228,6 +228,7 @@ where
                 rows,
                 theme,
             );
+            runtime.request_focus_rebuild();
             true
         });
 

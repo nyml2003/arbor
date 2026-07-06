@@ -45,6 +45,7 @@ pub struct FrameStats {
     pub total_us: u64,
     pub dirty_widgets: usize,
     pub dirty_regions: usize,
+    pub focus_rebuilt: bool,
 }
 
 /// The TUI application runtime.
@@ -56,6 +57,7 @@ pub struct App {
     last_frame_time: Instant,
     frame_seq: u64,
     running: bool,
+    focus_dirty: bool,
     // Resize debounce state
     pending_resize: Option<(u16, u16)>,
     last_resize_seen: Instant,
@@ -71,6 +73,7 @@ impl App {
             last_frame_time: Instant::now(),
             frame_seq: 0,
             running: false,
+            focus_dirty: true,
             pending_resize: None,
             last_resize_seen: Instant::now(),
         }
@@ -100,8 +103,13 @@ impl App {
         self.dirty_tracker.force_render();
     }
 
+    pub fn request_focus_rebuild(&mut self) {
+        self.focus_dirty = true;
+    }
+
     pub(crate) fn rebuild_focus(&mut self, root: &WidgetNode) {
         self.focus_manager.rebuild(root);
+        self.focus_dirty = false;
     }
 
     pub fn update_signal<T: Clone + PartialEq>(&mut self, signal: &Signal<T>, value: T) {
@@ -140,6 +148,7 @@ impl App {
     pub fn apply_resize(&mut self, cols: u16, rows: u16) {
         self.screen = VirtualScreen::new(cols, rows);
         self.dirty_tracker.force_render();
+        self.request_focus_rebuild();
     }
 
     /// Run the full render pipeline on a widget tree.
@@ -150,7 +159,12 @@ impl App {
         theme: &Theme,
         backend: &mut dyn TerminalBackend,
     ) -> anyhow::Result<RenderResult> {
-        self.rebuild_focus(root);
+        let focus_rebuilt = if self.focus_dirty {
+            self.rebuild_focus(root);
+            true
+        } else {
+            false
+        };
 
         // Check force_render BEFORE draining — resize sets force_render to
         // guarantee the next frame is not skipped by the throttle.
@@ -216,6 +230,7 @@ impl App {
             total_us: frame_start.elapsed().as_micros() as u64,
             dirty_widgets: dirty_count,
             dirty_regions: region_count,
+            focus_rebuilt,
         };
 
         Ok(RenderResult::Rendered)
@@ -284,6 +299,7 @@ impl App {
                 let result = widget.perform(action);
                 if matches!(result, arbor_tui_domain::input::KeyHandleResult::Handled) {
                     self.dirty_tracker.mark_dirty(*widget_id);
+                    self.request_focus_rebuild();
                     return;
                 }
             }
@@ -298,7 +314,10 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arbor_tui_adapters::simulated_backend::SimulatedBackend;
     use arbor_tui_domain::signal::Signal;
+    use arbor_tui_widgets::text::Text;
+    use arbor_tui_widgets::widget_factory::WidgetFactory;
 
     #[test]
     fn update_signal_marks_subscribers_dirty_without_exposing_dirty_tracker() {
@@ -310,5 +329,33 @@ mod tests {
 
         assert_eq!(signal.get(), "after");
         assert!(app.has_pending_render());
+    }
+
+    #[test]
+    fn focus_index_rebuilds_only_when_marked_dirty() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let root = Text::new("hello").build(&factory, &theme);
+        let mut backend = SimulatedBackend::new(20, 3);
+        let mut app = App::new(20, 3);
+
+        app.request_render();
+        assert!(app.focus_dirty);
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("first render should succeed");
+        assert!(!app.focus_dirty);
+        assert!(app.last_frame_stats().focus_rebuilt);
+
+        app.request_render();
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("unchanged render should succeed");
+        assert!(!app.focus_dirty);
+
+        app.request_focus_rebuild();
+        assert!(app.focus_dirty);
+        app.request_render();
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("explicit focus rebuild render should succeed");
+        assert!(!app.focus_dirty);
     }
 }
