@@ -43,6 +43,13 @@ struct SignalSubscriber {
     dirty_kind: DirtyKind,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SignalChange {
+    pub signal_id: SignalId,
+    pub generation: u64,
+    pub dirty: Vec<(WidgetId, DirtyKind)>,
+}
+
 /// Internal state shared between Signal and all its ReadSignal clones.
 struct SignalInner<T: Clone + PartialEq> {
     id: SignalId,
@@ -58,6 +65,14 @@ struct SignalInner<T: Clone + PartialEq> {
 /// visible to tests and application runtime code.
 pub struct Signal<T: Clone + PartialEq> {
     inner: Rc<RefCell<SignalInner<T>>>,
+}
+
+impl<T: Clone + PartialEq> Clone for Signal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Rc::clone(&self.inner),
+        }
+    }
 }
 
 impl<T: Clone + PartialEq> Signal<T> {
@@ -84,13 +99,29 @@ impl<T: Clone + PartialEq> Signal<T> {
     /// The `PartialEq` check prevents infinite loops in input-component
     /// scenarios where the same value is written back.
     pub fn set(&self, new_value: T, dirty: &mut DirtyTracker) {
+        if let Some(change) = self.set_collect(new_value) {
+            for (widget_id, dirty_kind) in change.dirty {
+                dirty.mark_dirty_kind(widget_id, dirty_kind);
+            }
+        }
+    }
+
+    pub fn set_collect(&self, new_value: T) -> Option<SignalChange> {
         let mut inner = self.inner.borrow_mut();
         if new_value != inner.value {
             inner.value = new_value;
             inner.generation += 1;
-            for subscriber in &inner.subscribers {
-                dirty.mark_dirty_kind(subscriber.widget_id, subscriber.dirty_kind);
-            }
+            Some(SignalChange {
+                signal_id: inner.id,
+                generation: inner.generation,
+                dirty: inner
+                    .subscribers
+                    .iter()
+                    .map(|subscriber| (subscriber.widget_id, subscriber.dirty_kind))
+                    .collect(),
+            })
+        } else {
+            None
         }
     }
 
@@ -312,6 +343,24 @@ mod tests {
 
         let dirty = dt.drain();
         assert_eq!(dirty[&WidgetId(1)], DirtyKind::Layout);
+    }
+
+    #[test]
+    fn signal_set_collect_returns_change_without_dirty_tracker() {
+        let s = Signal::new("hello".to_string());
+        s.subscribe_with_dirty_kind(WidgetId(1), DirtyKind::Layout);
+
+        let change = s
+            .set_collect("world".to_string())
+            .expect("changed value should produce signal change");
+
+        assert_eq!(change.signal_id, s.id());
+        assert_eq!(change.generation, s.generation());
+        assert_eq!(change.dirty, vec![(WidgetId(1), DirtyKind::Layout)]);
+        assert!(
+            s.set_collect("world".to_string()).is_none(),
+            "same value should not enqueue a signal change"
+        );
     }
 
     #[test]

@@ -364,18 +364,18 @@ pub(crate) fn meta_from_state(
     stats: &HeadlessFrameStats,
 ) -> FrameMeta {
     let streaming_token = matches!(status, ConversationStatus::Streaming { .. }) as usize;
-        FrameMeta {
-            msg_lines,
-            signal_dirty: stats
-                .frame_stats
-                .dirty_widgets
-                .saturating_add(streaming_token),
-            dirty_render: stats.frame_stats.dirty_render_widgets,
-            dirty_layout: stats.frame_stats.dirty_layout_widgets,
-            dirty_structure: stats.frame_stats.dirty_structure_widgets,
-            dirty_theme: stats.frame_stats.dirty_theme_widgets,
-            dirty_full: stats.frame_stats.dirty_full_widgets,
-            dirty_regions: stats.frame_stats.dirty_regions,
+    FrameMeta {
+        msg_lines,
+        signal_dirty: stats
+            .frame_stats
+            .dirty_widgets
+            .saturating_add(streaming_token),
+        dirty_render: stats.frame_stats.dirty_render_widgets,
+        dirty_layout: stats.frame_stats.dirty_layout_widgets,
+        dirty_structure: stats.frame_stats.dirty_structure_widgets,
+        dirty_theme: stats.frame_stats.dirty_theme_widgets,
+        dirty_full: stats.frame_stats.dirty_full_widgets,
+        dirty_regions: stats.frame_stats.dirty_regions,
         new_tokens,
         messages: message_count,
         layout_cache_hits: stats.frame_stats.layout_cache_hits,

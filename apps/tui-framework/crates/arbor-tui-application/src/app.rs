@@ -16,6 +16,7 @@ use arbor_tui_domain::cache::{
 use arbor_tui_domain::diff::{diff, merge_regions};
 use arbor_tui_domain::dirty::DirtyTracker;
 use arbor_tui_domain::focus::{find_widget_mut, FocusManager};
+use arbor_tui_domain::frame::FrameSnapshot;
 use arbor_tui_domain::identity::DirtyKind;
 use arbor_tui_domain::layout::{
     Align, AxisConstraint, Direction, Justify, LayoutProps, Rect, Size, SizeConstraint,
@@ -23,7 +24,7 @@ use arbor_tui_domain::layout::{
 use arbor_tui_domain::layout_engine::{layout_tree, measure_tree};
 use arbor_tui_domain::render::{render_tree, render_tree_with_fragments};
 use arbor_tui_domain::screen::VirtualScreen;
-use arbor_tui_domain::signal::Signal;
+use arbor_tui_domain::signal::{Signal, SignalChange, SignalId};
 use arbor_tui_domain::theme::{Theme, ThemeVariant};
 use arbor_tui_domain::widget::{WidgetAction, WidgetId, WidgetNode};
 
@@ -71,8 +72,11 @@ pub struct FrameStats {
 /// The TUI application runtime.
 pub struct App {
     dirty_tracker: DirtyTracker,
+    pending_signal_dirty: HashMap<WidgetId, DirtyKind>,
+    pending_signal_generations: HashMap<SignalId, u64>,
     focus_manager: FocusManager,
     last_frame_stats: FrameStats,
+    last_frame_snapshot: FrameSnapshot,
     screen: VirtualScreen,
     last_frame_time: Instant,
     frame_seq: u64,
@@ -91,8 +95,11 @@ impl App {
         Self {
             screen: VirtualScreen::new(cols, rows),
             dirty_tracker: DirtyTracker::new(),
+            pending_signal_dirty: HashMap::new(),
+            pending_signal_generations: HashMap::new(),
             focus_manager: FocusManager::new(),
             last_frame_stats: FrameStats::default(),
+            last_frame_snapshot: FrameSnapshot::default(),
             last_frame_time: Instant::now(),
             frame_seq: 0,
             running: false,
@@ -117,6 +124,10 @@ impl App {
         &self.last_frame_stats
     }
 
+    pub fn last_frame_snapshot(&self) -> &FrameSnapshot {
+        &self.last_frame_snapshot
+    }
+
     pub fn enable_cache_shadow(&mut self, enabled: bool) {
         self.cache_shadow_enabled = enabled;
         if !enabled {
@@ -126,15 +137,16 @@ impl App {
     }
 
     pub(crate) fn has_pending_render(&self) -> bool {
-        !self.dirty_tracker.is_empty()
+        !self.dirty_tracker.is_empty() || !self.pending_signal_dirty.is_empty()
     }
 
     #[cfg(test)]
     pub(crate) fn take_dirty_widgets(&mut self) -> Vec<WidgetId> {
-        self.dirty_tracker.drain().into_keys().collect()
+        self.take_dirty_widget_kinds().into_keys().collect()
     }
 
     fn take_dirty_widget_kinds(&mut self) -> HashMap<WidgetId, DirtyKind> {
+        self.drain_pending_signals_into_dirty_tracker();
         self.dirty_tracker.drain()
     }
 
@@ -152,7 +164,9 @@ impl App {
     }
 
     pub fn update_signal<T: Clone + PartialEq>(&mut self, signal: &Signal<T>, value: T) {
-        signal.set(value, &mut self.dirty_tracker);
+        if let Some(change) = signal.set_collect(value) {
+            self.enqueue_signal_change(change);
+        }
     }
 
     /// Notify of a potential terminal size change.
@@ -222,6 +236,8 @@ impl App {
 
         let (cols, rows) = self.screen_size();
         let screen_size = Size { w: cols, h: rows };
+        self.last_frame_snapshot =
+            FrameSnapshot::new(self.frame_seq.saturating_add(1), collect_signal_deps(root));
 
         let t0 = Instant::now();
         let constraints = measure_tree(root, screen_size);
@@ -418,6 +434,45 @@ impl App {
     }
 }
 
+impl App {
+    pub(crate) fn enqueue_signal_change(&mut self, change: SignalChange) {
+        if change.dirty.is_empty() {
+            return;
+        }
+        self.pending_signal_generations
+            .insert(change.signal_id, change.generation);
+        for (widget_id, dirty_kind) in change.dirty {
+            self.pending_signal_dirty
+                .entry(widget_id)
+                .and_modify(|existing| *existing = existing.merge(dirty_kind))
+                .or_insert(dirty_kind);
+            if matches!(dirty_kind, DirtyKind::Structure | DirtyKind::Full) {
+                self.request_focus_rebuild();
+            }
+        }
+    }
+
+    fn drain_pending_signals_into_dirty_tracker(&mut self) {
+        for (widget_id, dirty_kind) in std::mem::take(&mut self.pending_signal_dirty) {
+            self.dirty_tracker.mark_dirty_kind(widget_id, dirty_kind);
+        }
+        self.pending_signal_generations.clear();
+    }
+}
+
+fn collect_signal_deps(root: &WidgetNode) -> Vec<arbor_tui_domain::SignalDep> {
+    let mut deps = Vec::new();
+    collect_signal_deps_inner(root, &mut deps);
+    deps
+}
+
+fn collect_signal_deps_inner(node: &WidgetNode, deps: &mut Vec<arbor_tui_domain::SignalDep>) {
+    deps.extend(node.signal_deps());
+    for child in node.children() {
+        collect_signal_deps_inner(child, deps);
+    }
+}
+
 fn observe_layout_shadow(
     shadow: &mut LayoutCacheShadow,
     root: &WidgetNode,
@@ -609,6 +664,65 @@ mod tests {
 
         assert_eq!(signal.get(), "after");
         assert!(app.has_pending_render());
+    }
+
+    #[test]
+    fn multiple_signal_writes_before_render_merge_dirty_once() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let signal = Signal::new("before".to_string());
+        let mut root = Text::new("").content_from(&signal).build(&factory, &theme);
+        arbor_tui_domain::focus::mount_tree(&mut root);
+        let mut backend = SimulatedBackend::new(20, 1);
+        let mut app = App::new(20, 1);
+
+        app.update_signal(&signal, "middle".to_string());
+        app.update_signal(&signal, "after".to_string());
+
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("render should drain pending signal changes");
+
+        assert_eq!(signal.get(), "after");
+        assert_eq!(app.last_frame_stats().dirty_widgets, 1);
+        assert_eq!(app.last_frame_stats().dirty_layout_widgets, 1);
+        assert_eq!(
+            app.last_frame_snapshot().generation(signal.id()),
+            Some(signal.generation())
+        );
+    }
+
+    #[test]
+    fn signal_write_after_snapshot_waits_for_next_frame_snapshot() {
+        let theme = Theme::dark();
+        let factory = WidgetFactory::new();
+        let signal = Signal::new("before".to_string());
+        let mut root = Text::new("").content_from(&signal).build(&factory, &theme);
+        arbor_tui_domain::focus::mount_tree(&mut root);
+        let mut backend = SimulatedBackend::new(20, 1);
+        let mut app = App::new(20, 1);
+
+        app.request_render();
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("initial render should create snapshot");
+        let first_snapshot_generation = app
+            .last_frame_snapshot()
+            .generation(signal.id())
+            .expect("snapshot should include text signal dep");
+
+        app.update_signal(&signal, "after".to_string());
+
+        assert_eq!(
+            app.last_frame_snapshot().generation(signal.id()),
+            Some(first_snapshot_generation),
+            "pending writes must not mutate an existing frame snapshot"
+        );
+
+        app.render_widget_tree(&root, &theme, &mut backend)
+            .expect("next render should create a new snapshot");
+        assert_eq!(
+            app.last_frame_snapshot().generation(signal.id()),
+            Some(signal.generation())
+        );
     }
 
     #[test]
