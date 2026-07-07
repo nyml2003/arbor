@@ -1,4 +1,4 @@
-use crate::view::{button_view, text_view, with_children, IntoText, IntoViewVec, NodeKind, View};
+use crate::view::{text_view, with_children, IntoText, IntoViewVec, NodeKind, View};
 
 pub fn text<Action>(value: impl IntoText) -> View<Action> {
     text_view(value)
@@ -20,8 +20,4 @@ where
 
 pub fn panel<Action>(child: View<Action>) -> View<Action> {
     with_children(NodeKind::Panel, child)
-}
-
-pub fn button<Action>(label: impl Into<String>) -> View<Action> {
-    button_view(label)
 }

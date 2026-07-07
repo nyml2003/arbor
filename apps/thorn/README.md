@@ -35,7 +35,7 @@ Interactive crossterm demo:
 cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_live
 ```
 
-Press Enter to increment the counter. Press `q` or Esc to quit.
+Keyboard events are the supported interaction path. Press `q` or Esc to quit. Mouse input is not supported.
 
 Snapshot demo:
 
@@ -43,7 +43,7 @@ Snapshot demo:
 cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_demo
 ```
 
-The demo prints the MVP counter screen before and after a simulated `+1` button press.
+The demo prints the MVP counter screen as an in-memory snapshot.
 
 ## Current MVP
 
@@ -62,4 +62,4 @@ Signal write
   -> TestApp assert
 ```
 
-It intentionally does not include a real terminal runtime, `Memo`, `Show`, `For`, `Input`, async effects, resize handling, mouse handling, or render cache.
+It intentionally does not include mouse input, `Memo`, `Show`, `For`, `Input`, async effects, full keyboard command dispatch, or render cache.

@@ -46,9 +46,9 @@ area: architecture
 | THEP-0005 | FlexBox 子集布局 | Accepted |
 | THEP-0006 | 主题系统 | Accepted |
 | THEP-0007 | 终端渲染与适配器 | Accepted |
-| THEP-0008 | MVP 纵向切片 | Accepted |
+| THEP-0008 | MVP 后下一阶段计划 | Draft |
 | THEP-0009 | 性能观测与性能上限 | Accepted |
-| THEP-0010 | 显示器回刷边界 | Accepted |
+| THEP-0010 | 键盘事件与 Action Runtime | Draft |
 
 ## Core 领域
 
@@ -57,11 +57,11 @@ area: architecture
 核心领域：
 
 - `reactive`：Signal、Memo、Effect、Scope。
-- `view`：View、Primitive Tree、事件绑定。
+- `view`：View、Primitive Tree、动态文本和样式。
 - `layout`：几何类型和 FlexBox 子集。
 - `theme`：Theme、Token、Color、样式解析。
 - `render`：Cell、Screen、Diff、screen compose。
-- `widgets`：基础组件和控制流组件。
+- `widgets`：基础布局、文本、面板和后续控制流组件。
 - `testing`：测试 harness 和断言工具。
 
 ## 编号规则

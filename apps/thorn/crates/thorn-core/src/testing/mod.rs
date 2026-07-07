@@ -59,15 +59,6 @@ impl<Action> TestApp<Action> {
         );
     }
 
-    pub fn press_button(&self, label: &str) {
-        let Some(node) = find_button(self.root.node(), label) else {
-            panic!("button `{label}` not found");
-        };
-        for handler in node.on_press_handlers() {
-            handler();
-        }
-    }
-
     pub fn layout_of(&self, key_or_text: &str) -> Rect {
         let Some(node) = find_by_key_or_text(self.root.node(), key_or_text) else {
             panic!("node `{key_or_text}` not found");
@@ -107,19 +98,6 @@ impl<Action> TestApp<Action> {
     pub fn dispose(&self) {
         self.scope.dispose();
     }
-}
-
-fn find_button<'a, Action>(
-    node: &'a PrimitiveNode<Action>,
-    label: &str,
-) -> Option<&'a PrimitiveNode<Action>> {
-    if node.text().as_deref() == Some(label) && !node.on_press_handlers().is_empty() {
-        return Some(node);
-    }
-
-    node.children()
-        .iter()
-        .find_map(|child| find_button(child, label))
 }
 
 fn find_by_key_or_text<'a, Action>(

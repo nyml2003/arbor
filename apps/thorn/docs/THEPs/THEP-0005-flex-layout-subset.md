@@ -82,7 +82,7 @@ Flex 规则：
 
 - MVP 有内部 measure 阶段。
 - 内部 measure 由 primitive/layout domain 使用。
-- `Text`、`Button`、`Panel`、`Row`、`Col` 等内置节点可以提供 intrinsic size。
+- `Text`、`Panel`、`Row`、`Col` 等内置节点可以提供 intrinsic size。
 - 应用层函数组件不实现 `measure`。
 - 应用层函数组件只能组合公开 builder，让底层 primitive 参与测量。
 - 应用层自定义 intrinsic measure 需要后续 custom primitive THEP。

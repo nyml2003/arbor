@@ -3,7 +3,7 @@ id: THEP-0006
 title: "主题系统"
 status: Accepted
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 area: theme
 ---
 
@@ -88,7 +88,6 @@ Theme::dark()
 | --- | --- | --- | --- |
 | `Text` | `Text` | inherited or `Surface` |
 | `Panel` | `Text` | `SurfaceAlt` | `Border` |
-| `Button` | `Text` | `SurfaceAlt` | `Focus` when focused |
 | `Input` | `Text` | `SurfaceAlt` | `Focus` cursor |
 
 背景规则：
@@ -129,7 +128,6 @@ thorn::app(root)
 ```rust
 text("Ready").fg(Token::Success);
 panel(body).bg(Token::SurfaceAlt).border(Token::Border);
-button("Run").focus_bg(Token::Focus);
 ```
 
 允许 concrete color：
@@ -155,4 +153,3 @@ text("debug").fg(Color::Palette(244));
 - light theme 下没有可见黑底泄漏。
 - theme signal 切换后触发 render 更新。
 - unknown token 不允许出现；编译期 enum 应覆盖。
-

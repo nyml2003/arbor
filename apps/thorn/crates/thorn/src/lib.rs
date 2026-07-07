@@ -55,10 +55,7 @@ impl<Action> App<Action> {
         loop {
             match backend.read_event()? {
                 terminal::TerminalEvent::Quit => break,
-                terminal::TerminalEvent::Enter => {
-                    root.press_first_focusable();
-                    render_frame(&mut backend, &root, &self.theme, &mut previous)?;
-                }
+                terminal::TerminalEvent::Enter => {}
                 terminal::TerminalEvent::Resize => {
                     previous = None;
                     render_frame(&mut backend, &root, &self.theme, &mut previous)?;

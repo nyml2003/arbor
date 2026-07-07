@@ -230,12 +230,6 @@ fn render_node<Action>(
                 screen.write_str(info.content_rect.x, info.content_rect.y, &text, fg, bg);
             }
         }
-        NodeKind::Button => {
-            if let Some(text) = node.text() {
-                let label = format!("[{}]", text);
-                screen.write_str(info.content_rect.x, info.content_rect.y, &label, fg, bg);
-            }
-        }
         NodeKind::Row | NodeKind::Col => {}
     }
 

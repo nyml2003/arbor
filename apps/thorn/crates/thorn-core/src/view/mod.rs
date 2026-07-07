@@ -24,11 +24,7 @@ pub enum NodeKind {
     Row,
     Col,
     Panel,
-    Button,
 }
-
-#[derive(Clone)]
-pub struct ButtonPress;
 
 #[derive(Clone)]
 pub struct View<Action = ()> {
@@ -114,20 +110,6 @@ impl<Action> View<Action> {
         self.node.style.bg = Some(source.into());
         self
     }
-
-    pub fn on_press<F, R>(mut self, handler: F) -> Self
-    where
-        F: Fn(ButtonPress) -> R + 'static,
-    {
-        self.node.events.on_press.push(Rc::new(move || {
-            handler(ButtonPress);
-        }));
-        self
-    }
-
-    pub fn press_first_focusable(&self) -> bool {
-        self.node.press_first_focusable()
-    }
 }
 
 #[derive(Clone)]
@@ -139,8 +121,6 @@ pub struct PrimitiveNode<Action = ()> {
     children: Vec<PrimitiveNode<Action>>,
     layout: LayoutStyle,
     style: Style,
-    events: EventBinding,
-    focusable: bool,
     _action: PhantomData<Action>,
 }
 
@@ -162,8 +142,6 @@ impl<Action> PrimitiveNode<Action> {
             children: Vec::new(),
             layout,
             style: Style::default_for(kind),
-            events: EventBinding::default(),
-            focusable: matches!(kind, NodeKind::Button),
             _action: PhantomData,
         }
     }
@@ -195,27 +173,6 @@ impl<Action> PrimitiveNode<Action> {
     pub fn style(&self) -> &Style {
         &self.style
     }
-
-    pub fn on_press_handlers(&self) -> &[Rc<dyn Fn()>] {
-        &self.events.on_press
-    }
-
-    pub fn is_focusable(&self) -> bool {
-        self.focusable
-    }
-
-    fn press_first_focusable(&self) -> bool {
-        if self.focusable {
-            for handler in &self.events.on_press {
-                handler();
-            }
-            return true;
-        }
-
-        self.children
-            .iter()
-            .any(PrimitiveNode::press_first_focusable)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -238,11 +195,6 @@ impl Style {
                 bg: Some(Token::SurfaceAlt.into()),
                 border: Some(Token::Border.into()),
             },
-            NodeKind::Button => Self {
-                fg: Some(Token::Text.into()),
-                bg: Some(Token::SurfaceAlt.into()),
-                border: Some(Token::Focus.into()),
-            },
             NodeKind::Row | NodeKind::Col => Self {
                 fg: Some(Token::Text.into()),
                 bg: Some(Token::Surface.into()),
@@ -250,11 +202,6 @@ impl Style {
             },
         }
     }
-}
-
-#[derive(Clone, Default)]
-struct EventBinding {
-    on_press: Vec<Rc<dyn Fn()>>,
 }
 
 pub trait IntoText {
@@ -330,41 +277,4 @@ pub(crate) fn text_view<Action>(text: impl IntoText) -> View<Action> {
     let mut view = View::new(NodeKind::Text);
     view.node_mut().text = Some(text.into_text_slot());
     view
-}
-
-pub(crate) fn button_view<Action>(label: impl Into<String>) -> View<Action> {
-    let mut view = View::new(NodeKind::Button);
-    view.node_mut().text = Some(Rc::new(RefCell::new(label.into())));
-    view
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn button_nodes_are_focusable_and_keep_event_binding_description() {
-        let button: View = button_view("Run").on_press(|_| ());
-
-        assert!(button.node().is_focusable());
-        assert_eq!(button.node().on_press_handlers().len(), 1);
-    }
-
-    #[test]
-    fn view_can_press_first_focusable_node() {
-        let pressed = Rc::new(RefCell::new(false));
-        let pressed_in_handler = pressed.clone();
-        let view: View = with_children(
-            NodeKind::Col,
-            (
-                text_view("Status"),
-                button_view("Run").on_press(move |_| {
-                    *pressed_in_handler.borrow_mut() = true;
-                }),
-            ),
-        );
-
-        assert!(view.press_first_focusable());
-        assert!(*pressed.borrow());
-    }
 }

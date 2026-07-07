@@ -133,12 +133,6 @@ pub fn measure_node<Action>(node: &PrimitiveNode<Action>) -> Size {
     let style = node.layout();
     let mut size = match node.kind() {
         NodeKind::Text => Size::new(node.text().as_deref().map(display_width).unwrap_or(0), 1),
-        NodeKind::Button => Size::new(
-            node.text()
-                .map(|text| display_width(&text) + 2)
-                .unwrap_or(2),
-            1,
-        ),
         NodeKind::Panel | NodeKind::Row | NodeKind::Col => measure_container(node),
     };
 

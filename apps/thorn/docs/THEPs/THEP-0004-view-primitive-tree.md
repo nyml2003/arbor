@@ -3,7 +3,7 @@ id: THEP-0004
 title: "View 与 Primitive Tree"
 status: Accepted
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 area: view
 ---
 
@@ -13,7 +13,9 @@ area: view
 
 Thorn 的组件不是 widget 实例。
 
-组件是普通函数。它在 mount 时创建响应式资源，并返回一棵 primitive tree。primitive tree 是平台无关的 UI 描述。它只描述布局、样式、文本、事件绑定、focus 和 children。
+组件是普通函数。它在 mount 时创建响应式资源，并返回一棵 primitive tree。primitive tree 是平台无关的 UI 描述。它只描述布局、样式、文本和 children。
+
+交互协议由 THEP-0010 约束。当前阶段 primitive tree 不包含 `Button`、鼠标事件或 click handler。
 
 ## Decision
 
@@ -24,7 +26,6 @@ View<Action>
 PrimitiveNode<Action>
 NodeId
 NodeKey
-EventBinding<Action>
 ```
 
 组件函数：
@@ -50,8 +51,6 @@ primitive node 内容：
 - visual style。
 - text slot。
 - children。
-- event bindings。
-- focusable flag。
 
 primitive node 不允许持有：
 
@@ -69,12 +68,13 @@ primitive node 不允许持有：
 - `show(when, fallback, child)` 管理分支 scope。
 - `for_each(items, key, render)` 管理 keyed item scope。
 
-事件绑定：
+事件：
 
-1. primitive node 保存事件绑定描述。
-2. event handler 写 signal 或 emit app action。
-3. event handler 不直接触发 render。
-4. runtime 根据 signal/effect 变化更新 primitive slot。
+1. keyboard input 先进入 runtime input 协议。
+2. runtime input 由应用层转成 Action。
+3. Action handler 可以写 signal 或 app state。
+4. handler 不直接触发 render。
+5. runtime 根据 signal/effect/state 变化更新 primitive slot。
 
 应用层组件扩展：
 
@@ -160,8 +160,6 @@ col((
 - `row(...)`
 - `col(...)`
 - `panel(...)`
-- `button(...)`
-- `input(...)`
 - `show(...)`
 - `for_each(...)`
 
@@ -173,7 +171,7 @@ builder 只构造 view，不执行渲染。
 fn header_bar(_cx: &Scope, title: impl Into<String>) -> View<Action> {
     row((
         text(title.into()).flex(1),
-        button("Quit").on_press(|_| Action::Quit),
+        text("q: quit").fg(Token::TextMuted),
     ))
     .height(1)
     .bg(Token::SurfaceAlt)
@@ -189,8 +187,7 @@ fn header_bar(_cx: &Scope, title: impl Into<String>) -> View<Action> {
 - 静态 view mount 后生成 primitive tree。
 - dynamic text signal 变化后只更新对应 text slot。
 - dynamic style signal 变化后只更新对应 style slot。
-- button action 可以写 signal。
-- event handler 不直接调用 render。
+- Action handler 不直接调用 render。
 - `Show` 初始 true/false 渲染正确。
 - `Show` 切换释放旧分支 scope。
 - `For` keyed insert/delete/reorder 行为正确。

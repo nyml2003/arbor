@@ -12,6 +12,6 @@ pub mod prelude {
     pub use crate::render::{diff, Cell, DirtyRegion, Screen};
     pub use crate::testing::TestApp;
     pub use crate::theme::{Color, ColorSource, Theme, Token};
-    pub use crate::view::{ButtonPress, NodeId, View};
-    pub use crate::widgets::{button, col, panel, row, text};
+    pub use crate::view::{NodeId, View};
+    pub use crate::widgets::{col, panel, row, text};
 }

@@ -1,207 +1,205 @@
 ---
 id: THEP-0008
-title: "MVP 纵向切片"
-status: Accepted
+title: "MVP 后下一阶段计划"
+status: Draft
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 area: planning
 ---
 
-# THEP-0008: MVP 纵向切片
+# THEP-0008: MVP 后下一阶段计划
 
 ## Summary
 
-Thorn MVP 只做一个薄纵向切片。
+Thorn 下一阶段不继续补 `Button` 或鼠标事件。
 
-MVP 的目标不是完成整个 TUI 框架。MVP 的目标是证明核心模型成立：signal 能驱动 primitive slot，FlexBox 子集能布局，theme token 能解析，screen diff 能精准更新 cell，测试 harness 能验证结果。
+下一阶段先做键盘 Action Runtime。目标是把 Thorn 从“能渲染静态 demo”推进到“能写一个键盘驱动的小型 TUI 应用”。
+
+依据：
+
+- Aster 已经证明 `KeyEvent -> Action -> AppState -> view` 适合真实 TUI。
+- arbor-tui 的终态文档已经证明 runtime step、adapter 分层、模拟输入输出测试是正确边界。
+- Thorn 当前的 `Button/on_press` 方向会把框架拉回鼠标和 widget 事件模型，不符合当前目标。
+
+协议细节见 `THEP-0010: 键盘事件与 Action Runtime`。
 
 ## Decision
 
-MVP 必须覆盖从响应式到内存渲染的完整路径：
+下一阶段按四个增量推进。
 
-```text
-Signal write
-  -> Effect rerun
-  -> Primitive slot update
-  -> Flex layout
-  -> Theme resolve
-  -> Screen render
-  -> Diff dirty regions
-  -> Test harness assert
-```
+### 1. 写清并实现键盘输入协议
 
-MVP 包含这些能力：
+目标：
 
-| 领域 | MVP 范围 |
-| --- | --- |
-| workspace | `apps/thorn` 可独立 `cargo test` 和 `cargo check` |
-| `reactive` | `Signal`、`ReadSignal`、`Effect`、`Scope` cleanup |
-| `view` | static text、dynamic text、primitive node、event binding 描述 |
-| `layout` | 内部 measure、`Row`、`Col`、fixed width/height、`flex` grow、padding、gap、测试可读 layout info |
-| `theme` | `Theme::dark()`、`Theme::light()`、`Token` -> `Color` |
-| `render` | `Cell`、`Screen`、`fill_rect`、`write_str`、row diff、single-cell dirty |
-| `widgets` | `Text`、`Row`、`Col`、`Panel`、`Button` |
-| `testing` | render 到内存 screen，断言文本、背景和 dirty region |
-| examples | counter 或 theme switch demo，二选一即可 |
+- `thorn-core` 定义平台无关 `RuntimeInput`、`KeyEvent`、`Key`、modifier 和 key kind。
+- `thorn-terminal` 把 crossterm keyboard/resize event 转成 core input。
+- runtime 不启用 mouse capture。
+- mouse event 不进入 core。
+- `q` 和 `Escape` 作为默认退出键。
+- `Enter` 在没有应用 handler 时是 no-op。
 
-MVP 支持应用层自定义组件。
+完成标准：
 
-应用层自定义组件是普通函数。它返回 `View<Action>`，并通过公开 builder 组合内置组件。它可以创建自己的 signal 和 effect。它不需要注册，也不需要实现 trait。
+- 单测覆盖 key conversion。
+- 单测覆盖 resize conversion。
+- 单测覆盖 `Enter` no-op。
+- 单测或 adapter 测试证明 runtime 不启用 mouse capture。
 
-MVP 不支持应用层新增底层 primitive node type。新增基础 primitive、自绘 cell 组件或 renderer adapter，需要后续 THEP 单独定义。
+### 2. 增加状态化 Action Runtime
 
-MVP 组件要求：
+目标：
 
-- `Text` 支持静态文本和动态文本。
-- `Row` / `Col` 只负责布局 children。
-- `Panel` 填充背景，可选边框。
-- `Button` 可 focus，可触发 event binding。
-- 所有可见组件必须写背景。
+- 增加状态化应用入口。
+- 应用提供 state、update、view。
+- runtime 先处理输入批次，再执行 Action，再 render。
+- `before_events` 可以把输入批次转成 Action。
+- `before_render` 可以在每帧渲染前推进非输入状态。
 
-MVP demo 建议：
+目标形态：
 
 ```rust
-fn counter(cx: &Scope) -> View<Action> {
-    let count = cx.create_signal(0usize);
-
-    col((
-        panel(text(move || format!("count: {}", count.get()))),
-        button("+1").on_press(move |_| count.update(|n| *n += 1)),
-    ))
-    .padding(1)
-    .gap(1)
-    .bg(Token::Surface)
-}
+ThornApp::new(initial_state)
+    .theme(Theme::dark())
+    .update(update)
+    .view(view)
+    .before_events(before_events)
+    .before_render(before_render)
+    .run()
 ```
 
-MVP 完成标准：
+完成标准：
 
-1. 初次 render 能在内存 screen 中看到 `count: 0`。
-2. 触发 button event 后，signal 更新为 `1`。
-3. dynamic text slot 更新为 `count: 1`。
-4. diff 能产生覆盖变化文本的 dirty region。
-5. light theme 下没有可见默认黑底。
-6. `cargo test --manifest-path apps/thorn/Cargo.toml --workspace` 通过。
-7. `cargo check --manifest-path apps/thorn/Cargo.toml --workspace` 通过。
+- 一个测试应用能通过键盘输入改变状态。
+- `update` 修改状态后，view 使用新状态渲染。
+- `before_render` 可以触发下一帧变化。
+- runtime 退出时恢复 terminal 状态。
+
+### 3. 改造测试 harness
+
+目标：
+
+- 测试能脚本化发送键盘事件。
+- 测试能脚本化 resize。
+- 测试能读取最后一帧 screen 和 dirty 信息。
+- 测试不依赖真实终端。
+
+完成标准：
+
+- `send_key(Key::Char('x'))` 可用。
+- `resize(width, height)` 可用。
+- resize 后下一帧 full dirty。
+- Action Runtime 的核心路径能在内存测试里跑通。
+
+### 4. Demo 变成真实验收入口
+
+目标：
+
+- `counter_live` 保留真实终端 smoke demo。
+- 新增一个键盘驱动 demo，展示 Action Runtime。
+- README 写清 demo 的启动方式、退出键和不支持鼠标。
+
+建议 demo：
+
+- `keyboard_counter`：`+`/`-` 改变计数，`q`/`Esc` 退出。
+- 后续再做 Aster 风格 input/palette demo。
+
+完成标准：
+
+```powershell
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example keyboard_counter
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_live
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_demo
+```
+
+三个命令都能运行。`keyboard_counter` 是交互验收入口。`counter_demo` 是快速 screen 输出入口。
 
 ## Non-goals
 
-MVP 不做这些能力：
+下一阶段不做这些能力：
 
-- 真实终端 runtime。
-- `Input`。
+- 鼠标。
+- `Button`。
+- hover/click/drag。
+- 完整 focus manager。
+- Tab/Shift+Tab focus navigation。
+- Input 文本编辑。
+- IME。
 - `Show`。
 - `For`。
 - `Memo`。
 - async effect。
-- 跨线程 signal 写入。
-- terminal raw mode。
-- resize。
-- mouse。
 - render cache。
-- dirty rect subtree cache。
+- layout cache。
+- dirty subtree diff。
 - 自定义 primitive node type。
-- 自绘 cell 组件 API。
-- 应用层自定义 measure。
-- 同步 on_layout。
-- on_layout 写 signal 后当前帧重布局。
-- markdown。
-- table。
-- scroll area。
-- transcript。
-- crossterm adapter 完整实现。
+- 自绘 cell API。
+- 完整性能统计系统。
 
-这些能力可以后续按 THEP 增量实现。
+这些能力后续单独写 THEP。
 
 ## API Impact
 
-MVP 只需要暴露最小用户 API：
+允许新增这些入口：
 
 ```rust
-use thorn::prelude::*;
-
-fn app(cx: &Scope) -> View<Action> {
-    text("hello")
-}
+ThornApp::new(initial_state)
+    .theme(Theme::light())
+    .update(update)
+    .view(view)
+    .run()
 ```
 
-应用层组合组件必须可用：
+允许保留静态 smoke 入口：
 
 ```rust
-fn counter_panel(cx: &Scope, count: ReadSignal<usize>) -> View<Action> {
-    panel(text(move || format!("count: {}", count.get())))
-}
+thorn::app(root)
+    .theme(Theme::light())
+    .run()
 ```
 
-必须可用的 builder：
-
-- `text(...)`
-- `row(...)`
-- `col(...)`
-- `panel(...)`
-- `button(...)`
-
-必须可用的样式方法：
-
-- `.width(u16)`
-- `.height(u16)`
-- `.flex(u16)`
-- `.padding(u16)`
-- `.gap(u16)`
-- `.fg(Token)`
-- `.bg(Token)`
-
-必须可用的测试 API：
+`TestApp` 或新 `TestRuntime` 应提供键盘脚本能力：
 
 ```rust
-let mut app = TestApp::new(counter);
-app.render(40, 8);
-app.assert_text("count: 0");
-app.press_button("+1");
-app.assert_text("count: 1");
-app.assert_no_default_bg_on_text();
+app.send_key(Key::Char('+'));
+app.send_key(Key::Enter);
+app.resize(80, 24);
+app.render_frame();
 ```
 
-具体签名可以调整，但测试语义必须保留。
+暂不增加：
 
-测试可以读取 layout 信息：
-
-```rust
-let rect = app.layout_of("counter-panel");
-assert_eq!(rect.h, 3);
-```
-
-MVP 不提供：
-
-```rust
-view.on_layout(...)
-view.measure(...)
-```
-
-后续如需 `on_layout`，它必须是 after-layout hook。它只能观察 rect。它写 signal 时只能调度下一帧。
+- `button(...)`。
+- `on_press(...)`。
+- `view.press_first_focusable()`。
+- mouse event API。
 
 ## Test Requirements
 
-MVP 必须有这些测试：
+下一阶段必须补这些测试：
 
-- signal set 触发 dynamic text effect。
-- scope dispose 后 effect 不再运行。
-- static text render 到 screen。
-- dynamic text signal 更新后 render 到 screen。
-- row layout 横向排列。
-- col layout 纵向排列。
-- flex child 获得剩余空间。
-- padding 缩小 content rect。
-- gap 分隔 children。
-- 测试 harness 可以读取 layout info。
-- dark theme token 解析。
-- light theme token 解析。
-- panel 背景填满 rect。
-- button event 可以写 signal。
-- 应用层函数组件可以渲染。
-- 应用层函数组件内部 signal 可以更新 dynamic text。
-- screen diff 支持单 cell dirty。
-- 文本变化产生 dirty region。
-- light theme 下没有可见默认黑底。
+- core key event 类型不依赖 crossterm。
+- terminal adapter 能转换 key event。
+- terminal adapter 能转换 resize event。
+- runtime 不启用 mouse capture。
+- `q` 和 `Escape` 默认退出。
+- `Enter` 默认 no-op。
+- `before_events` 能产出 Action。
+- `update` 能修改 state。
+- `before_render` 能推进 state。
+- view 使用最新 state 渲染。
+- resize 后下一帧 full dirty。
+- terminal backend `enter()` 返回 guard。
+- guard drop 后尝试恢复 terminal 状态。
+- memory backend 记录 `emit()` 和 `flush()` 调用。
+- `keyboard_counter` 至少通过 `cargo check`。
+- `counter_live` 至少通过 `cargo check`。
 
-MVP 不需要端到端真实终端测试。所有验收先在内存 screen 和测试 harness 中完成。
+验收命令：
+
+```powershell
+cargo fmt --all
+cargo check --manifest-path apps/thorn/Cargo.toml --workspace
+cargo test --manifest-path apps/thorn/Cargo.toml --workspace
+cargo check --manifest-path apps/thorn/Cargo.toml -p thorn --example keyboard_counter
+cargo check --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_live
+```

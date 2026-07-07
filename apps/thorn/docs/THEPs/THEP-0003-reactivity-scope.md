@@ -3,7 +3,7 @@ id: THEP-0003
 title: "响应式与 Scope"
 status: Accepted
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 area: reactivity
 ---
 
@@ -108,8 +108,8 @@ fn counter(cx: &Scope) -> View<Action> {
     let count = cx.create_signal(0usize);
 
     col((
+        text("Counter"),
         text(move || format!("count: {}", count.get())),
-        button("+1").on_press(move |_| count.update(|n| *n += 1)),
     ))
 }
 ```
@@ -137,4 +137,3 @@ fn counter(cx: &Scope) -> View<Action> {
 - memo 依赖变化后惰性重算。
 - `Show` 分支切换会 dispose 旧 scope。
 - `For` 删除 item 会 dispose 对应 scope。
-

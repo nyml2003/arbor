@@ -3,7 +3,7 @@ id: THEP-0002
 title: "项目架构"
 status: Accepted
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 area: architecture
 ---
 
@@ -49,11 +49,11 @@ crate 责任：
 ```text
 thorn-core/src/
   reactive/    Signal、Memo、Effect、Scope
-  view/        View、PrimitiveNode、NodeId、NodeKey、EventBinding
+  view/        View、PrimitiveNode、NodeId、NodeKey、动态文本和样式
   layout/      Rect、Size、Edge、FlexBox 子集、layout tree
   theme/       Theme、Token、Color、style resolution
   render/      Cell、Screen、DirtyRegion、diff、screen compose
-  widgets/     Text、Row、Col、Panel、Button、Input、Show、For
+  widgets/     Text、Row、Col、Panel，后续再按 THEP 增加 Input、Show、For
   testing/     TestApp、screen assertions、simulated backend helpers
   lib.rs       public exports and prelude-facing surface
 ```
@@ -105,6 +105,8 @@ Thorn 不继承这些 `arbor-tui` 概念：
 - `SignalDeps` 手写协议
 - legacy adapter
 - 每个 widget 自己实现 mount/update/render 全套协议
+
+交互协议由 THEP-0010 约束。当前阶段不把 `Button`、鼠标事件或 click handler 放进 core。
 
 可以参考并重写这些能力：
 

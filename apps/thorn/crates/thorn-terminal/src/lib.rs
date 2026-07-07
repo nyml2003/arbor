@@ -2,7 +2,7 @@ use std::io::{self, Stdout, Write};
 
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, Event, KeyCode},
     execute, queue,
     style::{Color as TermColor, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{
@@ -56,13 +56,7 @@ impl Drop for TerminalGuard {
         }
 
         let mut stdout = io::stdout();
-        let _ = execute!(
-            stdout,
-            ResetColor,
-            Show,
-            DisableMouseCapture,
-            LeaveAlternateScreen
-        );
+        let _ = execute!(stdout, ResetColor, Show, LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }
 }
@@ -118,7 +112,7 @@ impl TerminalBackend for CrosstermBackend {
 
     fn enter(&mut self) -> Result<TerminalGuard> {
         enable_raw_mode()?;
-        execute!(self.stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        execute!(self.stdout, EnterAlternateScreen, Hide)?;
         Ok(TerminalGuard::active())
     }
 
