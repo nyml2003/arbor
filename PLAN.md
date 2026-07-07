@@ -21,7 +21,7 @@ Arbor 现在按两条线推进：
 当前默认策略是孵化器 monorepo：
 
 - `apps/container`、`workspace/*` 是 Arbor 本体，长期留在本仓库。
-- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock`、`apps/netmon` 是孵化项目，先留在本仓库。
+- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock`、`apps/thorn`、`apps/netmon` 是孵化项目，先留在本仓库。
 - `packages/arbor-ui-*`、`packages/skill-manager-core` 是可复用基础设施，先跟随使用方一起演化。
 - 只有当一个项目有独立用户、独立发布节奏、独立构建测试，并且不再依赖 Arbor 私有数据时，才拆独立 git 仓库。
 
@@ -266,6 +266,22 @@ Arbor 现在按两条线推进：
 - 已从 `work-context/repos/shamrock` 迁入 `apps/shamrock`。
 - 已保留 Gen1 demo 数据包、golden replay 和 CLI。
 - 本次迁移不修改 container，不新增 IPC。
+
+---
+
+## Build 域 TUI 框架实验：Thorn
+
+**目标**：孵化一个新的 Rust TUI 框架实验，验证 Solid 风格响应式、primitive tree、FlexBox 子集布局、主题 token、内存 screen 和 row diff 能否形成稳定纵向路径。
+
+**定位**：
+- 它是独立 Rust workspace 孵化项目，不兼容 `arbor-tui`。
+- `thorn-core` 承载纯核心，`thorn-terminal` 承载终端适配边界，`thorn` 承载用户 facade。
+- MVP 不做真实终端 runtime，先用内存测试 harness 锁定协议。
+
+**当前阶段**：
+- 已完成 `apps/thorn` MVP 纵向切片。
+- 已覆盖 `Signal -> Effect -> dynamic text slot -> layout -> theme -> screen render -> diff -> TestApp assert`。
+- 后续再补 `Memo`、`Show`、`For`、真实 terminal runtime 和更完整的 THEP 测试矩阵。
 
 ---
 

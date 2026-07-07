@@ -5,6 +5,7 @@
     "apps/keydock/Cargo.toml",
     "packages/kaubo-features/next_kaubo/Cargo.toml",
     "apps/tui-framework/Cargo.toml",
-    "apps/aster-rs/Cargo.toml"
+    "apps/aster-rs/Cargo.toml",
+    "apps/thorn/Cargo.toml"
   ]
 }
