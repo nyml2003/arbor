@@ -1,4 +1,7 @@
 use std::io::{self, Stdout, Write};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
@@ -83,6 +86,76 @@ impl CrosstermBackend {
                 continue;
             };
             return Ok(Some(input));
+        }
+    }
+}
+
+pub struct InputReader {
+    events: Receiver<RuntimeInput>,
+    shutdown: SyncSender<()>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl InputReader {
+    pub fn spawn() -> Self {
+        let (event_tx, events) = mpsc::sync_channel(256);
+        let (shutdown, shutdown_rx) = mpsc::sync_channel(1);
+        let handle = thread::spawn(move || loop {
+            if shutdown_rx.try_recv().is_ok() {
+                break;
+            }
+            match event::poll(Duration::from_millis(50)) {
+                Ok(true) => match event::read() {
+                    Ok(event) => {
+                        if let Some(input) = convert_event(event) {
+                            let _ = event_tx.try_send(input);
+                        }
+                    }
+                    Err(_) => break,
+                },
+                Ok(false) => {}
+                Err(_) => break,
+            }
+        });
+        Self {
+            events,
+            shutdown,
+            handle: Some(handle),
+        }
+    }
+
+    pub fn poll(&self) -> Vec<RuntimeInput> {
+        let mut out = Vec::new();
+        loop {
+            match self.events.try_recv() {
+                Ok(input) => out.push(input),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+        out
+    }
+
+    pub fn poll_timeout(&self, timeout: Duration) -> Vec<RuntimeInput> {
+        let mut out = Vec::new();
+        match self.events.recv_timeout(timeout) {
+            Ok(input) => out.push(input),
+            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => return out,
+        }
+        out.extend(self.poll());
+        out
+    }
+
+    pub fn shutdown(&self) {
+        let _ = self.shutdown.try_send(());
+    }
+}
+
+impl Drop for InputReader {
+    fn drop(&mut self) {
+        self.shutdown();
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
         }
     }
 }

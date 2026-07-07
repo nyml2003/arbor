@@ -14,6 +14,9 @@ pub mod prelude {
     pub use crate::runtime::{Key, KeyEvent, KeyEventKind, KeyMap, KeyModifiers, RuntimeInput};
     pub use crate::testing::{TestApp, TestRuntime};
     pub use crate::theme::{Color, ColorSource, Theme, Token};
-    pub use crate::view::{NodeId, View};
-    pub use crate::widgets::{col, panel, row, text};
+    pub use crate::view::{FuzzyPanelSelection, NodeId, TranscriptMessage, TranscriptNotice, View};
+    pub use crate::widgets::{
+        col, fuzzy_panel, input, panel, row, scroll_area, text, transcript, transcript_line_count,
+        FuzzyPanel, Input, ScrollArea, Transcript,
+    };
 }

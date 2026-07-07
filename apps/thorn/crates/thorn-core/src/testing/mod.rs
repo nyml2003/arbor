@@ -5,7 +5,7 @@ use crate::reactive::Scope;
 use crate::render::{diff, render_tree, DirtyRegion, Screen};
 use crate::runtime::{Key, KeyEvent, KeyMap, RuntimeInput};
 use crate::theme::{Color, Theme};
-use crate::view::{NodeId, PrimitiveNode, View};
+use crate::view::{handle_key, NodeId, PrimitiveNode, View};
 
 pub struct TestApp<Action = ()> {
     scope: Scope,
@@ -16,7 +16,7 @@ pub struct TestApp<Action = ()> {
     dirty_regions: Vec<DirtyRegion>,
 }
 
-type BeforeEvents<Action> = Box<dyn FnMut(&[RuntimeInput], &mut Vec<Action>)>;
+type BeforeEvents<Action> = Box<dyn FnMut(&mut Vec<RuntimeInput>, &mut Vec<Action>)>;
 type BeforeRender<State> = Box<dyn FnMut(&mut State)>;
 type Update<State, Action> = Box<dyn FnMut(&mut State, Action)>;
 type RuntimeView<State, Action> = Box<dyn FnMut(&Scope, &State) -> View<Action>>;
@@ -73,7 +73,7 @@ impl<State, Action: Clone> TestRuntime<State, Action> {
 
     pub fn before_events(
         mut self,
-        before_events: impl FnMut(&[RuntimeInput], &mut Vec<Action>) + 'static,
+        before_events: impl FnMut(&mut Vec<RuntimeInput>, &mut Vec<Action>) + 'static,
     ) -> Self {
         self.before_events = Box::new(before_events);
         self
@@ -158,7 +158,7 @@ impl<State, Action: Clone> TestRuntime<State, Action> {
     }
 
     fn process_pending_inputs(&mut self) {
-        let inputs = std::mem::take(&mut self.pending_inputs);
+        let mut inputs = std::mem::take(&mut self.pending_inputs);
         if inputs.is_empty() {
             return;
         }
@@ -171,11 +171,6 @@ impl<State, Action: Clone> TestRuntime<State, Action> {
             }
         }
 
-        if inputs.iter().copied().any(RuntimeInput::is_default_exit) {
-            self.should_exit = true;
-            return;
-        }
-
         let mut actions = inputs
             .iter()
             .filter_map(|input| match input {
@@ -183,7 +178,20 @@ impl<State, Action: Clone> TestRuntime<State, Action> {
                 RuntimeInput::Resize(_) | RuntimeInput::Tick => None,
             })
             .collect::<Vec<_>>();
-        (self.before_events)(&inputs, &mut actions);
+        (self.before_events)(&mut inputs, &mut actions);
+        if let Some(root) = &self.root {
+            for input in &inputs {
+                if let RuntimeInput::Key(event) = input {
+                    if let Some(action) = handle_key(root.node(), event) {
+                        actions.push(action);
+                    }
+                }
+            }
+        }
+        if actions.is_empty() && inputs.iter().copied().any(RuntimeInput::is_default_exit) {
+            self.should_exit = true;
+            return;
+        }
         for action in actions {
             (self.update)(&mut self.state, action);
         }
@@ -381,5 +389,288 @@ mod tests {
         app.render_frame();
 
         assert_eq!(app.dirty_regions()[0].rect, Rect::new(0, 0, 40, 8));
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum InputAction {
+        DraftChanged(String),
+        Submitted(String),
+    }
+
+    #[test]
+    fn input_component_emits_change_and_submit_actions() {
+        #[derive(Default)]
+        struct State {
+            draft: String,
+            submitted: String,
+        }
+
+        let mut app = TestRuntime::new(
+            State::default(),
+            |state, action| match action {
+                InputAction::DraftChanged(draft) => state.draft = draft,
+                InputAction::Submitted(value) => state.submitted = value,
+            },
+            |_, state| {
+                input()
+                    .value(state.draft.clone())
+                    .placeholder("Type")
+                    .on_change(InputAction::DraftChanged)
+                    .on_submit(InputAction::Submitted)
+                    .build()
+            },
+        );
+
+        app.render_frame();
+        app.assert_text("Type");
+        app.send_key(Key::Char('h'));
+        app.render_frame();
+        app.send_key(Key::Char('i'));
+        app.render_frame();
+        app.send_key(Key::Enter);
+        app.render_frame();
+
+        assert_eq!(app.state().draft, "hi");
+        assert_eq!(app.state().submitted, "hi");
+        app.assert_text("hi");
+    }
+
+    #[test]
+    fn transcript_renders_plain_messages_notice_and_scroll() {
+        let messages = vec![
+            TranscriptMessage::new("You", Token::Accent, "first\nsecond"),
+            TranscriptMessage::new("Aster", Token::Primary, "reply"),
+        ];
+        let scroll = 2u16;
+        let mut app: TestApp = TestApp::new(move |_| {
+            transcript()
+                .messages(messages.clone())
+                .notice(Some(TranscriptNotice::new(
+                    "Error",
+                    "try again",
+                    Token::Danger,
+                )))
+                .scroll_y(move || scroll)
+                .build()
+        });
+
+        app.render(40, 8);
+
+        app.assert_text("second");
+        app.assert_text("Aster:");
+        app.assert_text("Error");
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum PaletteAction {
+        Query(String),
+        Move(i32),
+        Submit(String),
+    }
+
+    #[test]
+    fn fuzzy_panel_filters_and_submits_selection() {
+        #[derive(Default)]
+        struct State {
+            query: String,
+            selected: usize,
+            submitted: String,
+        }
+
+        let mut app = TestRuntime::new(
+            State::default(),
+            |state, action| match action {
+                PaletteAction::Query(query) => {
+                    state.query = query;
+                    state.selected = 0;
+                }
+                PaletteAction::Move(delta) => {
+                    state.selected = if delta < 0 {
+                        state.selected.saturating_sub(1)
+                    } else {
+                        state.selected.saturating_add(1).min(1)
+                    };
+                }
+                PaletteAction::Submit(item) => state.submitted = item,
+            },
+            |_, state| {
+                fuzzy_panel(["/theme", "/model"])
+                    .title(" Commands ")
+                    .placeholder("Filter")
+                    .empty_text("No command matches")
+                    .query(state.query.clone())
+                    .selected_index(state.selected)
+                    .on_move_selection(PaletteAction::Move)
+                    .on_query_change(PaletteAction::Query)
+                    .on_submit(|selection| PaletteAction::Submit(selection.item))
+                    .build()
+            },
+        );
+
+        app.render_frame();
+        app.assert_text("/theme");
+        app.send_key(Key::ArrowDown);
+        app.render_frame();
+        app.send_key(Key::Enter);
+        app.render_frame();
+        assert_eq!(app.state().submitted, "/model");
+
+        app.send_key(Key::Char('m'));
+        app.render_frame();
+        app.assert_text("/model");
+        app.send_key(Key::Enter);
+        app.render_frame();
+
+        assert_eq!(app.state().query, "m");
+        assert_eq!(app.state().submitted, "/model");
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum ShellAction {
+        DraftChanged(String),
+        SubmitPrompt(String),
+        TogglePalette,
+        PaletteQuery(String),
+        PaletteMove(i32),
+        PaletteSubmit(String),
+        Tick,
+    }
+
+    #[test]
+    fn aster_like_shell_flow_composes_transcript_input_and_palette() {
+        struct ShellState {
+            draft: String,
+            messages: Vec<TranscriptMessage>,
+            palette_open: bool,
+            palette_query: String,
+            palette_selected: usize,
+            command: String,
+            loading_phase: usize,
+        }
+
+        let commands = ["/clear", "/model", "/theme"];
+        let mut app = TestRuntime::new(
+            ShellState {
+                draft: String::new(),
+                messages: vec![TranscriptMessage::new("Aster", Token::Primary, "ready")],
+                palette_open: false,
+                palette_query: String::new(),
+                palette_selected: 0,
+                command: String::new(),
+                loading_phase: 0,
+            },
+            move |state, action| match action {
+                ShellAction::DraftChanged(draft) => state.draft = draft,
+                ShellAction::SubmitPrompt(prompt) => {
+                    if !prompt.is_empty() {
+                        state.messages.push(TranscriptMessage::new(
+                            "You",
+                            Token::Accent,
+                            prompt.clone(),
+                        ));
+                        state.messages.push(TranscriptMessage::new(
+                            "Aster",
+                            Token::Primary,
+                            format!("echo: {prompt}"),
+                        ));
+                        state.draft.clear();
+                    }
+                }
+                ShellAction::TogglePalette => {
+                    state.palette_open = !state.palette_open;
+                    state.palette_query.clear();
+                    state.palette_selected = 0;
+                }
+                ShellAction::PaletteQuery(query) => {
+                    state.palette_query = query;
+                    state.palette_selected = 0;
+                }
+                ShellAction::PaletteMove(delta) => {
+                    state.palette_selected = if delta < 0 {
+                        state.palette_selected.saturating_sub(1)
+                    } else {
+                        state
+                            .palette_selected
+                            .saturating_add(1)
+                            .min(commands.len().saturating_sub(1))
+                    };
+                }
+                ShellAction::PaletteSubmit(command) => {
+                    state.command = command.clone();
+                    state.draft = format!("{command} ");
+                    state.palette_open = false;
+                }
+                ShellAction::Tick => state.loading_phase = state.loading_phase.wrapping_add(1),
+            },
+            move |_, state| {
+                let history = transcript()
+                    .messages(state.messages.clone())
+                    .empty_text("No messages")
+                    .build()
+                    .height(8);
+                let prompt = input()
+                    .value(state.draft.clone())
+                    .placeholder("Message Aster")
+                    .loading_phase(state.loading_phase)
+                    .on_change(ShellAction::DraftChanged)
+                    .on_submit(ShellAction::SubmitPrompt)
+                    .build();
+                if state.palette_open {
+                    col((
+                        fuzzy_panel(commands)
+                            .title(" Commands ")
+                            .placeholder("Filter")
+                            .empty_text("No command matches")
+                            .query(state.palette_query.clone())
+                            .selected_index(state.palette_selected)
+                            .on_move_selection(ShellAction::PaletteMove)
+                            .on_query_change(ShellAction::PaletteQuery)
+                            .on_submit(|selection| ShellAction::PaletteSubmit(selection.item))
+                            .build()
+                            .height(6),
+                        history,
+                        prompt,
+                    ))
+                } else {
+                    col((history, prompt))
+                }
+            },
+        )
+        .with_keymap(KeyMap::new().bind(Key::Tab, ShellAction::TogglePalette))
+        .before_events(|inputs, actions| {
+            if inputs
+                .iter()
+                .any(|input| matches!(input, RuntimeInput::Tick))
+            {
+                actions.push(ShellAction::Tick);
+            }
+        });
+
+        app.render_frame();
+        app.assert_text("ready");
+        app.assert_text("Message Aster");
+
+        app.send_key(Key::Tab);
+        app.render_frame();
+        app.assert_text("/clear");
+
+        app.send_key(Key::ArrowDown);
+        app.render_frame();
+        app.send_key(Key::Enter);
+        app.render_frame();
+
+        assert_eq!(app.state().command, "/model");
+        app.assert_text("/model ");
+
+        app.send_key(Key::Char('h'));
+        app.render_frame();
+        app.send_key(Key::Char('i'));
+        app.render_frame();
+        app.send_key(Key::Enter);
+        app.render_frame();
+
+        assert_eq!(app.state().draft, "");
+        app.assert_text("You:");
+        app.assert_text("echo: /model hi");
     }
 }

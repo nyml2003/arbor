@@ -9,7 +9,7 @@ enum CounterAction {
 fn main() -> thorn::Result<()> {
     ThornApp::new(0i32)
         .theme(Theme::light())
-        .update(|count, action| match action {
+        .update(|count, action, _ctx| match action {
             CounterAction::Increment => *count += 1,
             CounterAction::Decrement => *count -= 1,
         })

@@ -1,3 +1,6 @@
+use std::collections::VecDeque;
+use std::time::Duration;
+
 pub use thorn_core::*;
 pub use thorn_terminal as terminal;
 
@@ -7,7 +10,7 @@ use render::{diff, render_tree, DirtyRegion, Screen};
 use runtime::{KeyMap, RuntimeInput};
 use terminal::TerminalBackend;
 use theme::Theme;
-use view::View;
+use view::{handle_key, View};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -26,9 +29,11 @@ impl From<terminal::TerminalError> for Error {
 }
 
 type Root<Action> = Box<dyn FnOnce(&Scope) -> View<Action>>;
-type BeforeEvents<Action> = Box<dyn FnMut(&[RuntimeInput], &mut Vec<Action>)>;
-type BeforeRender<State> = Box<dyn FnMut(&mut State)>;
-type Update<State, Action> = Box<dyn FnMut(&mut State, Action)>;
+type BeforeEvents<State, Action> =
+    Box<dyn FnMut(&mut State, &mut AppContext<Action>, &RuntimeContext, &mut Vec<RuntimeInput>)>;
+type BeforeRender<State, Action> =
+    Box<dyn FnMut(&mut State, &mut AppContext<Action>, &RuntimeContext)>;
+type Update<State, Action> = Box<dyn FnMut(&mut State, Action, &mut AppContext<Action>)>;
 type StatefulView<State, Action> = Box<dyn FnMut(&Scope, &State) -> View<Action>>;
 
 pub fn app<Action>(root: impl FnOnce(&Scope) -> View<Action> + 'static) -> App<Action> {
@@ -48,21 +53,69 @@ pub struct ThornApp<State, Action = ()> {
     update: Option<Update<State, Action>>,
     view: Option<StatefulView<State, Action>>,
     keymap: KeyMap<Action>,
-    before_events: BeforeEvents<Action>,
-    before_render: BeforeRender<State>,
+    before_events: BeforeEvents<State, Action>,
+    before_render: BeforeRender<State, Action>,
     theme: Theme,
+    poll_timeout: Duration,
+}
+
+pub struct AppContext<Action> {
+    actions: Vec<Action>,
+    next_theme: Option<Theme>,
+    quit: bool,
+    render_requested: bool,
+}
+
+impl<Action> AppContext<Action> {
+    fn new() -> Self {
+        Self {
+            actions: Vec::new(),
+            next_theme: None,
+            quit: false,
+            render_requested: false,
+        }
+    }
+
+    pub fn dispatch(&mut self, action: Action) {
+        self.actions.push(action);
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.next_theme = Some(theme);
+        self.request_render();
+    }
+
+    pub fn quit(&mut self) {
+        self.quit = true;
+    }
+
+    pub fn request_render(&mut self) {
+        self.render_requested = true;
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct RuntimeContext {
+    screen_size: (u16, u16),
+}
+
+impl RuntimeContext {
+    pub fn screen_size(&self) -> (u16, u16) {
+        self.screen_size
+    }
 }
 
 impl<State> ThornApp<State, ()> {
     pub fn new(initial_state: State) -> Self {
         Self {
             state: initial_state,
-            update: Some(Box::new(|_, ()| {})),
+            update: Some(Box::new(|_, (), _| {})),
             view: None,
             keymap: KeyMap::new(),
-            before_events: Box::new(|_, _| {}),
-            before_render: Box::new(|_| {}),
+            before_events: Box::new(|_, _, _, _| {}),
+            before_render: Box::new(|_, _, _| {}),
             theme: Theme::dark(),
+            poll_timeout: Duration::from_millis(50),
         }
     }
 }
@@ -75,16 +128,17 @@ impl<State, Action> ThornApp<State, Action> {
 
     pub fn update<NextAction>(
         self,
-        update: impl FnMut(&mut State, NextAction) + 'static,
+        update: impl FnMut(&mut State, NextAction, &mut AppContext<NextAction>) + 'static,
     ) -> ThornApp<State, NextAction> {
         ThornApp {
             state: self.state,
             update: Some(Box::new(update)),
             view: None,
             keymap: KeyMap::new(),
-            before_events: Box::new(|_, _| {}),
-            before_render: self.before_render,
+            before_events: Box::new(|_, _, _, _| {}),
+            before_render: Box::new(|_, _, _| {}),
             theme: self.theme,
+            poll_timeout: self.poll_timeout,
         }
     }
 
@@ -95,7 +149,8 @@ impl<State, Action> ThornApp<State, Action> {
 
     pub fn before_events(
         mut self,
-        before_events: impl FnMut(&[RuntimeInput], &mut Vec<Action>) + 'static,
+        before_events: impl FnMut(&mut State, &mut AppContext<Action>, &RuntimeContext, &mut Vec<RuntimeInput>)
+            + 'static,
     ) -> Self {
         self.before_events = Box::new(before_events);
         self
@@ -106,8 +161,16 @@ impl<State, Action> ThornApp<State, Action> {
         self
     }
 
-    pub fn before_render(mut self, before_render: impl FnMut(&mut State) + 'static) -> Self {
+    pub fn before_render(
+        mut self,
+        before_render: impl FnMut(&mut State, &mut AppContext<Action>, &RuntimeContext) + 'static,
+    ) -> Self {
         self.before_render = Box::new(before_render);
+        self
+    }
+
+    pub fn poll_timeout(mut self, poll_timeout: Duration) -> Self {
+        self.poll_timeout = poll_timeout;
         self
     }
 
@@ -118,46 +181,106 @@ impl<State, Action> ThornApp<State, Action> {
         let mut view = self.view.take().ok_or(Error::MissingView)?;
         let mut backend = terminal::CrosstermBackend::new();
         let _guard = backend.enter()?;
+        let input_reader = terminal::InputReader::spawn();
         let mut previous = None;
 
         loop {
-            (self.before_render)(&mut self.state);
-            render_stateful_frame(
-                &mut backend,
-                &mut view,
-                &self.state,
-                &self.theme,
-                &mut previous,
-            )?;
-
-            let Some(input) = backend.read_input()? else {
-                continue;
+            let runtime = RuntimeContext {
+                screen_size: backend.size()?,
             };
-            if input.is_default_exit() {
-                break;
+            let mut ctx = AppContext::new();
+            (self.before_render)(&mut self.state, &mut ctx, &runtime);
+            if self.apply_context(ctx) {
+                input_reader.shutdown();
+                return Ok(());
             }
-            if matches!(input, RuntimeInput::Resize(_)) {
+
+            let scope = Scope::new();
+            let root = scope.enter(|| view(&scope, &self.state));
+            render_frame(&mut backend, &root, &self.theme, &mut previous)?;
+
+            let mut inputs = input_reader.poll_timeout(self.poll_timeout);
+            if inputs.is_empty() {
+                inputs.push(RuntimeInput::Tick);
+            }
+            if inputs
+                .iter()
+                .any(|input| matches!(input, RuntimeInput::Resize(_)))
+            {
                 previous = None;
             }
+            let mut ctx = AppContext::new();
+            (self.before_events)(&mut self.state, &mut ctx, &runtime, &mut inputs);
+            let AppContext {
+                mut actions,
+                next_theme,
+                quit,
+                render_requested,
+            } = ctx;
+            if self.apply_context(AppContext {
+                actions: Vec::new(),
+                next_theme,
+                quit,
+                render_requested,
+            }) {
+                input_reader.shutdown();
+                return Ok(());
+            }
 
-            let inputs = [input];
-            let mut actions = inputs
-                .iter()
-                .filter_map(|input| match input {
-                    RuntimeInput::Key(event) => self.keymap.action_for(event),
-                    RuntimeInput::Resize(_) | RuntimeInput::Tick => None,
-                })
-                .collect::<Vec<_>>();
-            (self.before_events)(&inputs, &mut actions);
-            if !actions.is_empty() {
-                let update = self.update.as_mut().ok_or(Error::MissingUpdate)?;
-                for action in actions {
-                    update(&mut self.state, action);
+            for runtime_input in &inputs {
+                match runtime_input {
+                    RuntimeInput::Key(event) => {
+                        let mut handled = false;
+                        if let Some(action) = self.keymap.action_for(event) {
+                            actions.push(action);
+                            handled = true;
+                        }
+                        if let Some(action) = handle_key(root.node(), event) {
+                            actions.push(action);
+                            handled = true;
+                        }
+                        if !handled && runtime_input.is_default_exit() {
+                            input_reader.shutdown();
+                            return Ok(());
+                        }
+                    }
+                    RuntimeInput::Resize(_) | RuntimeInput::Tick => {}
                 }
             }
-        }
 
-        Ok(())
+            if self.process_actions(actions)? {
+                input_reader.shutdown();
+                return Ok(());
+            }
+            scope.dispose();
+        }
+    }
+
+    fn apply_context(&mut self, ctx: AppContext<Action>) -> bool {
+        if let Some(theme) = ctx.next_theme {
+            self.theme = theme;
+        }
+        ctx.quit
+    }
+
+    fn process_actions(&mut self, actions: Vec<Action>) -> Result<bool> {
+        if actions.is_empty() {
+            return Ok(false);
+        }
+        let update = self.update.as_mut().ok_or(Error::MissingUpdate)?;
+        let mut pending = VecDeque::from(actions);
+        while let Some(action) = pending.pop_front() {
+            let mut ctx = AppContext::new();
+            update(&mut self.state, action, &mut ctx);
+            if let Some(theme) = ctx.next_theme {
+                self.theme = theme;
+            }
+            if ctx.quit {
+                return Ok(true);
+            }
+            pending.extend(ctx.actions);
+        }
+        Ok(false)
     }
 }
 
@@ -212,20 +335,6 @@ fn render_frame<Action>(
     Ok(())
 }
 
-fn render_stateful_frame<State, Action>(
-    backend: &mut impl TerminalBackend,
-    view: &mut StatefulView<State, Action>,
-    state: &State,
-    theme: &Theme,
-    previous: &mut Option<Screen>,
-) -> Result<()> {
-    let scope = Scope::new();
-    let root = scope.enter(|| view(&scope, state));
-    render_frame(backend, &root, theme, previous)?;
-    scope.dispose();
-    Ok(())
-}
-
 fn full_screen_dirty(width: u16, height: u16) -> Vec<DirtyRegion> {
     vec![DirtyRegion {
         rect: Rect::new(0, 0, width, height),
@@ -233,7 +342,7 @@ fn full_screen_dirty(width: u16, height: u16) -> Vec<DirtyRegion> {
 }
 
 pub mod prelude {
-    pub use crate::ThornApp;
+    pub use crate::{AppContext, RuntimeContext, ThornApp};
     pub use thorn_core::prelude::*;
 }
 
@@ -267,10 +376,34 @@ mod tests {
         }
 
         let _app = ThornApp::new(0i32)
-            .update(|state, action| match action {
+            .update(|state, action, _ctx| match action {
                 CounterAction::Increment => *state += 1,
             })
             .view(|_, state| text(format!("count: {state}")))
             .keymap(KeyMap::new().bind(Key::Char('+'), CounterAction::Increment));
+    }
+
+    #[test]
+    fn runtime_processes_dispatched_actions_in_fifo_order() {
+        enum Action {
+            Parent,
+            FirstChild,
+            SecondChild,
+        }
+
+        let mut app =
+            ThornApp::new(Vec::<&'static str>::new()).update(|state, action, ctx| match action {
+                Action::Parent => {
+                    state.push("parent");
+                    ctx.dispatch(Action::FirstChild);
+                    ctx.dispatch(Action::SecondChild);
+                }
+                Action::FirstChild => state.push("first"),
+                Action::SecondChild => state.push("second"),
+            });
+
+        app.process_actions(vec![Action::Parent]).unwrap();
+
+        assert_eq!(app.state, ["parent", "first", "second"]);
     }
 }

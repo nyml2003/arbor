@@ -1,10 +1,10 @@
 use std::cell::RefCell;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::layout::{Align, Direction, Edge, Justify, LayoutStyle};
 use crate::reactive::Scope;
+use crate::runtime::{Key, KeyEvent};
 use crate::theme::{ColorSource, Token};
 
 static NEXT_NODE_ID: AtomicU64 = AtomicU64::new(1);
@@ -24,9 +24,12 @@ pub enum NodeKind {
     Row,
     Col,
     Panel,
+    Input,
+    ScrollArea,
+    Transcript,
+    FuzzyPanel,
 }
 
-#[derive(Clone)]
 pub struct View<Action = ()> {
     node: PrimitiveNode<Action>,
 }
@@ -110,18 +113,102 @@ impl<Action> View<Action> {
         self.node.style.bg = Some(source.into());
         self
     }
+
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.node.title = Some(title.into());
+        self
+    }
 }
 
-#[derive(Clone)]
 pub struct PrimitiveNode<Action = ()> {
     id: NodeId,
     key: Option<String>,
+    title: Option<String>,
     kind: NodeKind,
     text: Option<Rc<RefCell<String>>>,
     children: Vec<PrimitiveNode<Action>>,
     layout: LayoutStyle,
     style: Style,
-    _action: PhantomData<Action>,
+    input: Option<InputNode<Action>>,
+    transcript: Option<TranscriptNode>,
+    fuzzy: Option<FuzzyPanelNode<Action>>,
+    scroll_y: Option<Rc<dyn Fn() -> u16>>,
+}
+
+pub struct InputNode<Action> {
+    pub value: String,
+    pub placeholder: String,
+    pub loading: bool,
+    pub loading_phase: usize,
+    pub password: bool,
+    pub on_change: Option<Box<dyn Fn(String) -> Action>>,
+    pub on_submit: Option<Box<dyn Fn(String) -> Action>>,
+}
+
+#[derive(Clone)]
+pub struct TranscriptMessage {
+    pub label: String,
+    pub label_color: ColorSource,
+    pub body: String,
+}
+
+impl TranscriptMessage {
+    pub fn new(
+        label: impl Into<String>,
+        label_color: impl Into<ColorSource>,
+        body: impl Into<String>,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            label_color: label_color.into(),
+            body: body.into(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TranscriptNotice {
+    pub title: String,
+    pub detail: String,
+    pub color: ColorSource,
+}
+
+impl TranscriptNotice {
+    pub fn new(
+        title: impl Into<String>,
+        detail: impl Into<String>,
+        color: impl Into<ColorSource>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            detail: detail.into(),
+            color: color.into(),
+        }
+    }
+}
+
+pub struct TranscriptNode {
+    pub messages: Vec<TranscriptMessage>,
+    pub empty_text: String,
+    pub notice: Option<TranscriptNotice>,
+}
+
+pub struct FuzzyPanelNode<Action> {
+    pub items: Vec<String>,
+    pub title: Option<String>,
+    pub placeholder: String,
+    pub empty_text: String,
+    pub query: String,
+    pub selected: usize,
+    pub on_move: Option<Box<dyn Fn(i32) -> Action>>,
+    pub on_query_change: Option<Box<dyn Fn(String) -> Action>>,
+    pub on_submit: Option<Box<dyn Fn(FuzzyPanelSelection) -> Action>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FuzzyPanelSelection {
+    pub index: usize,
+    pub item: String,
 }
 
 impl<Action> PrimitiveNode<Action> {
@@ -137,12 +224,16 @@ impl<Action> PrimitiveNode<Action> {
         Self {
             id: NodeId::next(),
             key: None,
+            title: None,
             kind,
             text: None,
             children: Vec::new(),
             layout,
             style: Style::default_for(kind),
-            _action: PhantomData,
+            input: None,
+            transcript: None,
+            fuzzy: None,
+            scroll_y: None,
         }
     }
 
@@ -152,6 +243,10 @@ impl<Action> PrimitiveNode<Action> {
 
     pub fn key(&self) -> Option<&str> {
         self.key.as_deref()
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -173,6 +268,26 @@ impl<Action> PrimitiveNode<Action> {
     pub fn style(&self) -> &Style {
         &self.style
     }
+
+    pub fn input(&self) -> Option<&InputNode<Action>> {
+        self.input.as_ref()
+    }
+
+    pub fn transcript(&self) -> Option<&TranscriptNode> {
+        self.transcript.as_ref()
+    }
+
+    pub fn fuzzy(&self) -> Option<&FuzzyPanelNode<Action>> {
+        self.fuzzy.as_ref()
+    }
+
+    pub fn scroll_y(&self) -> u16 {
+        self.scroll_y.as_ref().map(|read| read()).unwrap_or(0)
+    }
+
+    pub fn focusable(&self) -> bool {
+        matches!(self.kind, NodeKind::Input | NodeKind::FuzzyPanel)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -185,17 +300,19 @@ pub struct Style {
 impl Style {
     fn default_for(kind: NodeKind) -> Self {
         match kind {
-            NodeKind::Text => Self {
-                fg: Some(Token::Text.into()),
-                bg: None,
-                border: None,
-            },
+            NodeKind::Text | NodeKind::Input | NodeKind::Transcript | NodeKind::FuzzyPanel => {
+                Self {
+                    fg: Some(Token::Text.into()),
+                    bg: None,
+                    border: None,
+                }
+            }
             NodeKind::Panel => Self {
                 fg: Some(Token::Text.into()),
                 bg: Some(Token::SurfaceAlt.into()),
                 border: Some(Token::Border.into()),
             },
-            NodeKind::Row | NodeKind::Col => Self {
+            NodeKind::Row | NodeKind::Col | NodeKind::ScrollArea => Self {
                 fg: Some(Token::Text.into()),
                 bg: Some(Token::Surface.into()),
                 border: None,
@@ -246,6 +363,12 @@ impl<Action> IntoViewVec<Action> for View<Action> {
     }
 }
 
+impl<Action> IntoViewVec<Action> for Vec<View<Action>> {
+    fn into_vec(self) -> Vec<PrimitiveNode<Action>> {
+        self.into_iter().map(|view| view.node).collect()
+    }
+}
+
 impl<Action> IntoViewVec<Action> for (View<Action>,) {
     fn into_vec(self) -> Vec<PrimitiveNode<Action>> {
         vec![self.0.node]
@@ -264,6 +387,12 @@ impl<Action> IntoViewVec<Action> for (View<Action>, View<Action>, View<Action>) 
     }
 }
 
+impl<Action> IntoViewVec<Action> for (View<Action>, View<Action>, View<Action>, View<Action>) {
+    fn into_vec(self) -> Vec<PrimitiveNode<Action>> {
+        vec![self.0.node, self.1.node, self.2.node, self.3.node]
+    }
+}
+
 pub(crate) fn with_children<Action, C>(kind: NodeKind, children: C) -> View<Action>
 where
     C: IntoViewVec<Action>,
@@ -273,8 +402,227 @@ where
     view
 }
 
+pub trait IntoView<Action> {
+    fn into_view(self) -> View<Action>;
+}
+
+impl<Action> IntoView<Action> for View<Action> {
+    fn into_view(self) -> View<Action> {
+        self
+    }
+}
+
 pub(crate) fn text_view<Action>(text: impl IntoText) -> View<Action> {
     let mut view = View::new(NodeKind::Text);
     view.node_mut().text = Some(text.into_text_slot());
     view
+}
+
+pub(crate) fn input_view<Action>(
+    value: impl Into<String>,
+    placeholder: impl Into<String>,
+    loading: bool,
+    loading_phase: usize,
+    password: bool,
+    on_change: Option<Box<dyn Fn(String) -> Action>>,
+    on_submit: Option<Box<dyn Fn(String) -> Action>>,
+) -> View<Action> {
+    let mut view = View::new(NodeKind::Input);
+    view.node_mut().input = Some(InputNode {
+        value: value.into(),
+        placeholder: placeholder.into(),
+        loading,
+        loading_phase,
+        password,
+        on_change,
+        on_submit,
+    });
+    view
+}
+
+pub(crate) fn scroll_area_view<Action>(
+    child: View<Action>,
+    scroll_y: Option<Rc<dyn Fn() -> u16>>,
+) -> View<Action> {
+    let mut view = with_children(NodeKind::ScrollArea, child);
+    view.node_mut().scroll_y = scroll_y;
+    view
+}
+
+pub(crate) fn transcript_view<Action>(
+    messages: Vec<TranscriptMessage>,
+    empty_text: impl Into<String>,
+    notice: Option<TranscriptNotice>,
+    scroll_y: Option<Rc<dyn Fn() -> u16>>,
+) -> View<Action> {
+    let mut view = View::new(NodeKind::Transcript);
+    view.node_mut().transcript = Some(TranscriptNode {
+        messages,
+        empty_text: empty_text.into(),
+        notice,
+    });
+    view.node_mut().scroll_y = scroll_y;
+    view
+}
+
+pub(crate) fn fuzzy_panel_view<Action>(
+    items: Vec<String>,
+    title: Option<String>,
+    placeholder: impl Into<String>,
+    empty_text: impl Into<String>,
+    query: impl Into<String>,
+    selected: usize,
+    on_move: Option<Box<dyn Fn(i32) -> Action>>,
+    on_query_change: Option<Box<dyn Fn(String) -> Action>>,
+    on_submit: Option<Box<dyn Fn(FuzzyPanelSelection) -> Action>>,
+) -> View<Action> {
+    let mut view = View::new(NodeKind::FuzzyPanel);
+    view.node_mut().fuzzy = Some(FuzzyPanelNode {
+        items,
+        title,
+        placeholder: placeholder.into(),
+        empty_text: empty_text.into(),
+        query: query.into(),
+        selected,
+        on_move,
+        on_query_change,
+        on_submit,
+    });
+    view
+}
+
+pub fn handle_key<Action>(root: &PrimitiveNode<Action>, event: &KeyEvent) -> Option<Action> {
+    if !event.kind.is_press() {
+        return None;
+    }
+    let focusable = find_first_focusable(root)?;
+    match focusable.kind() {
+        NodeKind::Input => handle_input_key(focusable.input()?, event),
+        NodeKind::FuzzyPanel => handle_fuzzy_key(focusable.fuzzy()?, event),
+        _ => None,
+    }
+}
+
+fn find_first_focusable<Action>(node: &PrimitiveNode<Action>) -> Option<&PrimitiveNode<Action>> {
+    if node.focusable() {
+        return Some(node);
+    }
+    node.children().iter().find_map(find_first_focusable)
+}
+
+fn handle_input_key<Action>(input: &InputNode<Action>, event: &KeyEvent) -> Option<Action> {
+    if input.loading {
+        return None;
+    }
+    match event.key {
+        Key::Char(ch) if event.modifiers.is_empty() => {
+            let mut next = input.value.clone();
+            next.push(ch);
+            input.on_change.as_ref().map(|callback| callback(next))
+        }
+        Key::Backspace => {
+            let mut next = input.value.clone();
+            next.pop();
+            input.on_change.as_ref().map(|callback| callback(next))
+        }
+        Key::Delete => input
+            .on_change
+            .as_ref()
+            .map(|callback| callback(String::new())),
+        Key::Enter => input
+            .on_submit
+            .as_ref()
+            .map(|callback| callback(input.value.clone())),
+        Key::ArrowLeft | Key::ArrowRight | Key::Home | Key::End => None,
+        _ => None,
+    }
+}
+
+fn handle_fuzzy_key<Action>(panel: &FuzzyPanelNode<Action>, event: &KeyEvent) -> Option<Action> {
+    match event.key {
+        Key::Char(ch) if event.modifiers.is_empty() => {
+            let mut next = panel.query.clone();
+            next.push(ch);
+            panel
+                .on_query_change
+                .as_ref()
+                .map(|callback| callback(next))
+        }
+        Key::Backspace => {
+            let mut next = panel.query.clone();
+            next.pop();
+            panel
+                .on_query_change
+                .as_ref()
+                .map(|callback| callback(next))
+        }
+        Key::Delete => panel
+            .on_query_change
+            .as_ref()
+            .map(|callback| callback(String::new())),
+        Key::ArrowUp => panel.on_move.as_ref().map(|callback| callback(-1)),
+        Key::ArrowDown => panel.on_move.as_ref().map(|callback| callback(1)),
+        Key::Enter => panel
+            .on_submit
+            .as_ref()
+            .and_then(|callback| current_fuzzy_selection(panel).map(callback)),
+        _ => None,
+    }
+}
+
+pub fn current_fuzzy_selection<Action>(
+    panel: &FuzzyPanelNode<Action>,
+) -> Option<FuzzyPanelSelection> {
+    let matches = fuzzy_matches(&panel.items, &panel.query);
+    let matched = matches.get(panel.selected.min(matches.len().saturating_sub(1)))?;
+    Some(FuzzyPanelSelection {
+        index: matched.index,
+        item: panel.items[matched.index].clone(),
+    })
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FuzzyMatch {
+    pub index: usize,
+    pub score: usize,
+}
+
+pub fn fuzzy_matches(items: &[String], query: &str) -> Vec<FuzzyMatch> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return items
+            .iter()
+            .enumerate()
+            .map(|(index, _)| FuzzyMatch {
+                index,
+                score: index,
+            })
+            .collect();
+    }
+    let mut matches = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            score_item(&item.to_lowercase(), &query).map(|score| FuzzyMatch {
+                index,
+                score: score * items.len() + index,
+            })
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|matched| matched.score);
+    matches
+}
+
+fn score_item(item: &str, query: &str) -> Option<usize> {
+    if let Some(pos) = item.find(query) {
+        return Some(pos);
+    }
+    let mut score = 0usize;
+    let mut last_pos = 0usize;
+    for needle in query.chars() {
+        let found = item[last_pos..].find(needle)?;
+        score += found + 8;
+        last_pos += found + needle.len_utf8();
+    }
+    Some(score)
 }

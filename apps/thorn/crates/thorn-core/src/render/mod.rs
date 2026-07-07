@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::layout::{is_wide, layout_tree, Rect};
 use crate::theme::{Color, ColorSource, Theme, Token};
-use crate::view::{NodeId, NodeKind, PrimitiveNode, View};
+use crate::view::{fuzzy_matches, NodeId, NodeKind, PrimitiveNode, TranscriptMessage, View};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Cell {
@@ -222,7 +222,7 @@ fn render_node<Action>(
         NodeKind::Panel => {
             if node.style().border.is_some() {
                 let border = resolve_style(theme, node.style().border, Token::Border);
-                draw_border(screen, info.rect, bg, border);
+                draw_border(screen, info.rect, bg, border, node.title());
             }
         }
         NodeKind::Text => {
@@ -230,11 +230,19 @@ fn render_node<Action>(
                 screen.write_str(info.content_rect.x, info.content_rect.y, &text, fg, bg);
             }
         }
-        NodeKind::Row | NodeKind::Col => {}
+        NodeKind::Input => render_input(node, info.content_rect, theme, screen, fg, bg),
+        NodeKind::Transcript => render_transcript(node, info.content_rect, theme, screen, bg),
+        NodeKind::FuzzyPanel => render_fuzzy_panel(node, info.content_rect, theme, screen, bg),
+        NodeKind::Row | NodeKind::Col | NodeKind::ScrollArea => {}
     }
 
-    for child in node.children() {
-        render_node(child, layout, theme, screen, bg);
+    if !matches!(
+        node.kind(),
+        NodeKind::Transcript | NodeKind::FuzzyPanel | NodeKind::Input
+    ) {
+        for child in node.children() {
+            render_node(child, layout, theme, screen, bg);
+        }
     }
 }
 
@@ -248,7 +256,7 @@ fn resolve_bg(theme: &Theme, source: Option<ColorSource>, inherited_bg: Color) -
         .unwrap_or(inherited_bg)
 }
 
-fn draw_border(screen: &mut Screen, rect: Rect, bg: Color, border: Color) {
+fn draw_border(screen: &mut Screen, rect: Rect, bg: Color, border: Color, title: Option<&str>) {
     if rect.w == 0 || rect.h == 0 {
         return;
     }
@@ -275,6 +283,197 @@ fn draw_border(screen: &mut Screen, rect: Rect, bg: Color, border: Color) {
     for y in rect.y.saturating_add(1)..y_end {
         screen.set(rect.x, y, border_cell('|'));
         screen.set(x_end, y, border_cell('|'));
+    }
+
+    if let Some(title) = title {
+        let max = rect.w.saturating_sub(4) as usize;
+        let title = title.chars().take(max).collect::<String>();
+        screen.write_str(rect.x.saturating_add(2), rect.y, &title, border, bg);
+    }
+}
+
+fn render_input<Action>(
+    node: &PrimitiveNode<Action>,
+    rect: Rect,
+    theme: &Theme,
+    screen: &mut Screen,
+    fg: Color,
+    bg: Color,
+) {
+    let Some(input) = node.input() else {
+        return;
+    };
+    if rect.w == 0 || rect.h == 0 {
+        return;
+    }
+    let prompt = if input.loading {
+        let frames = ['|', '/', '-', '\\'];
+        format!("{} ", frames[input.loading_phase % frames.len()])
+    } else {
+        "> ".to_string()
+    };
+    let display = if input.password && !input.value.is_empty() {
+        "*".repeat(input.value.chars().count())
+    } else if input.value.is_empty() {
+        input.placeholder.clone()
+    } else {
+        input.value.clone()
+    };
+    let text_color = if input.value.is_empty() {
+        theme.resolve(Token::TextMuted)
+    } else {
+        fg
+    };
+    screen.write_str(rect.x, rect.y, &prompt, theme.resolve(Token::Accent), bg);
+    screen.write_str(
+        rect.x.saturating_add(prompt.chars().count() as u16),
+        rect.y,
+        &display,
+        text_color,
+        bg,
+    );
+}
+
+fn render_transcript<Action>(
+    node: &PrimitiveNode<Action>,
+    rect: Rect,
+    theme: &Theme,
+    screen: &mut Screen,
+    bg: Color,
+) {
+    let Some(transcript) = node.transcript() else {
+        return;
+    };
+    let mut lines: Vec<(String, Color)> = Vec::new();
+    if transcript.messages.is_empty() {
+        push_body_lines(
+            &mut lines,
+            &transcript.empty_text,
+            theme.resolve(Token::Text),
+        );
+    } else {
+        for message in &transcript.messages {
+            push_message_lines(&mut lines, message, theme);
+            lines.push((String::new(), theme.resolve(Token::Text)));
+        }
+    }
+    if let Some(notice) = &transcript.notice {
+        lines.push((notice.title.clone(), theme.resolve(notice.color)));
+        lines.push((notice.detail.clone(), theme.resolve(Token::TextMuted)));
+    }
+    let scroll_y = usize::from(node.scroll_y());
+    for (row, (text, color)) in lines
+        .into_iter()
+        .skip(scroll_y)
+        .take(rect.h as usize)
+        .enumerate()
+    {
+        screen.write_str(rect.x, rect.y.saturating_add(row as u16), &text, color, bg);
+    }
+}
+
+fn push_message_lines(
+    lines: &mut Vec<(String, Color)>,
+    message: &TranscriptMessage,
+    theme: &Theme,
+) {
+    lines.push((
+        format!("{}:", message.label),
+        theme.resolve(message.label_color),
+    ));
+    push_body_lines(lines, &message.body, theme.resolve(Token::Text));
+}
+
+fn push_body_lines(lines: &mut Vec<(String, Color)>, body: &str, color: Color) {
+    if body.is_empty() {
+        lines.push((String::new(), color));
+        return;
+    }
+    for line in body.lines() {
+        lines.push((format!("  {line}"), color));
+    }
+}
+
+fn render_fuzzy_panel<Action>(
+    node: &PrimitiveNode<Action>,
+    rect: Rect,
+    theme: &Theme,
+    screen: &mut Screen,
+    bg: Color,
+) {
+    let Some(panel) = node.fuzzy() else {
+        return;
+    };
+    if rect.w == 0 || rect.h == 0 {
+        return;
+    }
+    let border = theme.resolve(Token::Border);
+    draw_border(screen, rect, bg, border, panel.title.as_deref());
+    let inner = Rect::new(
+        rect.x.saturating_add(1),
+        rect.y.saturating_add(1),
+        rect.w.saturating_sub(2),
+        rect.h.saturating_sub(2),
+    );
+    let query_text = if panel.query.is_empty() {
+        panel.placeholder.as_str()
+    } else {
+        panel.query.as_str()
+    };
+    screen.write_str(inner.x, inner.y, "> ", theme.resolve(Token::Accent), bg);
+    screen.write_str(
+        inner.x.saturating_add(2),
+        inner.y,
+        query_text,
+        if panel.query.is_empty() {
+            theme.resolve(Token::TextMuted)
+        } else {
+            theme.resolve(Token::Text)
+        },
+        bg,
+    );
+
+    let matches = fuzzy_matches(&panel.items, &panel.query);
+    if matches.is_empty() {
+        screen.write_str(
+            inner.x,
+            inner.y.saturating_add(1),
+            &panel.empty_text,
+            theme.resolve(Token::TextMuted),
+            bg,
+        );
+        return;
+    }
+
+    let selected = panel.selected.min(matches.len().saturating_sub(1));
+    for (row, matched) in matches
+        .iter()
+        .skip(selected.saturating_sub(inner.h.saturating_sub(2) as usize))
+        .take(inner.h.saturating_sub(2) as usize)
+        .enumerate()
+    {
+        let is_selected = matched.index == matches[selected].index;
+        let y = inner.y.saturating_add(1).saturating_add(row as u16);
+        let row_bg = if is_selected {
+            theme.resolve(Token::Selection)
+        } else {
+            bg
+        };
+        screen.fill_rect(
+            Rect::new(inner.x, y, inner.w, 1),
+            Cell {
+                bg: row_bg,
+                ..Cell::default()
+            },
+        );
+        let prefix = if is_selected { "> " } else { "  " };
+        screen.write_str(
+            inner.x,
+            y,
+            &format!("{prefix}{}", panel.items[matched.index]),
+            theme.resolve(Token::Text),
+            row_bg,
+        );
     }
 }
 

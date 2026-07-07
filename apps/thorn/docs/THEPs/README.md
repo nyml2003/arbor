@@ -49,6 +49,7 @@ area: architecture
 | THEP-0008 | MVP 后下一阶段计划 | Draft |
 | THEP-0009 | 性能观测与性能上限 | Accepted |
 | THEP-0010 | 键盘事件与 Action Runtime | Draft |
+| THEP-0011 | Aster 等价替代目标 | Accepted |
 
 ## Core 领域
 

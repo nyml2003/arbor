@@ -59,8 +59,10 @@ MVP 后的第一个交互协议只支持键盘和 resize。
 目标数据流：
 
 ```text
-TerminalBackend
+Input thread
   -> RuntimeInput batch
+  -> bounded channel
+UI/runtime thread
   -> before_events
   -> Action
   -> update
@@ -83,7 +85,43 @@ TerminalBackend
 6. view 从应用状态或 signal 读取数据。
 7. layout/render/diff 不读取终端输入。
 
-### 3. Core 输入类型
+### 3. 线程模型
+
+输入读取和 UI runtime 必须分离。
+
+推荐模型：
+
+```text
+InputReader thread
+  -> blocking terminal read / poll
+  -> RuntimeInput batch
+  -> bounded mpsc channel
+
+UI/runtime thread
+  -> poll_timeout input channel
+  -> before_events
+  -> update
+  -> before_render
+  -> view/layout/render/diff/emit
+```
+
+规则：
+
+1. input thread 可以阻塞读取终端事件。
+2. UI/runtime thread 不允许阻塞等待单个输入事件。
+3. UI/runtime thread 使用短 timeout 或 non-blocking drain 获取输入批次。
+4. timeout 到期时，即使没有输入，也要继续进入 `before_render`。
+5. 应用 state、signal、view tree、layout、screen 和 terminal emit 都由 UI/runtime thread 拥有。
+6. input thread 不能修改应用 state。
+7. input thread 不能 render。
+8. input thread 不能写 terminal output。
+9. input thread 只能发送平台无关 `RuntimeInput`。
+10. channel 必须有界。队列满时允许丢弃过量输入或合并可合并导航输入，但不能阻塞 UI 线程。
+11. runtime 退出时必须通知 input thread shutdown，并释放 terminal guard。
+
+这个模型解决 Aster 的 stream 场景。用户不按键时，UI 线程仍能轮询模型输出、推进 loading phase、更新 scroll，并按需要重绘。
+
+### 4. Core 输入类型
 
 `thorn-core` 应该拥有平台无关输入类型：
 
@@ -119,7 +157,7 @@ pub enum Key {
 
 `thorn-terminal` 负责把 crossterm event 转成这些类型。crossterm 类型不能进入 `thorn-core`。
 
-### 4. 应用入口
+### 5. 应用入口
 
 真实应用入口应从静态 root view 进化到状态化 app builder。
 
@@ -145,7 +183,7 @@ ThornApp::new(initial_state)
 
 `thorn::app(root)` 可以保留为静态 smoke 入口。它不应该成为复杂交互应用的主入口。
 
-### 5. Action
+### 6. Action
 
 Action 是应用交互协议，不是 widget 事件协议。
 
@@ -159,7 +197,7 @@ Action 处理规则：
 4. `update` 可以改变状态、写 signal、请求退出或切换 theme。
 5. Action 执行后由 dirty/signal/render 流程决定是否重绘。
 
-### 6. 测试入口
+### 7. 测试入口
 
 测试 harness 应支持脚本化键盘输入和 resize。
 
@@ -201,6 +239,7 @@ app.assert_text("theme");
 
 - `thorn-core` 增加平台无关 `RuntimeInput`、`KeyEvent`、`Key`、`KeyModifiers`、`KeyEventKind`。
 - `thorn-terminal` 增加 crossterm event 到 core input 的转换。
+- `thorn-terminal` 增加 input reader 线程或等价输入读取边界。
 - `thorn` 增加状态化 app builder。
 - `TestApp` 或新 `TestRuntime` 增加 `send_key`、`resize`、`render_frame`。
 
@@ -226,4 +265,7 @@ app.assert_text("theme");
 - `update` 可以通过 Action 修改状态。
 - `before_render` 可以在无输入时推进状态。
 - view 从最新状态渲染。
+- input thread 只发送 `RuntimeInput`，不修改应用 state。
+- UI/runtime thread 在无输入 timeout 后仍执行 `before_render`。
+- runtime 退出时会通知 input thread shutdown。
 - 测试 harness 可以脚本化发送按键和 resize。

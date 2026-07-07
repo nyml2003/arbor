@@ -133,7 +133,32 @@ pub fn measure_node<Action>(node: &PrimitiveNode<Action>) -> Size {
     let style = node.layout();
     let mut size = match node.kind() {
         NodeKind::Text => Size::new(node.text().as_deref().map(display_width).unwrap_or(0), 1),
-        NodeKind::Panel | NodeKind::Row | NodeKind::Col => measure_container(node),
+        NodeKind::Input => {
+            let input = node.input();
+            let text_w = input
+                .map(|input| {
+                    display_width(input.value.as_str()).max(display_width(&input.placeholder))
+                })
+                .unwrap_or(1);
+            Size::new(text_w.saturating_add(2).max(8), 1)
+        }
+        NodeKind::Transcript => {
+            let lines = node
+                .transcript()
+                .map(|transcript| {
+                    crate::widgets::transcript_line_count(
+                        &transcript.messages,
+                        transcript.notice.as_ref(),
+                        &transcript.empty_text,
+                    )
+                })
+                .unwrap_or(1);
+            Size::new(20, lines.min(usize::from(u16::MAX)) as u16)
+        }
+        NodeKind::FuzzyPanel => Size::new(24, 6),
+        NodeKind::Panel | NodeKind::Row | NodeKind::Col | NodeKind::ScrollArea => {
+            measure_container(node)
+        }
     };
 
     if matches!(node.kind(), NodeKind::Panel) {
