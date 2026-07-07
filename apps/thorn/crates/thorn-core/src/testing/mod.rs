@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::layout::{LayoutInfo, Rect, Size};
 use crate::reactive::Scope;
 use crate::render::{diff, render_tree, DirtyRegion, Screen};
-use crate::runtime::{Key, KeyEvent, RuntimeInput};
+use crate::runtime::{Key, KeyEvent, KeyMap, RuntimeInput};
 use crate::theme::{Color, Theme};
 use crate::view::{NodeId, PrimitiveNode, View};
 
@@ -25,6 +25,7 @@ pub struct TestRuntime<State, Action = ()> {
     state: State,
     update: Update<State, Action>,
     view: RuntimeView<State, Action>,
+    keymap: KeyMap<Action>,
     before_events: BeforeEvents<Action>,
     before_render: BeforeRender<State>,
     theme: Theme,
@@ -39,7 +40,7 @@ pub struct TestRuntime<State, Action = ()> {
     should_exit: bool,
 }
 
-impl<State, Action> TestRuntime<State, Action> {
+impl<State, Action: Clone> TestRuntime<State, Action> {
     pub fn new(
         initial_state: State,
         update: impl FnMut(&mut State, Action) + 'static,
@@ -49,6 +50,7 @@ impl<State, Action> TestRuntime<State, Action> {
             state: initial_state,
             update: Box::new(update),
             view: Box::new(view),
+            keymap: KeyMap::new(),
             before_events: Box::new(|_, _| {}),
             before_render: Box::new(|_| {}),
             theme: Theme::dark(),
@@ -74,6 +76,11 @@ impl<State, Action> TestRuntime<State, Action> {
         before_events: impl FnMut(&[RuntimeInput], &mut Vec<Action>) + 'static,
     ) -> Self {
         self.before_events = Box::new(before_events);
+        self
+    }
+
+    pub fn with_keymap(mut self, keymap: KeyMap<Action>) -> Self {
+        self.keymap = keymap;
         self
     }
 
@@ -169,7 +176,13 @@ impl<State, Action> TestRuntime<State, Action> {
             return;
         }
 
-        let mut actions = Vec::new();
+        let mut actions = inputs
+            .iter()
+            .filter_map(|input| match input {
+                RuntimeInput::Key(event) => self.keymap.action_for(event),
+                RuntimeInput::Resize(_) | RuntimeInput::Tick => None,
+            })
+            .collect::<Vec<_>>();
         (self.before_events)(&inputs, &mut actions);
         for action in actions {
             (self.update)(&mut self.state, action);
@@ -297,6 +310,7 @@ mod tests {
         app.assert_no_default_bg_on_text();
     }
 
+    #[derive(Clone)]
     enum CounterAction {
         Increment,
     }
@@ -310,13 +324,7 @@ mod tests {
             },
             |_, state| text(format!("count: {state}")),
         )
-        .before_events(|inputs, actions| {
-            if inputs.iter().any(
-                |input| matches!(input, RuntimeInput::Key(event) if event.key == Key::Char('+')),
-            ) {
-                actions.push(CounterAction::Increment);
-            }
-        });
+        .with_keymap(KeyMap::new().bind(Key::Char('+'), CounterAction::Increment));
 
         app.render_frame();
         app.assert_text("count: 0");

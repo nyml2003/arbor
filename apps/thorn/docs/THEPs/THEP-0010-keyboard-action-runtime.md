@@ -52,7 +52,7 @@ MVP 后的第一个交互协议只支持键盘和 resize。
 - scroll wheel。
 - `Button` 组件。
 
-`Enter` 在没有应用 handler 时是 no-op。退出键先保留为 runtime 默认行为：`q` 和 `Escape` 退出。
+`Enter` 在没有应用 handler 时是 no-op。退出键先保留为 runtime 默认行为：`Escape`、`Ctrl-C` 和 `Ctrl-Q` 退出。普通 `q` 不被 runtime 截获，应交给 keymap 绑定应用动作。
 
 ### 2. 数据流
 
@@ -218,7 +218,7 @@ app.assert_text("theme");
 
 - crossterm key event 能转换成 core `KeyEvent`。
 - crossterm resize event 能转换成 core `RuntimeInput::Resize`。
-- `q` 和 `Escape` 默认退出。
+- `Escape`、`Ctrl-C` 和 `Ctrl-Q` 默认退出，普通 `q` 不被 runtime 截获。
 - `Enter` 没有 handler 时不改变 UI。
 - runtime 不启用 mouse capture。
 - resize 后下一帧 full dirty。

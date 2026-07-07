@@ -1,5 +1,72 @@
 use crate::layout::Size;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyMap<Action> {
+    bindings: Vec<KeyBinding<Action>>,
+}
+
+impl<Action> KeyMap<Action> {
+    pub const fn new() -> Self {
+        Self {
+            bindings: Vec::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bindings.is_empty()
+    }
+}
+
+impl<Action: Clone> KeyMap<Action> {
+    pub fn bind(mut self, key: Key, action: Action) -> Self {
+        self.bindings.push(KeyBinding {
+            key,
+            modifiers: KeyModifiers::empty(),
+            action,
+        });
+        self
+    }
+
+    pub fn bind_modified(mut self, key: Key, modifiers: KeyModifiers, action: Action) -> Self {
+        self.bindings.push(KeyBinding {
+            key,
+            modifiers,
+            action,
+        });
+        self
+    }
+
+    pub fn action_for(&self, event: &KeyEvent) -> Option<Action> {
+        if !event.kind.is_press() {
+            return None;
+        }
+
+        self.bindings
+            .iter()
+            .find(|binding| binding.matches(event))
+            .map(|binding| binding.action.clone())
+    }
+}
+
+impl<Action> Default for KeyMap<Action> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct KeyBinding<Action> {
+    key: Key,
+    modifiers: KeyModifiers,
+    action: Action,
+}
+
+impl<Action> KeyBinding<Action> {
+    fn matches(&self, event: &KeyEvent) -> bool {
+        self.key == event.key && self.modifiers == event.modifiers
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeInput {
     Key(KeyEvent),
@@ -33,7 +100,17 @@ impl KeyEvent {
     }
 
     pub const fn is_default_exit(self) -> bool {
-        self.kind.is_press() && matches!(self.key, Key::Escape | Key::Char('q') | Key::Char('Q'))
+        if !self.kind.is_press() {
+            return false;
+        }
+
+        match self.key {
+            Key::Escape => true,
+            Key::Char('c') | Key::Char('C') | Key::Char('q') | Key::Char('Q') => {
+                self.modifiers.contains(KeyModifiers::CTRL)
+            }
+            _ => false,
+        }
     }
 }
 
@@ -52,6 +129,9 @@ pub enum Key {
     PageDown,
     Home,
     End,
+    Insert,
+    Delete,
+    F(u8),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -114,10 +194,21 @@ mod tests {
     }
 
     #[test]
-    fn q_and_escape_are_default_exit_inputs() {
-        assert!(RuntimeInput::Key(KeyEvent::new(Key::Char('q'))).is_default_exit());
-        assert!(RuntimeInput::Key(KeyEvent::new(Key::Char('Q'))).is_default_exit());
+    fn escape_ctrl_c_and_ctrl_q_are_default_exit_inputs() {
         assert!(RuntimeInput::Key(KeyEvent::new(Key::Escape)).is_default_exit());
+        assert!(RuntimeInput::Key(KeyEvent {
+            key: Key::Char('c'),
+            modifiers: KeyModifiers::CTRL,
+            kind: KeyEventKind::Press,
+        })
+        .is_default_exit());
+        assert!(RuntimeInput::Key(KeyEvent {
+            key: Key::Char('q'),
+            modifiers: KeyModifiers::CTRL,
+            kind: KeyEventKind::Press,
+        })
+        .is_default_exit());
+        assert!(!RuntimeInput::Key(KeyEvent::new(Key::Char('q'))).is_default_exit());
         assert!(!RuntimeInput::Key(KeyEvent::new(Key::Enter)).is_default_exit());
     }
 
@@ -129,5 +220,46 @@ mod tests {
         assert!(modifiers.contains(KeyModifiers::CTRL));
         assert!(!modifiers.contains(KeyModifiers::ALT));
         assert!(!modifiers.is_empty());
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum Action {
+        Increment,
+        Submit,
+    }
+
+    #[test]
+    fn keymap_maps_key_event_to_action() {
+        let keymap = KeyMap::new()
+            .bind(Key::Char('+'), Action::Increment)
+            .bind_modified(Key::Enter, KeyModifiers::CTRL, Action::Submit);
+
+        assert_eq!(
+            keymap.action_for(&KeyEvent::new(Key::Char('+'))),
+            Some(Action::Increment)
+        );
+        assert_eq!(
+            keymap.action_for(&KeyEvent {
+                key: Key::Enter,
+                modifiers: KeyModifiers::CTRL,
+                kind: KeyEventKind::Press,
+            }),
+            Some(Action::Submit)
+        );
+        assert_eq!(keymap.action_for(&KeyEvent::new(Key::Enter)), None);
+    }
+
+    #[test]
+    fn keymap_ignores_release_events() {
+        let keymap = KeyMap::new().bind(Key::Char('+'), Action::Increment);
+
+        assert_eq!(
+            keymap.action_for(&KeyEvent {
+                key: Key::Char('+'),
+                modifiers: KeyModifiers::empty(),
+                kind: KeyEventKind::Release,
+            }),
+            None
+        );
     }
 }

@@ -170,7 +170,10 @@ fn convert_key(code: KeyCode) -> Option<Key> {
         KeyCode::PageUp => Key::PageUp,
         KeyCode::PageDown => Key::PageDown,
         KeyCode::Tab | KeyCode::BackTab => Key::Tab,
-        KeyCode::Delete | KeyCode::Insert | KeyCode::F(_) | KeyCode::Null => return None,
+        KeyCode::Delete => Key::Delete,
+        KeyCode::Insert => Key::Insert,
+        KeyCode::F(value) => Key::F(value),
+        KeyCode::Null => return None,
         KeyCode::Esc => Key::Escape,
         KeyCode::Char(ch) => Key::Char(ch),
         KeyCode::CapsLock

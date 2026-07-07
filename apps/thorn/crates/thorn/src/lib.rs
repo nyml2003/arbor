@@ -4,7 +4,7 @@ pub use thorn_terminal as terminal;
 use layout::Rect;
 use reactive::Scope;
 use render::{diff, render_tree, DirtyRegion, Screen};
-use runtime::RuntimeInput;
+use runtime::{KeyMap, RuntimeInput};
 use terminal::TerminalBackend;
 use theme::Theme;
 use view::View;
@@ -47,6 +47,7 @@ pub struct ThornApp<State, Action = ()> {
     state: State,
     update: Option<Update<State, Action>>,
     view: Option<StatefulView<State, Action>>,
+    keymap: KeyMap<Action>,
     before_events: BeforeEvents<Action>,
     before_render: BeforeRender<State>,
     theme: Theme,
@@ -58,6 +59,7 @@ impl<State> ThornApp<State, ()> {
             state: initial_state,
             update: Some(Box::new(|_, ()| {})),
             view: None,
+            keymap: KeyMap::new(),
             before_events: Box::new(|_, _| {}),
             before_render: Box::new(|_| {}),
             theme: Theme::dark(),
@@ -79,6 +81,7 @@ impl<State, Action> ThornApp<State, Action> {
             state: self.state,
             update: Some(Box::new(update)),
             view: None,
+            keymap: KeyMap::new(),
             before_events: Box::new(|_, _| {}),
             before_render: self.before_render,
             theme: self.theme,
@@ -98,12 +101,20 @@ impl<State, Action> ThornApp<State, Action> {
         self
     }
 
+    pub fn keymap(mut self, keymap: KeyMap<Action>) -> Self {
+        self.keymap = keymap;
+        self
+    }
+
     pub fn before_render(mut self, before_render: impl FnMut(&mut State) + 'static) -> Self {
         self.before_render = Box::new(before_render);
         self
     }
 
-    pub fn run(mut self) -> Result<()> {
+    pub fn run(mut self) -> Result<()>
+    where
+        Action: Clone,
+    {
         let mut view = self.view.take().ok_or(Error::MissingView)?;
         let mut backend = terminal::CrosstermBackend::new();
         let _guard = backend.enter()?;
@@ -130,7 +141,13 @@ impl<State, Action> ThornApp<State, Action> {
             }
 
             let inputs = [input];
-            let mut actions = Vec::new();
+            let mut actions = inputs
+                .iter()
+                .filter_map(|input| match input {
+                    RuntimeInput::Key(event) => self.keymap.action_for(event),
+                    RuntimeInput::Resize(_) | RuntimeInput::Tick => None,
+                })
+                .collect::<Vec<_>>();
             (self.before_events)(&inputs, &mut actions);
             if !actions.is_empty() {
                 let update = self.update.as_mut().ok_or(Error::MissingUpdate)?;
@@ -244,6 +261,7 @@ mod tests {
 
     #[test]
     fn stateful_app_builder_accepts_action_runtime_shape() {
+        #[derive(Clone)]
         enum CounterAction {
             Increment,
         }
@@ -253,13 +271,6 @@ mod tests {
                 CounterAction::Increment => *state += 1,
             })
             .view(|_, state| text(format!("count: {state}")))
-            .before_events(|inputs, actions| {
-                if inputs
-                    .iter()
-                    .any(|input| matches!(input, RuntimeInput::Key(event) if event.key == Key::Char('+')))
-                {
-                    actions.push(CounterAction::Increment);
-                }
-            });
+            .keymap(KeyMap::new().bind(Key::Char('+'), CounterAction::Increment));
     }
 }

@@ -35,7 +35,7 @@ Thorn 下一阶段不继续补 `Button` 或鼠标事件。
 - `thorn-terminal` 把 crossterm keyboard/resize event 转成 core input。
 - runtime 不启用 mouse capture。
 - mouse event 不进入 core。
-- `q` 和 `Escape` 作为默认退出键。
+- `Escape`、`Ctrl-C` 和 `Ctrl-Q` 作为 runtime 默认退出键，普通 `q` 留给 keymap 绑定应用动作。
 - `Enter` 在没有应用 handler 时是 no-op。
 
 完成标准：
@@ -181,7 +181,7 @@ app.render_frame();
 - terminal adapter 能转换 key event。
 - terminal adapter 能转换 resize event。
 - runtime 不启用 mouse capture。
-- `q` 和 `Escape` 默认退出。
+- `Escape`、`Ctrl-C` 和 `Ctrl-Q` 默认退出，普通 `q` 不被 runtime 截获。
 - `Enter` 默认 no-op。
 - `before_events` 能产出 Action。
 - `update` 能修改 state。

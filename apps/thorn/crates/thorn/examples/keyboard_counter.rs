@@ -1,5 +1,6 @@
 use thorn::prelude::*;
 
+#[derive(Clone)]
 enum CounterAction {
     Increment,
     Decrement,
@@ -15,24 +16,16 @@ fn main() -> thorn::Result<()> {
         .view(|_, count| {
             col((
                 panel(text(format!("count: {count}"))).id("counter-panel"),
-                text("press + / - to change, q or Esc to quit"),
+                text("press + / - to change, Ctrl-Q or Esc to quit"),
             ))
             .padding(1)
             .gap(1)
             .bg(Token::Surface)
         })
-        .before_events(|inputs, actions| {
-            for input in inputs {
-                match input {
-                    RuntimeInput::Key(event) if event.key == Key::Char('+') => {
-                        actions.push(CounterAction::Increment);
-                    }
-                    RuntimeInput::Key(event) if event.key == Key::Char('-') => {
-                        actions.push(CounterAction::Decrement);
-                    }
-                    _ => {}
-                }
-            }
-        })
+        .keymap(
+            KeyMap::new()
+                .bind(Key::Char('+'), CounterAction::Increment)
+                .bind(Key::Char('-'), CounterAction::Decrement),
+        )
         .run()
 }

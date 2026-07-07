@@ -36,7 +36,7 @@ cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example keyboard_coun
 cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_live
 ```
 
-`keyboard_counter` is the stateful Action Runtime smoke demo. Press `+` or `-` to change the counter. Press `q` or Esc to quit. Mouse input is not supported.
+`keyboard_counter` is the stateful Action Runtime smoke demo. Press `+` or `-` to change the counter. Press Ctrl-Q or Esc to quit. Mouse input is not supported.
 
 Snapshot demo:
 
@@ -65,4 +65,4 @@ Signal write
 
 It intentionally does not include mouse input, `Memo`, `Show`, `For`, `Input`, async effects, full keyboard command dispatch, or render cache.
 
-The Action Runtime slice now includes platform-neutral keyboard and resize input, crossterm-to-core conversion, a stateful `ThornApp` builder, `TestRuntime` scripted key/resize tests, and the `keyboard_counter` demo.
+The Action Runtime slice now includes platform-neutral keyboard and resize input, crossterm-to-core conversion, keymap-driven action dispatch, a stateful `ThornApp` builder, `TestRuntime` scripted key/resize tests, and the `keyboard_counter` demo.
