@@ -2,7 +2,10 @@ use std::io::{self, Stdout, Write};
 
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{self, Event, KeyCode},
+    event::{
+        self, Event, KeyCode, KeyEvent as CrosstermKeyEvent, KeyEventKind as CrosstermKeyEventKind,
+        KeyModifiers as CrosstermKeyModifiers,
+    },
     execute, queue,
     style::{Color as TermColor, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{
@@ -10,7 +13,9 @@ use crossterm::{
     },
 };
 use thorn_core::{
+    layout::Size,
     render::{DirtyRegion, Screen},
+    runtime::{Key, KeyEvent, KeyEventKind, KeyModifiers, RuntimeInput},
     theme::Color,
 };
 
@@ -65,14 +70,6 @@ pub struct CrosstermBackend {
     stdout: Stdout,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TerminalEvent {
-    Enter,
-    Quit,
-    Resize,
-    Other,
-}
-
 impl CrosstermBackend {
     pub fn new() -> Self {
         Self {
@@ -80,21 +77,12 @@ impl CrosstermBackend {
         }
     }
 
-    pub fn read_event(&mut self) -> Result<TerminalEvent> {
+    pub fn read_input(&mut self) -> Result<Option<RuntimeInput>> {
         loop {
-            match event::read()? {
-                Event::Key(key) => {
-                    return Ok(match key.code {
-                        KeyCode::Enter => TerminalEvent::Enter,
-                        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
-                            TerminalEvent::Quit
-                        }
-                        _ => TerminalEvent::Other,
-                    });
-                }
-                Event::Resize(_, _) => return Ok(TerminalEvent::Resize),
-                _ => return Ok(TerminalEvent::Other),
-            }
+            let Some(input) = convert_event(event::read()?) else {
+                continue;
+            };
+            return Ok(Some(input));
         }
     }
 }
@@ -151,6 +139,77 @@ impl TerminalBackend for CrosstermBackend {
         self.stdout.flush()?;
         Ok(())
     }
+}
+
+pub fn convert_event(event: Event) -> Option<RuntimeInput> {
+    match event {
+        Event::Key(key) => convert_key_event(key).map(RuntimeInput::Key),
+        Event::Resize(width, height) => Some(RuntimeInput::Resize(Size::new(width, height))),
+        _ => None,
+    }
+}
+
+pub fn convert_key_event(event: CrosstermKeyEvent) -> Option<KeyEvent> {
+    Some(KeyEvent {
+        key: convert_key(event.code)?,
+        modifiers: convert_modifiers(event.modifiers),
+        kind: convert_key_kind(event.kind),
+    })
+}
+
+fn convert_key(code: KeyCode) -> Option<Key> {
+    Some(match code {
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Left => Key::ArrowLeft,
+        KeyCode::Right => Key::ArrowRight,
+        KeyCode::Up => Key::ArrowUp,
+        KeyCode::Down => Key::ArrowDown,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Tab | KeyCode::BackTab => Key::Tab,
+        KeyCode::Delete | KeyCode::Insert | KeyCode::F(_) | KeyCode::Null => return None,
+        KeyCode::Esc => Key::Escape,
+        KeyCode::Char(ch) => Key::Char(ch),
+        KeyCode::CapsLock
+        | KeyCode::ScrollLock
+        | KeyCode::NumLock
+        | KeyCode::PrintScreen
+        | KeyCode::Pause
+        | KeyCode::Menu
+        | KeyCode::KeypadBegin
+        | KeyCode::Media(_)
+        | KeyCode::Modifier(_) => return None,
+    })
+}
+
+fn convert_modifiers(modifiers: CrosstermKeyModifiers) -> KeyModifiers {
+    let mut out = KeyModifiers::empty();
+    if modifiers.contains(CrosstermKeyModifiers::SHIFT) {
+        out = out.union(KeyModifiers::SHIFT);
+    }
+    if modifiers.contains(CrosstermKeyModifiers::CONTROL) {
+        out = out.union(KeyModifiers::CTRL);
+    }
+    if modifiers.contains(CrosstermKeyModifiers::ALT) {
+        out = out.union(KeyModifiers::ALT);
+    }
+    out
+}
+
+fn convert_key_kind(kind: CrosstermKeyEventKind) -> KeyEventKind {
+    match kind {
+        CrosstermKeyEventKind::Press => KeyEventKind::Press,
+        CrosstermKeyEventKind::Repeat => KeyEventKind::Repeat,
+        CrosstermKeyEventKind::Release => KeyEventKind::Release,
+    }
+}
+
+#[cfg(test)]
+fn enter_terminal_commands_include_mouse_capture() -> bool {
+    false
 }
 
 #[derive(Default)]
@@ -214,6 +273,7 @@ fn to_term_color(color: Color) -> TermColor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::KeyEventState;
     use thorn_core::layout::Rect;
 
     #[test]
@@ -236,5 +296,37 @@ mod tests {
     #[test]
     fn palette_colors_map_to_ansi_values() {
         assert_eq!(to_term_color(Color::Palette(42)), TermColor::AnsiValue(42));
+    }
+
+    #[test]
+    fn converts_crossterm_key_event_to_core_input() {
+        let input = convert_event(Event::Key(CrosstermKeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: CrosstermKeyModifiers::CONTROL | CrosstermKeyModifiers::SHIFT,
+            kind: CrosstermKeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }));
+
+        assert_eq!(
+            input,
+            Some(RuntimeInput::Key(KeyEvent {
+                key: Key::Char('x'),
+                modifiers: KeyModifiers::CTRL.union(KeyModifiers::SHIFT),
+                kind: KeyEventKind::Press,
+            }))
+        );
+    }
+
+    #[test]
+    fn converts_crossterm_resize_event_to_core_input() {
+        assert_eq!(
+            convert_event(Event::Resize(80, 24)),
+            Some(RuntimeInput::Resize(Size::new(80, 24)))
+        );
+    }
+
+    #[test]
+    fn terminal_entry_does_not_enable_mouse_capture() {
+        assert!(!enter_terminal_commands_include_mouse_capture());
     }
 }

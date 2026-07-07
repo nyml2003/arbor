@@ -32,10 +32,11 @@ cargo test --manifest-path apps/thorn/Cargo.toml --workspace
 Interactive crossterm demo:
 
 ```powershell
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example keyboard_counter
 cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter_live
 ```
 
-Keyboard events are the supported interaction path. Press `q` or Esc to quit. Mouse input is not supported.
+`keyboard_counter` is the stateful Action Runtime smoke demo. Press `+` or `-` to change the counter. Press `q` or Esc to quit. Mouse input is not supported.
 
 Snapshot demo:
 
@@ -47,7 +48,7 @@ The demo prints the MVP counter screen as an in-memory snapshot.
 
 ## Current MVP
 
-Status: complete for THEP-0008.
+Status: complete for THEP-0008. The next keyboard Action Runtime slice from THEP-0010 is underway.
 
 The MVP covers the counter flow from THEP-0008:
 
@@ -63,3 +64,5 @@ Signal write
 ```
 
 It intentionally does not include mouse input, `Memo`, `Show`, `For`, `Input`, async effects, full keyboard command dispatch, or render cache.
+
+The Action Runtime slice now includes platform-neutral keyboard and resize input, crossterm-to-core conversion, a stateful `ThornApp` builder, `TestRuntime` scripted key/resize tests, and the `keyboard_counter` demo.
