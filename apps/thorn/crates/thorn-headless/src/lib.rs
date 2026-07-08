@@ -1,4 +1,4 @@
-use thorn_core::{IntentMapper, KeyIntent, RuntimeInput, Screen, ThornApp};
+use thorn_core::{IntentMapper, KeyIntent, KeyMap, RuntimeInput, Screen, ThornApp};
 use thorn_runtime::AppRuntime;
 
 pub struct TestRuntime<App>
@@ -20,6 +20,11 @@ where
 
     pub fn size(mut self, width: u16, height: u16) -> Self {
         self.runtime = self.runtime.size(width, height);
+        self
+    }
+
+    pub fn keymap(mut self, keymap: KeyMap) -> Self {
+        self.runtime = self.runtime.keymap(keymap);
         self
     }
 
@@ -110,7 +115,7 @@ impl ScreenSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thorn_core::{column, text, AppContext, Element, KeyAction};
+    use thorn_core::{column, row, text, AppContext, Element, KeyAction, KeyEvent};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum CounterAction {
@@ -253,5 +258,93 @@ mod tests {
         runtime.render_frame();
 
         runtime.assert_not_text("count: 0");
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum AgentAction {
+        Prompt,
+        ModelChunk,
+        ToolResult,
+        Finish,
+    }
+
+    struct AgentHarnessApp {
+        prompt_count: u32,
+        transcript: Vec<&'static str>,
+        status: &'static str,
+    }
+
+    impl ThornApp for AgentHarnessApp {
+        type Action = AgentAction;
+
+        fn update(&mut self, action: Self::Action, ctx: &mut AppContext<Self::Action>) {
+            match action {
+                AgentAction::Prompt => {
+                    self.prompt_count += 1;
+                    self.status = "thinking";
+                    self.transcript.push("user: build a plan");
+                    ctx.dispatch(AgentAction::ModelChunk);
+                }
+                AgentAction::ModelChunk => {
+                    self.transcript.push("assistant: draft plan");
+                    ctx.dispatch(AgentAction::ToolResult);
+                }
+                AgentAction::ToolResult => {
+                    self.status = "tool-ready";
+                    self.transcript.push("tool: cargo check passed");
+                }
+                AgentAction::Finish => {
+                    self.status = "done";
+                    ctx.quit();
+                }
+            }
+        }
+
+        fn view(&self) -> Element<Self::Action> {
+            column((
+                row((text("Aster Agent"), text(format!(" [{}]", self.status)))),
+                text(format!("prompts: {}", self.prompt_count)),
+                text(self.transcript.last().copied().unwrap_or("idle")),
+            ))
+        }
+    }
+
+    struct AgentIntentMapper;
+
+    impl IntentMapper<AgentAction> for AgentIntentMapper {
+        fn map_intent(&self, intent: KeyIntent) -> Option<KeyAction<AgentAction>> {
+            match intent {
+                KeyIntent::RequestQuit => Some(KeyAction::App(AgentAction::Finish)),
+                KeyIntent::App("prompt") => Some(KeyAction::App(AgentAction::Prompt)),
+                KeyIntent::App(_) => None,
+            }
+        }
+    }
+
+    #[test]
+    fn headless_can_drive_agent_like_state_loop() {
+        let mut runtime = TestRuntime::new(
+            AgentHarnessApp {
+                prompt_count: 0,
+                transcript: Vec::new(),
+                status: "idle",
+            },
+            AgentIntentMapper,
+        )
+        .keymap(KeyMap::new().bind(KeyEvent::char('p'), KeyIntent::App("prompt")))
+        .size(64, 8);
+
+        runtime.render_frame();
+        runtime.assert_text("idle");
+
+        runtime.send_key('p');
+        runtime.render_frame();
+
+        runtime.assert_text("tool-ready");
+        runtime.assert_text("prompts: 1");
+        runtime.assert_text("tool: cargo check passed");
+
+        runtime.dispatch_intent(KeyIntent::RequestQuit);
+        assert!(!runtime.is_running());
     }
 }

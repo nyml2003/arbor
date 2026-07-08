@@ -35,6 +35,11 @@ where
         }
     }
 
+    pub fn keymap(mut self, keymap: KeyMap) -> Self {
+        self.keymap = keymap;
+        self
+    }
+
     pub fn size(mut self, width: u16, height: u16) -> Self {
         self.resize(Size::new(width, height));
         self
@@ -249,5 +254,20 @@ mod tests {
         runtime.send_key('q');
 
         assert!(!runtime.is_running());
+    }
+
+    #[test]
+    fn custom_keymap_can_override_default_intents() {
+        let mut runtime = AppRuntime::new(CounterApp { count: 0 }, CounterIntentMapper)
+            .keymap(KeyMap::new().bind(KeyEvent::char('n'), KeyIntent::App("increment")))
+            .size(40, 8);
+
+        runtime.send_key('+');
+        runtime.render_frame();
+        assert!(runtime.screen().to_plain_text().contains("count: 0"));
+
+        runtime.send_key('n');
+        runtime.render_frame();
+        assert!(runtime.screen().to_plain_text().contains("count: 1"));
     }
 }

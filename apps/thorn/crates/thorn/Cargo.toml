@@ -9,8 +9,6 @@ authors.workspace = true
 thorn-core = { path = "../thorn-core" }
 thorn-headless = { path = "../thorn-headless" }
 thorn-runtime = { path = "../thorn-runtime" }
-
-[dev-dependencies]
 thorn-terminal = { path = "../thorn-terminal" }
 
 [lib]

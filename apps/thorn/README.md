@@ -49,6 +49,14 @@ cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter
 
 当前第一个可见 demo 使用标准输入。输入 `+`、`-` 或 `q` 后按 Enter。
 
+## Aster Agent Integration
+
+Thorn 当前可以作为 `aster-agent` 的 UI/runtime base。集成约定见 [`docs/aster-agent-integration.md`](docs/aster-agent-integration.md)。
+
+```powershell
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example aster_agent_base
+```
+
 ## 当前状态
 
 状态：第一版 MVP。
@@ -59,6 +67,6 @@ cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter
 - `thorn-runtime`：共享 App runtime、KeyIntent 映射、Action dispatch、render scheduling。
 - `thorn-headless`：可测试 adapter 和 snapshot。
 - `thorn-terminal`：最小 stdio terminal adapter，共用 `thorn-runtime`。
-- `thorn`：public facade 和 Counter example。
+- `thorn`：public facade、Counter example 和 Aster agent base example。
 
 旧代码和旧 THEP 已删除。新实现必须服从当前 THEP 文档，不继承旧 Thorn MVP 或 `arbor-tui` 的 widget 协议。

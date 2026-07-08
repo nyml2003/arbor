@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use thorn_core::{IntentMapper, RuntimeInput, ThornApp};
+use thorn_core::{IntentMapper, KeyMap, RuntimeInput, ThornApp};
 use thorn_runtime::AppRuntime;
 
 pub struct TerminalRuntime<App>
@@ -22,6 +22,11 @@ where
 
     pub fn size(mut self, width: u16, height: u16) -> Self {
         self.runtime = self.runtime.size(width, height);
+        self
+    }
+
+    pub fn keymap(mut self, keymap: KeyMap) -> Self {
+        self.runtime = self.runtime.keymap(keymap);
         self
     }
 
@@ -79,7 +84,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thorn_core::{column, text, AppContext, Element, KeyAction, KeyIntent};
+    use thorn_core::{column, text, AppContext, Element, KeyAction, KeyEvent, KeyIntent};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum CounterAction {
@@ -160,6 +165,18 @@ mod tests {
         let mut output = Vec::new();
 
         runtime.run_with_io(&b"+\nq\n"[..], &mut output).unwrap();
+
+        assert!(String::from_utf8(output).unwrap().contains("count: 1"));
+    }
+
+    #[test]
+    fn custom_keymap_smoke_updates_terminal_output() {
+        let mut runtime = TerminalRuntime::new(CounterApp { count: 0 }, CounterIntentMapper)
+            .keymap(KeyMap::new().bind(KeyEvent::char('n'), KeyIntent::App("increment")))
+            .size(40, 8);
+        let mut output = Vec::new();
+
+        runtime.run_with_io(&b"n\nq\n"[..], &mut output).unwrap();
 
         assert!(String::from_utf8(output).unwrap().contains("count: 1"));
     }
