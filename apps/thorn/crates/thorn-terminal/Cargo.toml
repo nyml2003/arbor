@@ -1,5 +1,5 @@
 [package]
-name = "thorn"
+name = "thorn-terminal"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,11 +7,7 @@ authors.workspace = true
 
 [dependencies]
 thorn-core = { path = "../thorn-core" }
-thorn-headless = { path = "../thorn-headless" }
 thorn-runtime = { path = "../thorn-runtime" }
-
-[dev-dependencies]
-thorn-terminal = { path = "../thorn-terminal" }
 
 [lib]
 path = "src/lib.rs"

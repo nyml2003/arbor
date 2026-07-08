@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "crates/thorn-core",
+    "crates/thorn-runtime",
     "crates/thorn-headless",
+    "crates/thorn-terminal",
     "crates/thorn",
 ]
 resolver = "2"

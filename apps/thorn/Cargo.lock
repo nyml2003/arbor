@@ -8,6 +8,8 @@ version = "0.1.0"
 dependencies = [
  "thorn-core",
  "thorn-headless",
+ "thorn-runtime",
+ "thorn-terminal",
 ]
 
 [[package]]
@@ -19,4 +21,20 @@ name = "thorn-headless"
 version = "0.1.0"
 dependencies = [
  "thorn-core",
+ "thorn-runtime",
+]
+
+[[package]]
+name = "thorn-runtime"
+version = "0.1.0"
+dependencies = [
+ "thorn-core",
+]
+
+[[package]]
+name = "thorn-terminal"
+version = "0.1.0"
+dependencies = [
+ "thorn-core",
+ "thorn-runtime",
 ]

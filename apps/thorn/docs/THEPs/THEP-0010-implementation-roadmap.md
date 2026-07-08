@@ -129,11 +129,13 @@ MVP 使用：
 
 ```text
 thorn-core       pure types, lowering, layout, paint, runtime model
-thorn-headless   memory backend, snapshot, test runtime
+thorn-runtime    shared AppRuntime, input handling, action dispatch, render scheduling
+thorn-headless   memory adapter and snapshot assertions
+thorn-terminal   stdio demo adapter for the first visible Counter app
 thorn            public facade
 ```
 
-后续当 headless runtime 逻辑膨胀时，再抽 `thorn-runtime`。真实 terminal backend 进入开发时，再加 `thorn-terminal`。
+当前 `thorn-terminal` 只是 stdio demo adapter，真实 terminal backend 进入开发时再扩展 raw mode、input thread、alternate screen 和 dirty patch。
 
 ## 测试要求
 

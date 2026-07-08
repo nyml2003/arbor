@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 thorn-core = { path = "../thorn-core" }
+thorn-runtime = { path = "../thorn-runtime" }
 
 [lib]
 path = "src/lib.rs"

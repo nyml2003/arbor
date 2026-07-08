@@ -47,11 +47,13 @@ Module 按竖直 pipeline 拆。
 
 ### 当前 MVP crate
 
-MVP 使用三个 crate：
+当前 MVP 使用五个 crate：
 
 ```text
 thorn-core
+thorn-runtime
 thorn-headless
+thorn-terminal
 thorn
 ```
 
@@ -60,29 +62,14 @@ thorn
 | Crate | 水平层 | 职责 |
 | --- | --- | --- |
 | `thorn-core` | domain / model | 纯类型、纯变换、Element、Host Tree、Layout、Paint、Screen、Input model |
-| `thorn-headless` | adapter / test runtime | Memory backend、snapshot、`TestRuntime` |
+| `thorn-runtime` | application / runtime orchestration | `AppRuntime`、RuntimeInput handling、KeyIntent resolution、Action dispatch、render scheduling、App lifecycle |
+| `thorn-headless` | adapter / test runtime | Memory adapter、snapshot、`TestRuntime` |
+| `thorn-terminal` | adapter / demo runtime | 标准输入输出 adapter、可见 Counter demo。当前不包含 raw mode、alternate screen 或真实 input thread |
 | `thorn` | facade | `prelude`、re-export、用户入口 |
 
 ### 后续目标 crate
 
-当 runtime 编排从 headless adapter 中长出来后，增加：
-
-```text
-thorn-runtime
-```
-
-职责：
-
-```text
-Runtime
-ActionQueue
-FrameLoop
-IntentResolver
-Render scheduling
-App lifecycle
-```
-
-当真实终端后端进入开发时，增加：
+当前 `thorn-terminal` 是 stdio demo adapter。当真实终端后端进入开发时，扩展它的职责：
 
 ```text
 thorn-terminal
@@ -206,8 +193,7 @@ thorn-runtime  -> thorn-core
 
 - 不按每个 UI pipeline 节点拆 crate。
 - 不为了目录美观拆 crate。
-- 不在 MVP 阶段拆 `thorn-runtime`。
-- 不在 headless MVP 前实现 `thorn-terminal`。
+- 不在 headless MVP 前实现真实 terminal backend。
 - 不让 backend 反向依赖进入 core。
 
 ## API 影响
@@ -217,12 +203,14 @@ thorn-runtime  -> thorn-core
 ```toml
 members = [
     "crates/thorn-core",
+    "crates/thorn-runtime",
     "crates/thorn-headless",
+    "crates/thorn-terminal",
     "crates/thorn",
 ]
 ```
 
-新增 `thorn-runtime` 或 `thorn-terminal` 前，需要先确认对应职责已经超过当前 crate 的合理范围。
+新增 adapter crate 前，需要先确认对应后端职责已经超过当前 crate 的合理范围。
 
 `thorn-core` 的 public API 要小。竖直 pipeline module 可以先内部可见，等使用场景稳定后再公开。
 
@@ -231,8 +219,9 @@ members = [
 测试必须覆盖：
 
 - `thorn-core` 不依赖 headless 或 terminal crate。
-- `thorn-headless` 只通过 core public API 构建 snapshot。
+- `thorn-runtime` 只依赖 `thorn-core`。
+- `thorn-headless` 通过 `thorn-runtime` 和 core public API 构建 snapshot。
+- `thorn-terminal` 通过 `thorn-runtime` 和 core public API 做终端展示。
 - `thorn` facade 不实现核心规则，只 re-export 或组合 API。
 - 新增 crate 时，workspace test 和 check 必须通过。
-- 如果拆出 `thorn-runtime`，原 headless runtime 测试必须继续通过。
 - 如果新增 `thorn-terminal`，core/headless 测试不能依赖真实终端。

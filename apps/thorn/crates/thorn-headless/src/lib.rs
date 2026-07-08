@@ -1,19 +1,11 @@
-use thorn_core::{
-    render_to_screen, AppContext, IntentMapper, KeyAction, KeyEvent, KeyIntent, KeyMap,
-    RuntimeInput, Screen, Size, ThornApp,
-};
+use thorn_core::{IntentMapper, KeyIntent, RuntimeInput, Screen, ThornApp};
+use thorn_runtime::AppRuntime;
 
 pub struct TestRuntime<App>
 where
     App: ThornApp,
 {
-    app: App,
-    ctx: AppContext<App::Action>,
-    keymap: KeyMap,
-    mapper: Box<dyn IntentMapper<App::Action>>,
-    size: Size,
-    screen: Screen,
-    running: bool,
+    runtime: AppRuntime<App>,
 }
 
 impl<App> TestRuntime<App>
@@ -21,83 +13,47 @@ where
     App: ThornApp,
 {
     pub fn new(app: App, mapper: impl IntentMapper<App::Action> + 'static) -> Self {
-        let size = Size::new(80, 24);
         Self {
-            app,
-            ctx: AppContext::new(),
-            keymap: KeyMap::default(),
-            mapper: Box::new(mapper),
-            size,
-            screen: Screen::new(size),
-            running: true,
+            runtime: AppRuntime::new(app, mapper),
         }
     }
 
     pub fn size(mut self, width: u16, height: u16) -> Self {
-        self.size = Size::new(width, height);
-        self.screen = Screen::new(self.size);
+        self.runtime = self.runtime.size(width, height);
         self
     }
 
     pub fn render_frame(&mut self) {
-        if !self.running {
-            return;
-        }
-        let element = self.app.view();
-        self.screen = render_to_screen(&element, self.size);
+        self.runtime.render_frame();
     }
 
     pub fn send_key(&mut self, ch: char) {
-        self.handle_input(RuntimeInput::Key(KeyEvent::char(ch)));
+        self.runtime.send_key(ch);
     }
 
     pub fn send_ctrl_key(&mut self, ch: char) {
-        self.handle_input(RuntimeInput::Key(KeyEvent::ctrl(ch)));
+        self.runtime.send_ctrl_key(ch);
     }
 
     pub fn handle_input(&mut self, input: RuntimeInput) {
-        if !self.running {
-            return;
-        }
-
-        match input {
-            RuntimeInput::Key(event) => {
-                if let Some(intent) = self.keymap.resolve(&event) {
-                    self.dispatch_intent(intent);
-                }
-            }
-            RuntimeInput::Shutdown => self.running = false,
-            RuntimeInput::Resize(size) => {
-                self.size = size;
-                self.ctx.request_render();
-            }
-            RuntimeInput::Tick => {}
-        }
-        self.drain_actions();
+        self.runtime.handle_input(input);
     }
 
     pub fn dispatch_intent(&mut self, intent: KeyIntent) {
-        match self.mapper.map_intent(intent) {
-            Some(KeyAction::RuntimeQuit) => {
-                self.ctx.quit();
-                self.running = false;
-            }
-            Some(KeyAction::App(action)) => self.ctx.dispatch(action),
-            None => {}
-        }
+        self.runtime.dispatch_intent(intent);
     }
 
     pub fn is_running(&self) -> bool {
-        self.running
+        self.runtime.is_running()
     }
 
     pub fn screen(&self) -> &Screen {
-        &self.screen
+        self.runtime.screen()
     }
 
     pub fn snapshot(&self) -> ScreenSnapshot {
         ScreenSnapshot {
-            text: self.screen.to_plain_text(),
+            text: self.screen().to_plain_text(),
         }
     }
 
@@ -114,15 +70,6 @@ where
     pub fn assert_line(&self, line_index: usize, expected: &str) -> &Self {
         self.snapshot().assert_line(line_index, expected);
         self
-    }
-
-    fn drain_actions(&mut self) {
-        while let Some(action) = self.ctx.pop_action() {
-            self.app.update(action, &mut self.ctx);
-        }
-        if self.ctx.is_quit_requested() {
-            self.running = false;
-        }
     }
 }
 
@@ -163,7 +110,7 @@ impl ScreenSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thorn_core::{column, text, Element};
+    use thorn_core::{column, text, AppContext, Element, KeyAction};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum CounterAction {

@@ -1,0 +1,62 @@
+use crate::{HostKind, HostNode, LayoutNode};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaintPrimitive {
+    TextRun { x: u16, y: u16, text: String },
+}
+
+pub fn paint_tree<Action>(host: &HostNode<Action>, layout: &[LayoutNode]) -> Vec<PaintPrimitive> {
+    let mut paint = Vec::new();
+    paint_node(host, layout, &mut paint);
+    paint
+}
+
+fn paint_node<Action>(
+    host: &HostNode<Action>,
+    layout: &[LayoutNode],
+    paint: &mut Vec<PaintPrimitive>,
+) {
+    if host.kind == HostKind::Text {
+        if let (Some(text), Some(layout_node)) = (
+            host.text.as_ref(),
+            layout.iter().find(|node| node.host_id == host.id),
+        ) {
+            let text = text
+                .chars()
+                .take(usize::from(layout_node.rect.width))
+                .collect::<String>();
+            paint.push(PaintPrimitive::TextRun {
+                x: layout_node.rect.x,
+                y: layout_node.rect.y,
+                text,
+            });
+        }
+    }
+
+    for child in &host.children {
+        paint_node(child, layout, paint);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{layout_tree, lower_element, text, Size};
+
+    #[test]
+    fn text_paint_produces_text_run() {
+        let element = text::<()>("hello");
+        let host = lower_element(&element);
+        let layout = layout_tree(&host, Size::new(10, 2));
+        let paint = paint_tree(&host, &layout);
+
+        assert_eq!(
+            paint,
+            vec![PaintPrimitive::TextRun {
+                x: 0,
+                y: 0,
+                text: "hello".to_string(),
+            }]
+        );
+    }
+}

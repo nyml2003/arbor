@@ -4,6 +4,7 @@ pub mod prelude {
         KeyIntent, KeyMap, KeyModifiers, Rect, RuntimeInput, Screen, Size, ThornApp,
     };
     pub use thorn_headless::{ScreenSnapshot, TestRuntime};
+    pub use thorn_runtime::AppRuntime;
 }
 
 pub use thorn_core::{column, text};

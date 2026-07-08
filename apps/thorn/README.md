@@ -41,10 +41,24 @@ Paint Primitive
 
 架构决策放在 [`docs/THEPs`](docs/THEPs/README.md)。
 
-当前阶段先稳定 THEP，再写实现。这个 workspace 暂时没有 Rust crate。
+## Demo
+
+```powershell
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example counter
+```
+
+当前第一个可见 demo 使用标准输入。输入 `+`、`-` 或 `q` 后按 Enter。
 
 ## 当前状态
 
-状态：概念重置。
+状态：第一版 MVP。
+
+已具备：
+
+- `thorn-core`：纯类型、Element 到 Host Tree、Layout、Paint、Screen。
+- `thorn-runtime`：共享 App runtime、KeyIntent 映射、Action dispatch、render scheduling。
+- `thorn-headless`：可测试 adapter 和 snapshot。
+- `thorn-terminal`：最小 stdio terminal adapter，共用 `thorn-runtime`。
+- `thorn`：public facade 和 Counter example。
 
 旧代码和旧 THEP 已删除。新实现必须服从当前 THEP 文档，不继承旧 Thorn MVP 或 `arbor-tui` 的 widget 协议。
