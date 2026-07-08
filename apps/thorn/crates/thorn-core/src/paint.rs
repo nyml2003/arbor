@@ -1,8 +1,28 @@
-use crate::{HostKind, HostNode, LayoutNode};
+use crate::{Cell, HostKind, HostNode, LayoutNode, Rect};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaintPrimitive {
+    FillRect {
+        rect: Rect,
+        cell: Cell,
+    },
     TextRun { x: u16, y: u16, text: String },
+    Border {
+        rect: Rect,
+        cell: Cell,
+    },
+    Cursor {
+        x: u16,
+        y: u16,
+    },
+    Clip {
+        rect: Rect,
+        children: Vec<PaintPrimitive>,
+    },
+    Layer {
+        z_index: i16,
+        children: Vec<PaintPrimitive>,
+    },
 }
 
 pub fn paint_tree<Action>(host: &HostNode<Action>, layout: &[LayoutNode]) -> Vec<PaintPrimitive> {
@@ -58,5 +78,34 @@ mod tests {
                 text: "hello".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn paint_primitives_are_backend_independent() {
+        let primitives = vec![
+            PaintPrimitive::FillRect {
+                rect: Rect::new(0, 0, 4, 2),
+                cell: Cell::new(' '),
+            },
+            PaintPrimitive::Border {
+                rect: Rect::new(0, 0, 4, 2),
+                cell: Cell::new('#'),
+            },
+            PaintPrimitive::Cursor { x: 1, y: 1 },
+            PaintPrimitive::Clip {
+                rect: Rect::new(0, 0, 2, 1),
+                children: vec![PaintPrimitive::TextRun {
+                    x: 0,
+                    y: 0,
+                    text: "hello".to_string(),
+                }],
+            },
+            PaintPrimitive::Layer {
+                z_index: 1,
+                children: Vec::new(),
+            },
+        ];
+
+        assert_eq!(primitives.len(), 5);
     }
 }

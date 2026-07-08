@@ -6,6 +6,10 @@ use crate::{Axis, Element, ElementNode};
 pub struct HostNodeId(u32);
 
 impl HostNodeId {
+    pub const fn new(id: u32) -> Self {
+        Self(id)
+    }
+
     pub const fn as_u32(self) -> u32 {
         self.0
     }

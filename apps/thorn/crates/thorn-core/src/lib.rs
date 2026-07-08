@@ -7,7 +7,7 @@ mod layout;
 mod paint;
 mod screen;
 
-pub use app::{AppContext, ThornApp};
+pub use app::{AppContext, Theme, ThornApp};
 pub use backend::{
     BackendCapabilities, BackendError, BackendFeature, BackendPresenter, PresentedFrame,
     UnsupportedBackendFeature,
@@ -18,13 +18,17 @@ pub use element::{
 };
 pub use host::{lower_element, HostKind, HostNode, HostNodeId};
 pub use input::{
-    BoundedInputQueue, ControlKeyAction, Direction, IntentMapper, Key, KeyAction, KeyEvent,
-    KeyEventKind, KeyIntent, KeyMap, KeyMapError, KeyMapLayer, KeyMapResult, KeyModifiers,
-    RuntimeInput,
+    BackendEventSource, BackendInputEvent, BackendKey, BackendKeyEvent, BoundedInputQueue,
+    ControlKeyAction, DefaultKeyMap, Direction, EmacsTextKeyMap, FocusedControlKind,
+    InputShutdownSignal, InputThreadDriver, InputThreadStep, IntentContext, IntentMapper,
+    IntentResolver, Key, KeyAction, KeyEvent, KeyEventKind, KeyIntent, KeyMap, KeyMapError,
+    KeyMapLayer, KeyMapLayerKind, KeyMapResult, KeyModifiers, LayeredKeyMap,
+    LayeredKeyMapResolution, PlatformFallbackKeyMap, ReadOnlyNavigationKeyMap, RuntimeInput,
+    TextInputKeyMap, VimNavigationKeyMap,
 };
 pub use layout::{layout_tree, LayoutNode, Rect, Size};
 pub use paint::{paint_tree, PaintPrimitive};
 pub use screen::{
-    diff_screens, render_pipeline, render_to_screen, Cell, CellPatch, RenderedFrame, Screen,
-    ScreenPatch,
+    diff_screens, render_pipeline, render_to_screen, Cell, CellAttrs, CellPatch, Color,
+    DirtyRegion, RenderedFrame, Screen, ScreenPatch, WideCell,
 };

@@ -67,7 +67,7 @@ pub trait BackendPresenter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Cell, CellPatch};
+    use crate::{Cell, CellPatch, DirtyRegion, Rect};
 
     struct MemoryPresenter {
         capabilities: BackendCapabilities,
@@ -119,10 +119,13 @@ mod tests {
         let patch = ScreenPatch {
             size: Size::new(2, 1),
             full: false,
+            regions: vec![DirtyRegion {
+                rect: Rect::new(0, 0, 1, 1),
+            }],
             cells: vec![CellPatch {
                 x: 0,
                 y: 0,
-                cell: Cell { ch: 'x' },
+                cell: Cell::new('x'),
             }],
         };
 

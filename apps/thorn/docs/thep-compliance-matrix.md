@@ -1,68 +1,76 @@
-# THEP Compliance Matrix
+# THEP Gap Matrix
 
-This matrix records the CLI-checkable Thorn baseline for using Thorn as the UI/runtime base of `aster-agent`.
+This file is implementation evidence, not the source of truth. `docs/THEPs/**` remains immutable and authoritative.
 
-`docs/THEPs` is the source of truth. This file is implementation evidence only.
+Status terms:
 
-## Acceptance Target
+- `Covered`: required behavior has code plus a CLI-checkable test or smoke.
+- `Partial`: some required behavior exists, but the THEP surface is not complete.
+- `Gap`: behavior is not implemented yet.
 
-Thorn is aster-agent-ready when a non-interactive CLI command can prove:
+## Current Truth
 
-- App state is owned by a `ThornApp` struct.
-- Backend input is normalized to `RuntimeInput`.
-- `KeyMap` resolves physical input to `KeyIntent`.
-- `IntentMapper` resolves intents to `KeyAction`.
-- App actions update state through `App::update`.
-- `App::view` produces an `Element` tree.
-- The tree lowers through Host, Layout, Paint, Cell Grid, and backend output.
-- Headless and simulated TUI paths can drive an aster-agent-like app to ready.
+Thorn is aster-agent-ready for the current simulated headless/stdio loop, but it is not yet fully compliant with every accepted THEP.
+
+The current reliable aster-agent base is:
+
+```text
+BackendInputEvent / RuntimeInput
+  -> LayeredKeyMap
+  -> KeyIntent
+  -> IntentResolver
+  -> KeyAction
+  -> App Action
+  -> ThornApp::update
+  -> ThornApp::view
+  -> Element
+  -> Host Tree
+  -> Layout
+  -> PaintPrimitive
+  -> Screen / dirty regions
+  -> Headless or stdio terminal output
+```
 
 ## Matrix
 
-| THEP | Required Area | Implementation Evidence | Machine Check |
+| THEP | Status | Covered Evidence | Remaining Gaps |
 | --- | --- | --- | --- |
-| THEP-0001 | Backend-independent UI runtime, headless backend, terminal adapter boundary | `thorn-core` has no terminal dependency; `thorn-headless` and `thorn-terminal` depend through `thorn-runtime`; `aster_agent_tui_smoke` uses terminal adapter without core backend leakage | `cargo test --workspace`; `cargo run -p thorn --example aster_agent_tui_smoke` |
-| THEP-0002 | Component/Element/Host/Layout/Paint/Backend layering | `thorn-core/src/{element,host,layout,paint,screen}.rs`; module tests compare each stage independently | `cargo test -p thorn-core` |
-| THEP-0003 | Component returns Element; structural Row/Column sugar lowers to host semantics | `Element`, `row`, `column`, `text`, `view`; host tests cover same-axis flattening and boundary preservation | `cargo test -p thorn-core host::tests` |
-| THEP-0004 | Host Tree is backend-independent and preserves identity | `HostNode`, `HostNodeId`, `HostKind`; host tests cover identity and backend-free lowering | `cargo test -p thorn-core host::tests` |
-| THEP-0005 | App/state/action runtime, action queue, request-render, quit | `AppRuntime`, `AppContext`, `TestRuntime`; runtime tests cover action update, render scheduling, quit, custom keymaps | `cargo test -p thorn-runtime` |
-| THEP-0006 | Explicit tree transformation pipeline and legal flattening | `render_to_screen` composes lower/layout/paint/screen; host/layout/paint/screen tests observe intermediate IRs | `cargo test -p thorn-core` |
-| THEP-0007 | Deterministic row/column layout in TUI cell units | `layout_tree`, `Size`, `Rect`, `LayoutNode`; tests cover row/column placement and resize determinism through runtime | `cargo test -p thorn-core layout::tests`; `cargo test -p thorn-runtime resize_replaces_screen_and_requests_render` |
-| THEP-0008 | Paint primitives, cell grid, dirty patch, backend adapter | `PaintPrimitive::TextRun`, `Screen`, `ScreenPatch`, `BackendCapabilities`, `BackendPresenter`, `PresentedFrame`; terminal adapter renders through runtime; tests cover cell diff, unsupported capability errors, and terminal output | `cargo test -p thorn-core backend::tests`; `cargo test -p thorn-core screen::tests`; `cargo test -p thorn-terminal` |
-| THEP-0009 | Tree/render optimization observability baseline | Dirty cell patches and `FrameStats` provide the first machine-checkable observability baseline; caches remain future work | `cargo test -p thorn-core screen::tests::screen_diff_reports_changed_cells`; `cargo test -p thorn-runtime render_frame_records_frame_stats` |
-| THEP-0010 | Roadmap-compatible crate split and staged implementation | Workspace contains `thorn-core`, `thorn-runtime`, `thorn-headless`, `thorn-terminal`, `thorn`; examples are CLI-runnable | `cargo check --workspace --examples` |
-| THEP-0011 | RuntimeInput, KeyIntent, KeyAction, KeyMap, reserved quit, bounded input queue | `RuntimeInput::BackendWake`, `KeyMapLayer`, `KeyMapResult`, `BoundedInputQueue`, `ControlKeyAction`; tests cover duplicate binding, pass/handle, queue full, shutdown, reserved Ctrl-C | `cargo test -p thorn-core input::tests`; `cargo test -p thorn-runtime custom_keymap_cannot_disable_ctrl_c_reserved_quit` |
-| THEP-0012 | Counter MVP headless pipeline and required tests | Required Counter, keymap, runtime, headless tests are present; terminal demo exceeds MVP after headless baseline | `cargo test --workspace`; `cargo run -p thorn --example counter` |
-| THEP-0013 | Horizontal crate layering and vertical core modules | `thorn-core` modules match `app/element/host/layout/paint/screen/input`; dependency direction stays core -> none, runtime -> core, adapters -> runtime/core | `cargo check --workspace --examples` |
+| THEP-0001 | Partial | Core/runtime/headless/terminal layering exists; simulated aster-agent TUI smoke prints `ASTER_AGENT_READY`; `thorn-core` has no terminal or Win32 dependency | Native GUI/Web backends are only adapter-shaped, not real backends |
+| THEP-0002 | Partial | Separate modules for app, element, host, layout, paint, screen, input; tests exercise each stage | Layer model is still thin; component and backend model need richer host/layout semantics |
+| THEP-0003 | Partial | `text`, `view`, `row`, `column`; row/column sugar lowers and same-axis stack flattening is tested | Missing real `Fragment`, `If`, `For`, `Slot`, `ThemeScope`, `TextInput`, `ScrollView`, `Image`, `Layer`, `Clip` element helpers and composite component tests |
+| THEP-0004 | Partial | `HostNode`, `HostNodeId`, `HostKind`, stable IDs, backend-free snapshot tests | Host node does not yet carry optional key, scope identity, style tokens, accessibility metadata, focus/input affordances, action binding, or debug provenance |
+| THEP-0005 | Partial | `ThornApp`, `AppContext`, action queue, ordered update, request-render, quit, builder-like runtime construction, app action can quit, `dispatch_key_intent`, `dispatch_key_action`, backend capabilities, theme placeholder | Public `thorn::app(initial_state).update(...).view(...).run()` facade is not implemented yet; services/ports are not modeled |
+| THEP-0006 | Partial | `render_pipeline` exposes host/layout/paint/screen; transparent same-axis stack flattening tested | Host normalization is not a separate pass; boundary metadata is incomplete, so full flattening legality is not implemented |
+| THEP-0007 | Gap | Basic deterministic row/column layout and resize tests exist | Missing `LayoutConstraints`, `BackendMetrics`, fixed/min/flex/gap/padding/margin/alignment/clip/scroll viewport, display-width text measurement, content/clip rects, overflow, baseline metrics |
+| THEP-0008 | Partial | `PaintPrimitive` includes FillRect/TextRun/Border/Cursor/Clip/Layer; `Cell` includes char/fg/bg/attrs/wide state; `ScreenPatch` includes dirty regions; unsupported capabilities are structured; headless can snapshot paint output | Terminal lowering handles text and fill at screen level but not ANSI span merge; unsupported errors are not yet tied to every host feature |
+| THEP-0009 | Partial | `DirtyKind`, merge tests, `FrameStats` THEP fields, `PerfSink`, `NoopPerfSink`, dirty regions and backend output size stats | Layout/paint caches are not implemented; phase timings are coarse; tests for real cache invalidation are not complete |
+| THEP-0010 | Partial | Workspace stages exist and headless/terminal examples run | Stage 2-8 are not fully implemented; current code has moved beyond MVP but not completed roadmap |
+| THEP-0011 | Covered for current scope | `BackendInputEvent`, `InputThreadDriver`, bounded queue, shutdown signal, backend key conversion, `LayeredKeyMap`, priority tests, reserved Ctrl-C, app Esc override, mode `q`, focused control priority, text input control action resolution, built-in presets | Real terminal raw-mode input thread is not implemented; mouse/IME remain non-goals |
+| THEP-0012 | Covered | Required Counter MVP tests and headless pipeline exist; counter CLI smoke works | MVP non-goals remain intentionally outside THEP-0012 |
+| THEP-0013 | Partial | Crate split follows core/runtime/adapters/facade; `thorn-win32` is adapter-only and does not pollute core | Need CLI tests that parse Cargo manifests and assert dependency direction |
 
-## Aster Agent Ready Smoke
+## CLI Evidence
 
-The required non-interactive simulated TUI smoke is:
+Primary checks:
 
 ```powershell
+cargo fmt --all
+cargo check --workspace --examples
+cargo test --workspace
 cargo run -p thorn --example aster_agent_tui_smoke
+@('+','q') | cargo run -p thorn --example counter
+git -c safe.directory=C:/Users/nyml/code/arbor -C C:/Users/nyml/code/arbor diff --name-status -- apps/thorn/docs/THEPs
 ```
 
-Passing output includes:
+Focused checks added after the corrected assessment:
 
-```text
-ASTER_AGENT_READY
+```powershell
+cargo test -p thorn-core input::tests
+cargo test -p thorn-runtime
+cargo test -p thorn-headless
 ```
 
-## Negative Constraints
+## Do Not Overclaim
 
-- `thorn-core` does not depend on terminal, Win32, GUI, DOM, or process IO APIs.
-- Terminal behavior is isolated to `thorn-terminal`.
-- `docs/THEPs` must remain unchanged by implementation work.
-- Aster-agent readiness must be proven by CLI, not only by prose.
+Do not mark all accepted THEPs as complete until the gaps above are implemented with machine-checkable tests.
 
-## KeyDock Reference Notes
-
-`apps/keydock` was inspected after the required CLI target passed. Its useful backend-shape lessons for future Thorn GUI work are:
-
-- Keep Win32 HWND, message loop, DPI, COM, and unsafe blocks in a platform adapter.
-- Let the app/core layer produce platform-independent snapshots or primitives.
-- Convert platform input into framework events before touching app state.
-- Keep renderer crates/adapters consuming snapshots; do not let them own business state.
-
-No Win32 adapter was added in this pass, so no GUI-specific smoke is required.

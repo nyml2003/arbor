@@ -1,4 +1,4 @@
-use thorn_core::{IntentMapper, KeyIntent, KeyMap, RuntimeInput, Screen, ThornApp};
+use thorn_core::{IntentMapper, KeyIntent, KeyMap, PaintPrimitive, RuntimeInput, Screen, ThornApp};
 use thorn_runtime::AppRuntime;
 
 pub struct TestRuntime<App>
@@ -62,6 +62,14 @@ where
         }
     }
 
+    pub fn paint_snapshot(&mut self) -> PaintSnapshot {
+        let screen = self.runtime.render_frame().clone();
+        PaintSnapshot {
+            cells: screen.cells.len(),
+            text: screen.to_plain_text(),
+        }
+    }
+
     pub fn assert_text(&self, expected: &str) -> &Self {
         self.snapshot().assert_text(expected);
         self
@@ -80,6 +88,23 @@ where
 
 pub struct ScreenSnapshot {
     text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaintSnapshot {
+    pub cells: usize,
+    pub text: String,
+}
+
+impl PaintSnapshot {
+    pub fn from_primitives(size: thorn_core::Size, paint: &[PaintPrimitive]) -> Self {
+        let mut screen = Screen::new(size);
+        screen.apply(paint);
+        Self {
+            cells: screen.cells.len(),
+            text: screen.to_plain_text(),
+        }
+    }
 }
 
 impl ScreenSnapshot {
@@ -258,6 +283,21 @@ mod tests {
         runtime.render_frame();
 
         runtime.assert_not_text("count: 0");
+    }
+
+    #[test]
+    fn headless_can_snapshot_paint_output_not_only_plain_text() {
+        let snapshot = PaintSnapshot::from_primitives(
+            thorn_core::Size::new(8, 1),
+            &[PaintPrimitive::TextRun {
+                x: 0,
+                y: 0,
+                text: "paint".to_string(),
+            }],
+        );
+
+        assert_eq!(snapshot.cells, 8);
+        assert!(snapshot.text.contains("paint"));
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
