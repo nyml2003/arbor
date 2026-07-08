@@ -123,15 +123,17 @@ Composite components 必须通过 Element 和 Host Tree 下降。它们不能绕
 
 ## API 影响
 
-初始 crate 拆分应保守：
+Crate 拆分遵守 `THEP-0013`。
+
+MVP 使用：
 
 ```text
 thorn-core       pure types, lowering, layout, paint, runtime model
-thorn-terminal   terminal backend adapters
+thorn-headless   memory backend, snapshot, test runtime
 thorn            public facade
 ```
 
-第一批 app 同时跑通 headless 和 terminal backend 前，不继续拆更多 crates。
+后续当 headless runtime 逻辑膨胀时，再抽 `thorn-runtime`。真实 terminal backend 进入开发时，再加 `thorn-terminal`。
 
 ## 测试要求
 
@@ -153,7 +155,7 @@ thorn            public facade
 第一个 end-to-end 目标是：
 
 ```text
-State
+App / State
   -> view
   -> Element Tree
   -> Host Tree
@@ -162,3 +164,5 @@ State
   -> Cell Grid
   -> Headless snapshot
 ```
+
+第一个可开发 MVP 的精确定义见 `THEP-0012`。

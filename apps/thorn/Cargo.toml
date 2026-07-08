@@ -1,5 +1,9 @@
 [workspace]
-members = []
+members = [
+    "crates/thorn-core",
+    "crates/thorn-headless",
+    "crates/thorn",
+]
 resolver = "2"
 
 [workspace.package]
