@@ -61,11 +61,11 @@ impl IntentMapper<AgentAction> for AsterIntentMapper {
     }
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let keymap = KeyMap::new()
         .bind(KeyEvent::char('p'), KeyIntent::App("submit_prompt"))
         .bind(KeyEvent::char('q'), KeyIntent::RequestQuit);
-    let mut runtime = TestRuntime::new(
+    let mut runtime = TerminalRuntime::new(
         AsterAgentApp {
             prompts: 0,
             status: "idle",
@@ -76,13 +76,19 @@ fn main() {
     .keymap(keymap)
     .size(64, 8);
 
-    runtime.render_frame();
-    println!("{}", runtime.snapshot().to_plain_text());
+    let mut output = Vec::new();
+    runtime.run_with_io(&b"p\nq\n"[..], &mut output)?;
+    let output = String::from_utf8_lossy(&output);
+    print!("{output}");
 
-    runtime.send_key('p');
-    runtime.render_frame();
-    println!("{}", runtime.snapshot().to_plain_text());
-
-    runtime.send_key('q');
-    assert!(!runtime.is_running());
+    if output.contains("Aster Agent [ready]")
+        && output.contains("prompts: 1")
+        && output.contains("tool: cargo check passed")
+    {
+        println!("\nASTER_AGENT_READY");
+        Ok(())
+    } else {
+        eprintln!("ASTER_AGENT_NOT_READY");
+        std::process::exit(1);
+    }
 }

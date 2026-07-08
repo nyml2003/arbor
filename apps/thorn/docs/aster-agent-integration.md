@@ -77,3 +77,17 @@ runtime.assert_text("ready");
 ```
 
 See `crates/thorn/examples/aster_agent_base.rs` for a runnable integration example.
+
+## Simulated TUI Smoke
+
+The CLI-checkable terminal smoke uses `TerminalRuntime::run_with_io` with in-memory input and output. It proves that the terminal adapter path can drive an aster-agent-like app to ready without interactive input:
+
+```powershell
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example aster_agent_tui_smoke
+```
+
+Expected success marker:
+
+```text
+ASTER_AGENT_READY
+```

@@ -39,7 +39,7 @@ impl IntentMapper<CounterAction> for CounterIntentMapper {
             KeyIntent::RequestQuit => Some(KeyAction::RuntimeQuit),
             KeyIntent::App("increment") => Some(KeyAction::App(CounterAction::Increment)),
             KeyIntent::App("decrement") => Some(KeyAction::App(CounterAction::Decrement)),
-            KeyIntent::App(_) => None,
+            _ => None,
         }
     }
 }

@@ -1,7 +1,17 @@
 use thorn_core::{
-    render_to_screen, AppContext, IntentMapper, KeyAction, KeyEvent, KeyIntent, KeyMap,
+    render_pipeline, AppContext, IntentMapper, KeyAction, KeyEvent, KeyIntent, KeyMap,
     RuntimeInput, Screen, ScreenPatch, Size, ThornApp,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameStats {
+    pub frame_index: u64,
+    pub host_node_count: usize,
+    pub layout_node_count: usize,
+    pub paint_primitive_count: usize,
+    pub backend_output_cells: usize,
+    pub dirty_cells: usize,
+}
 
 pub struct AppRuntime<App>
 where
@@ -10,11 +20,14 @@ where
     app: App,
     ctx: AppContext<App::Action>,
     keymap: KeyMap,
+    reserved_keymap: KeyMap,
     mapper: Box<dyn IntentMapper<App::Action>>,
     size: Size,
     screen: Screen,
     running: bool,
     render_requested: bool,
+    frame_index: u64,
+    last_frame_stats: Option<FrameStats>,
 }
 
 impl<App> AppRuntime<App>
@@ -27,11 +40,14 @@ where
             app,
             ctx: AppContext::new(),
             keymap: KeyMap::default(),
+            reserved_keymap: KeyMap::runtime_reserved(),
             mapper: Box::new(mapper),
             size,
             screen: Screen::new(size),
             running: true,
             render_requested: true,
+            frame_index: 0,
+            last_frame_stats: None,
         }
     }
 
@@ -61,8 +77,20 @@ where
 
     pub fn render_frame(&mut self) -> &Screen {
         if self.running {
+            let previous = self.screen.clone();
             let element = self.app.view();
-            self.screen = render_to_screen(&element, self.size);
+            let rendered = render_pipeline(&element, self.size);
+            let patch = previous.diff(&rendered.screen);
+            self.frame_index += 1;
+            self.last_frame_stats = Some(FrameStats {
+                frame_index: self.frame_index,
+                host_node_count: count_host_nodes(&rendered.host),
+                layout_node_count: rendered.layout.len(),
+                paint_primitive_count: rendered.paint.len(),
+                backend_output_cells: rendered.screen.cells.len(),
+                dirty_cells: patch.cells.len(),
+            });
+            self.screen = rendered.screen;
             self.render_requested = false;
         }
         &self.screen
@@ -93,13 +121,15 @@ where
 
         match input {
             RuntimeInput::Key(event) => {
-                if let Some(intent) = self.keymap.resolve(&event) {
+                if let Some(intent) = self.reserved_keymap.resolve(&event) {
+                    self.dispatch_intent(intent);
+                } else if let Some(intent) = self.keymap.resolve(&event) {
                     self.dispatch_intent(intent);
                 }
             }
             RuntimeInput::Resize(size) => self.resize(size),
             RuntimeInput::Shutdown => self.running = false,
-            RuntimeInput::Tick => {}
+            RuntimeInput::Tick | RuntimeInput::BackendWake => {}
         }
         self.drain_actions();
     }
@@ -110,6 +140,8 @@ where
                 self.ctx.quit();
                 self.running = false;
             }
+            Some(KeyAction::RuntimeCancel) => {}
+            Some(KeyAction::FocusNext | KeyAction::FocusPrev | KeyAction::Control { .. }) => {}
             Some(KeyAction::App(action)) => self.ctx.dispatch(action),
             None => {}
         }
@@ -122,6 +154,10 @@ where
 
     pub fn screen(&self) -> &Screen {
         &self.screen
+    }
+
+    pub fn last_frame_stats(&self) -> Option<FrameStats> {
+        self.last_frame_stats
     }
 
     fn drain_actions(&mut self) {
@@ -137,6 +173,10 @@ where
             self.running = false;
         }
     }
+}
+
+fn count_host_nodes<Action>(host: &thorn_core::HostNode<Action>) -> usize {
+    1 + host.children.iter().map(count_host_nodes).sum::<usize>()
 }
 
 #[cfg(test)]
@@ -186,7 +226,7 @@ mod tests {
                 KeyIntent::App("request_render") => {
                     Some(KeyAction::App(CounterAction::RequestRender))
                 }
-                KeyIntent::App(_) => None,
+                _ => None,
             }
         }
     }
@@ -269,5 +309,30 @@ mod tests {
         runtime.send_key('n');
         runtime.render_frame();
         assert!(runtime.screen().to_plain_text().contains("count: 1"));
+    }
+
+    #[test]
+    fn custom_keymap_cannot_disable_ctrl_c_reserved_quit() {
+        let mut runtime = AppRuntime::new(CounterApp { count: 0 }, CounterIntentMapper)
+            .keymap(KeyMap::new())
+            .size(40, 8);
+
+        runtime.send_ctrl_key('c');
+
+        assert!(!runtime.is_running());
+    }
+
+    #[test]
+    fn render_frame_records_frame_stats() {
+        let mut runtime = counter_runtime();
+
+        runtime.render_frame();
+        let stats = runtime.last_frame_stats().unwrap();
+
+        assert_eq!(stats.frame_index, 1);
+        assert_eq!(stats.host_node_count, 4);
+        assert_eq!(stats.layout_node_count, 4);
+        assert_eq!(stats.paint_primitive_count, 3);
+        assert!(stats.backend_output_cells > 0);
     }
 }

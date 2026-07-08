@@ -1,4 +1,6 @@
-use crate::{layout_tree, lower_element, paint_tree, Element, PaintPrimitive, Size};
+use crate::{
+    layout_tree, lower_element, paint_tree, Element, HostNode, LayoutNode, PaintPrimitive, Size,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cell {
@@ -142,13 +144,30 @@ fn diff_same_size_screens(previous: &Screen, next: &Screen) -> Vec<CellPatch> {
         .collect()
 }
 
-pub fn render_to_screen<Action>(element: &Element<Action>, size: Size) -> Screen {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedFrame<Action> {
+    pub host: HostNode<Action>,
+    pub layout: Vec<LayoutNode>,
+    pub paint: Vec<PaintPrimitive>,
+    pub screen: Screen,
+}
+
+pub fn render_pipeline<Action>(element: &Element<Action>, size: Size) -> RenderedFrame<Action> {
     let host = lower_element(element);
     let layout = layout_tree(&host, size);
     let paint = paint_tree(&host, &layout);
     let mut screen = Screen::new(size);
     screen.apply(&paint);
-    screen
+    RenderedFrame {
+        host,
+        layout,
+        paint,
+        screen,
+    }
+}
+
+pub fn render_to_screen<Action>(element: &Element<Action>, size: Size) -> Screen {
+    render_pipeline(element, size).screen
 }
 
 #[cfg(test)]
@@ -180,6 +199,15 @@ mod tests {
         let screen = render_to_screen(&row((text::<()>("a"), text::<()>("bb"))), Size::new(10, 2));
 
         assert!(screen.to_plain_text().contains("abb"));
+    }
+
+    #[test]
+    fn render_pipeline_exposes_intermediate_outputs() {
+        let frame = render_pipeline(&text::<()>("hello"), Size::new(10, 2));
+
+        assert_eq!(frame.layout.len(), 1);
+        assert_eq!(frame.paint.len(), 1);
+        assert!(frame.screen.to_plain_text().contains("hello"));
     }
 
     #[test]

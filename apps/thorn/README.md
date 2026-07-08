@@ -55,6 +55,7 @@ Thorn 当前可以作为 `aster-agent` 的 UI/runtime base。集成约定见 [`d
 
 ```powershell
 cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example aster_agent_base
+cargo run --manifest-path apps/thorn/Cargo.toml -p thorn --example aster_agent_tui_smoke
 ```
 
 ## 当前状态

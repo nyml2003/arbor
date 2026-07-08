@@ -154,7 +154,7 @@ mod tests {
                 KeyIntent::RequestQuit => Some(KeyAction::RuntimeQuit),
                 KeyIntent::App("increment") => Some(KeyAction::App(CounterAction::Increment)),
                 KeyIntent::App("decrement") => Some(KeyAction::App(CounterAction::Decrement)),
-                KeyIntent::App(_) => None,
+                _ => None,
             }
         }
     }
@@ -316,7 +316,7 @@ mod tests {
             match intent {
                 KeyIntent::RequestQuit => Some(KeyAction::App(AgentAction::Finish)),
                 KeyIntent::App("prompt") => Some(KeyAction::App(AgentAction::Prompt)),
-                KeyIntent::App(_) => None,
+                _ => None,
             }
         }
     }
