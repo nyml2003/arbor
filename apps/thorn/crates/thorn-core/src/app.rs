@@ -16,7 +16,6 @@ pub struct AppContext<Action> {
     key_actions: VecDeque<KeyAction<Action>>,
     render_requested: bool,
     quit_requested: bool,
-    theme: Theme,
     backend_capabilities: BackendCapabilities,
 }
 
@@ -28,20 +27,8 @@ impl<Action> Default for AppContext<Action> {
             key_actions: VecDeque::new(),
             render_requested: false,
             quit_requested: false,
-            theme: Theme::default(),
             backend_capabilities: BackendCapabilities::text_only(),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Theme {
-    pub name: &'static str,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self { name: "default" }
     }
 }
 
@@ -86,15 +73,6 @@ impl<Action> AppContext<Action> {
 
     pub fn quit(&mut self) {
         self.quit_requested = true;
-    }
-
-    pub fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
-        self.request_render();
-    }
-
-    pub fn theme(&self) -> &Theme {
-        &self.theme
     }
 
     pub fn set_backend_capabilities(&mut self, capabilities: BackendCapabilities) {

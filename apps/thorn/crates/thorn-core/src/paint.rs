@@ -1,15 +1,58 @@
-use crate::{Cell, HostKind, HostNode, LayoutNode, Rect};
+use crate::{HostKind, HostNode, LayoutNode, Rect};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PaintStyle {
+    pub foreground: Option<PaintColor>,
+    pub background: Option<PaintColor>,
+    pub attrs: PaintAttrs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaintColor {
+    Default,
+    Indexed(u8),
+    Rgb(u8, u8, u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaintAttrs {
+    bits: u8,
+}
+
+impl PaintAttrs {
+    pub const BOLD: Self = Self { bits: 0b0000_0001 };
+    pub const UNDERLINE: Self = Self { bits: 0b0000_0010 };
+    pub const REVERSED: Self = Self { bits: 0b0000_0100 };
+
+    pub const fn empty() -> Self {
+        Self { bits: 0 }
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.bits & other.bits) == other.bits
+    }
+}
+
+impl Default for PaintAttrs {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaintPrimitive {
     FillRect {
         rect: Rect,
-        cell: Cell,
+        style: PaintStyle,
     },
-    TextRun { x: u16, y: u16, text: String },
+    TextRun {
+        x: u16,
+        y: u16,
+        text: String,
+    },
     Border {
         rect: Rect,
-        cell: Cell,
+        style: PaintStyle,
     },
     Cursor {
         x: u16,
@@ -85,11 +128,11 @@ mod tests {
         let primitives = vec![
             PaintPrimitive::FillRect {
                 rect: Rect::new(0, 0, 4, 2),
-                cell: Cell::new(' '),
+                style: PaintStyle::default(),
             },
             PaintPrimitive::Border {
                 rect: Rect::new(0, 0, 4, 2),
-                cell: Cell::new('#'),
+                style: PaintStyle::default(),
             },
             PaintPrimitive::Cursor { x: 1, y: 1 },
             PaintPrimitive::Clip {

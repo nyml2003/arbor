@@ -1,9 +1,9 @@
-use thorn_core::{
-    render_pipeline, AppContext, IntentContext, IntentMapper, IntentResolver, KeyAction, KeyEvent,
-    KeyIntent, KeyMap, KeyMapLayer, KeyMapLayerKind, LayeredKeyMap, RuntimeInput, Screen,
-    ScreenPatch, Size, ThornApp,
-};
 use std::time::{Duration, Instant};
+use thorn_core::{
+    render_pipeline, AppContext, BackendCapabilities, IntentContext, IntentMapper, IntentResolver,
+    KeyAction, KeyEvent, KeyIntent, KeyMap, KeyMapLayer, KeyMapLayerKind, LayeredKeyMap,
+    RuntimeInput, Screen, ScreenPatch, Size, ThornApp,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameStats {
@@ -25,54 +25,6 @@ pub struct FrameStats {
     pub backend_output_cells: usize,
     pub backend_output_size: usize,
     pub dirty_cells: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DirtyKind {
-    Render,
-    Layout,
-    Structure,
-    Theme,
-    Full,
-}
-
-impl DirtyKind {
-    pub fn merge(self, other: Self) -> Self {
-        self.max(other)
-    }
-
-    pub fn requires_layout(self) -> bool {
-        self >= Self::Layout
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FrameInvalidation {
-    dirty: DirtyKind,
-}
-
-impl FrameInvalidation {
-    pub fn new(dirty: DirtyKind) -> Self {
-        Self { dirty }
-    }
-
-    pub fn dirty(&self) -> DirtyKind {
-        self.dirty
-    }
-
-    pub fn invalidate(&mut self, dirty: DirtyKind) {
-        self.dirty = self.dirty.merge(dirty);
-    }
-
-    pub fn requires_layout(&self) -> bool {
-        self.dirty.requires_layout()
-    }
-}
-
-impl Default for FrameInvalidation {
-    fn default() -> Self {
-        Self::new(DirtyKind::Full)
-    }
 }
 
 pub trait PerfSink {
@@ -99,7 +51,6 @@ where
     screen: Screen,
     running: bool,
     render_requested: bool,
-    pending_dirty: DirtyKind,
     frame_index: u64,
     last_frame_stats: Option<FrameStats>,
     perf_sink: Box<dyn PerfSink>,
@@ -125,7 +76,6 @@ where
             screen: Screen::new(size),
             running: true,
             render_requested: true,
-            pending_dirty: DirtyKind::Full,
             frame_index: 0,
             last_frame_stats: None,
             perf_sink: Box::<NoopPerfSink>::default(),
@@ -137,27 +87,29 @@ where
         self
     }
 
+    pub fn backend_capabilities(mut self, capabilities: BackendCapabilities) -> Self {
+        self.intent_context.backend_capabilities = capabilities.clone();
+        self.ctx.set_backend_capabilities(capabilities);
+        self
+    }
+
     pub fn layered_keymap(mut self, keymap: LayeredKeyMap) -> Self {
         self.keymap = keymap;
         self
     }
 
     pub fn app_keymap(mut self, keymap: KeyMap) -> Self {
-        self.keymap = self.keymap.with_layer(KeyMapLayer::with_kind(
-            "app",
-            KeyMapLayerKind::App,
-            keymap,
-        ));
+        self.keymap =
+            self.keymap
+                .with_layer(KeyMapLayer::with_kind("app", KeyMapLayerKind::App, keymap));
         self
     }
 
     pub fn mode_keymap(mut self, mode: &'static str, keymap: KeyMap) -> Self {
         self.intent_context.active_mode = Some(mode);
-        self.keymap = self.keymap.with_layer(KeyMapLayer::with_kind(
-            mode,
-            KeyMapLayerKind::Mode,
-            keymap,
-        ));
+        self.keymap =
+            self.keymap
+                .with_layer(KeyMapLayer::with_kind(mode, KeyMapLayerKind::Mode, keymap));
         self
     }
 
@@ -174,12 +126,6 @@ where
 
     pub fn request_render(&mut self) {
         self.render_requested = true;
-        self.pending_dirty = self.pending_dirty.merge(DirtyKind::Render);
-    }
-
-    pub fn invalidate(&mut self, dirty: DirtyKind) {
-        self.render_requested = true;
-        self.pending_dirty = self.pending_dirty.merge(dirty);
     }
 
     pub fn perf_sink(mut self, sink: impl PerfSink + 'static) -> Self {
@@ -229,7 +175,6 @@ where
             self.last_frame_stats = Some(stats);
             self.screen = rendered.screen;
             self.render_requested = false;
-            self.pending_dirty = DirtyKind::Render;
         }
         &self.screen
     }
@@ -318,7 +263,7 @@ where
         loop {
             if let Some(intent) = self.ctx.pop_key_intent() {
                 if let Some(action) = self.resolver.resolve_intent(&self.intent_context, intent) {
-                    self.dispatch_key_action(action);
+                    self.apply_key_action(action);
                 }
                 continue;
             }
@@ -338,7 +283,6 @@ where
         }
         if updated || self.ctx.take_render_requested() {
             self.render_requested = true;
-            self.pending_dirty = self.pending_dirty.merge(DirtyKind::Structure);
         }
         if self.ctx.is_quit_requested() {
             self.running = false;
@@ -353,13 +297,13 @@ fn count_host_nodes<Action>(host: &thorn_core::HostNode<Action>) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::rc::Rc;
     use thorn_core::{
         column, text, BackendInputEvent, BackendKeyEvent, BoundedInputQueue, Element,
         InputThreadDriver, InputThreadStep,
     };
-    use std::cell::RefCell;
-    use std::collections::VecDeque;
-    use std::rc::Rc;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum CounterAction {
@@ -550,33 +494,6 @@ mod tests {
         assert!(stats.backend_output_cells > 0);
         assert_eq!(stats.backend_output_size, stats.backend_output_cells);
         assert!(stats.dirty_regions > 0);
-    }
-
-    #[test]
-    fn dirty_kind_merge_order_matches_thep() {
-        assert_eq!(DirtyKind::Render.merge(DirtyKind::Layout), DirtyKind::Layout);
-        assert_eq!(
-            DirtyKind::Structure.merge(DirtyKind::Theme),
-            DirtyKind::Theme
-        );
-        assert_eq!(DirtyKind::Theme.merge(DirtyKind::Full), DirtyKind::Full);
-    }
-
-    #[test]
-    fn render_dirty_does_not_force_layout_invalidation() {
-        let invalidation = FrameInvalidation::new(DirtyKind::Render);
-
-        assert!(!invalidation.requires_layout());
-    }
-
-    #[test]
-    fn layout_dirty_invalidates_layout() {
-        let mut invalidation = FrameInvalidation::new(DirtyKind::Render);
-
-        invalidation.invalidate(DirtyKind::Layout);
-
-        assert!(invalidation.requires_layout());
-        assert_eq!(invalidation.dirty(), DirtyKind::Layout);
     }
 
     #[derive(Default)]

@@ -306,10 +306,12 @@ fn control_action_for_intent(
 ) -> Option<(HostNodeId, ControlKeyAction)> {
     let (target, focused_kind) = context.focused_control?;
     match focused_kind {
-        FocusedControlKind::TextInput => text_input_action_for_intent(intent)
-            .map(|control_action| (target, control_action)),
-        FocusedControlKind::ScrollView => read_only_action_for_intent(intent)
-            .map(|control_action| (target, control_action)),
+        FocusedControlKind::TextInput => {
+            text_input_action_for_intent(intent).map(|control_action| (target, control_action))
+        }
+        FocusedControlKind::ScrollView => {
+            read_only_action_for_intent(intent).map(|control_action| (target, control_action))
+        }
     }
 }
 
@@ -324,9 +326,10 @@ fn text_input_action_for_intent(intent: &KeyIntent) -> Option<ControlKeyAction> 
         KeyIntent::DeleteBackward => Some(ControlKeyAction::DeleteBackward),
         KeyIntent::DeleteForward => Some(ControlKeyAction::DeleteForward),
         KeyIntent::InsertText(text) => Some(ControlKeyAction::InsertText(text.clone())),
-        KeyIntent::RequestQuit | KeyIntent::FocusNext | KeyIntent::FocusPrev | KeyIntent::App(_) => {
-            None
-        }
+        KeyIntent::RequestQuit
+        | KeyIntent::FocusNext
+        | KeyIntent::FocusPrev
+        | KeyIntent::App(_) => None,
     }
 }
 
@@ -485,11 +488,7 @@ impl LayeredKeyMap {
     }
 
     pub fn app_only(keymap: KeyMap) -> Self {
-        Self::new().with_layer(KeyMapLayer::with_kind(
-            "app",
-            KeyMapLayerKind::App,
-            keymap,
-        ))
+        Self::new().with_layer(KeyMapLayer::with_kind("app", KeyMapLayerKind::App, keymap))
     }
 
     pub fn with_layer(mut self, layer: KeyMapLayer) -> Self {
@@ -499,7 +498,8 @@ impl LayeredKeyMap {
     }
 
     pub fn resolve(&self, event: &KeyEvent) -> Option<KeyIntent> {
-        self.resolve_with_layer(event).map(|resolution| resolution.intent)
+        self.resolve_with_layer(event)
+            .map(|resolution| resolution.intent)
     }
 
     pub fn resolve_with_layer(&self, event: &KeyEvent) -> Option<LayeredKeyMapResolution> {
@@ -511,10 +511,13 @@ impl LayeredKeyMap {
         }
 
         self.layers.iter().find_map(|layer| {
-            layer.keymap.resolve(event).map(|intent| LayeredKeyMapResolution {
-                layer: layer.name,
-                intent,
-            })
+            layer
+                .keymap
+                .resolve(event)
+                .map(|intent| LayeredKeyMapResolution {
+                    layer: layer.name,
+                    intent,
+                })
         })
     }
 }
@@ -537,7 +540,10 @@ pub struct PlatformFallbackKeyMap;
 impl PlatformFallbackKeyMap {
     pub fn new() -> KeyMap {
         KeyMap::new()
-            .bind(KeyEvent::arrow(Direction::Up), KeyIntent::Move(Direction::Up))
+            .bind(
+                KeyEvent::arrow(Direction::Up),
+                KeyIntent::Move(Direction::Up),
+            )
             .bind(
                 KeyEvent::arrow(Direction::Down),
                 KeyIntent::Move(Direction::Down),
@@ -583,7 +589,10 @@ pub struct ReadOnlyNavigationKeyMap;
 impl ReadOnlyNavigationKeyMap {
     pub fn new() -> KeyMap {
         KeyMap::new()
-            .bind(KeyEvent::arrow(Direction::Up), KeyIntent::Move(Direction::Up))
+            .bind(
+                KeyEvent::arrow(Direction::Up),
+                KeyIntent::Move(Direction::Up),
+            )
             .bind(
                 KeyEvent::arrow(Direction::Down),
                 KeyIntent::Move(Direction::Down),
@@ -646,7 +655,10 @@ impl TextInputKeyMap {
                 },
                 KeyIntent::DeleteForward,
             )
-            .bind(KeyEvent::arrow(Direction::Left), KeyIntent::Move(Direction::Left))
+            .bind(
+                KeyEvent::arrow(Direction::Left),
+                KeyIntent::Move(Direction::Left),
+            )
             .bind(
                 KeyEvent::arrow(Direction::Right),
                 KeyIntent::Move(Direction::Right),
@@ -1043,10 +1055,7 @@ mod tests {
         assert_eq!(driver.step(&mut queue), InputThreadStep::Queued);
         assert_eq!(driver.step(&mut queue), InputThreadStep::Queued);
 
-        assert_eq!(
-            queue.pop(),
-            Some(RuntimeInput::Key(KeyEvent::char('x')))
-        );
+        assert_eq!(queue.pop(), Some(RuntimeInput::Key(KeyEvent::char('x'))));
         assert_eq!(queue.pop(), Some(RuntimeInput::Resize(Size::new(10, 2))));
     }
 

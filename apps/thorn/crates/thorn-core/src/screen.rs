@@ -1,6 +1,6 @@
 use crate::{
-    layout_tree, lower_element, paint_tree, Element, HostNode, LayoutNode, PaintPrimitive, Rect,
-    Size,
+    layout_tree, lower_element, paint_tree, Element, HostNode, LayoutNode, PaintAttrs, PaintColor,
+    PaintPrimitive, PaintStyle, Rect, Size,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +33,13 @@ impl Cell {
         self.background = Some(background);
         self
     }
+
+    pub fn with_style(mut self, style: PaintStyle) -> Self {
+        self.foreground = style.foreground.map(Color::from);
+        self.background = style.background.map(Color::from);
+        self.attrs = CellAttrs::from(style.attrs);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +47,16 @@ pub enum Color {
     Default,
     Indexed(u8),
     Rgb(u8, u8, u8),
+}
+
+impl From<PaintColor> for Color {
+    fn from(value: PaintColor) -> Self {
+        match value {
+            PaintColor::Default => Self::Default,
+            PaintColor::Indexed(index) => Self::Indexed(index),
+            PaintColor::Rgb(r, g, b) => Self::Rgb(r, g, b),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +81,22 @@ impl CellAttrs {
 impl Default for CellAttrs {
     fn default() -> Self {
         Self::empty()
+    }
+}
+
+impl From<PaintAttrs> for CellAttrs {
+    fn from(value: PaintAttrs) -> Self {
+        let mut attrs = Self::empty();
+        if value.contains(PaintAttrs::BOLD) {
+            attrs.bits |= Self::BOLD.bits;
+        }
+        if value.contains(PaintAttrs::UNDERLINE) {
+            attrs.bits |= Self::UNDERLINE.bits;
+        }
+        if value.contains(PaintAttrs::REVERSED) {
+            attrs.bits |= Self::REVERSED.bits;
+        }
+        attrs
     }
 }
 
@@ -99,7 +132,8 @@ impl Screen {
             }
             let index = usize::from(y) * usize::from(self.size.width) + usize::from(x);
             if let Some(cell) = self.cells.get_mut(index) {
-                *cell = Cell::new(ch);
+                cell.ch = ch;
+                cell.wide = WideCell::Normal;
             }
         }
     }
@@ -112,9 +146,9 @@ impl Screen {
 
     fn apply_primitive(&mut self, primitive: &PaintPrimitive) {
         match primitive {
-            PaintPrimitive::FillRect { rect, cell } => self.fill_rect(*rect, *cell),
+            PaintPrimitive::FillRect { rect, style } => self.fill_rect(*rect, *style),
             PaintPrimitive::TextRun { x, y, text } => self.write_text(*x, *y, text),
-            PaintPrimitive::Border { rect, cell } => self.draw_border(*rect, *cell),
+            PaintPrimitive::Border { rect, style } => self.draw_border(*rect, *style),
             PaintPrimitive::Cursor { .. } => {}
             PaintPrimitive::Clip { rect, children } => {
                 for child in children {
@@ -122,7 +156,7 @@ impl Screen {
                 }
             }
             PaintPrimitive::Layer { children, .. } => {
-                for child in children {
+                for child in sorted_layer_children(children) {
                     self.apply_primitive(child);
                 }
             }
@@ -131,13 +165,16 @@ impl Screen {
 
     fn apply_clipped(&mut self, clip: Rect, primitive: &PaintPrimitive) {
         match primitive {
-            PaintPrimitive::FillRect { rect, cell } => {
+            PaintPrimitive::FillRect { rect, style } => {
                 if let Some(rect) = intersect_rects(*rect, clip) {
-                    self.fill_rect(rect, *cell);
+                    self.fill_rect(rect, *style);
                 }
             }
             PaintPrimitive::TextRun { x, y, text } => {
-                if *y < clip.y || *y >= clip.y.saturating_add(clip.height) || *x >= clip.x.saturating_add(clip.width) {
+                if *y < clip.y
+                    || *y >= clip.y.saturating_add(clip.height)
+                    || *x >= clip.x.saturating_add(clip.width)
+                {
                     return;
                 }
                 let skip = clip.x.saturating_sub(*x) as usize;
@@ -148,10 +185,8 @@ impl Screen {
                 let clipped = text.chars().skip(skip).take(take).collect::<String>();
                 self.write_text((*x).max(clip.x), *y, &clipped);
             }
-            PaintPrimitive::Border { rect, cell } => {
-                if let Some(rect) = intersect_rects(*rect, clip) {
-                    self.draw_border(rect, *cell);
-                }
+            PaintPrimitive::Border { rect, style } => {
+                self.draw_border_clipped(*rect, *style, clip);
             }
             PaintPrimitive::Cursor { .. } => {}
             PaintPrimitive::Clip { rect, children } => {
@@ -162,49 +197,73 @@ impl Screen {
                 }
             }
             PaintPrimitive::Layer { children, .. } => {
-                for child in children {
+                for child in sorted_layer_children(children) {
                     self.apply_clipped(clip, child);
                 }
             }
         }
     }
 
-    pub fn fill_rect(&mut self, rect: Rect, cell: Cell) {
+    pub fn fill_rect(&mut self, rect: Rect, style: PaintStyle) {
         let bottom = rect.y.saturating_add(rect.height).min(self.size.height);
         let right = rect.x.saturating_add(rect.width).min(self.size.width);
         for y in rect.y..bottom {
             for x in rect.x..right {
                 let index = usize::from(y) * usize::from(self.size.width) + usize::from(x);
                 if let Some(target) = self.cells.get_mut(index) {
-                    *target = cell;
+                    *target = target.with_style(style);
                 }
             }
         }
     }
 
-    fn draw_border(&mut self, rect: Rect, cell: Cell) {
+    fn draw_border(&mut self, rect: Rect, style: PaintStyle) {
         if rect.width == 0 || rect.height == 0 {
             return;
         }
         let right = rect.x.saturating_add(rect.width).saturating_sub(1);
         let bottom = rect.y.saturating_add(rect.height).saturating_sub(1);
         for x in rect.x..=right.min(self.size.width.saturating_sub(1)) {
-            self.set_cell(x, rect.y, cell);
-            self.set_cell(x, bottom, cell);
+            self.set_styled_char(x, rect.y, '#', style);
+            self.set_styled_char(x, bottom, '#', style);
         }
         for y in rect.y..=bottom.min(self.size.height.saturating_sub(1)) {
-            self.set_cell(rect.x, y, cell);
-            self.set_cell(right, y, cell);
+            self.set_styled_char(rect.x, y, '#', style);
+            self.set_styled_char(right, y, '#', style);
         }
     }
 
-    fn set_cell(&mut self, x: u16, y: u16, cell: Cell) {
+    fn draw_border_clipped(&mut self, rect: Rect, style: PaintStyle, clip: Rect) {
+        if rect.width == 0 || rect.height == 0 {
+            return;
+        }
+        let right = rect.x.saturating_add(rect.width).saturating_sub(1);
+        let bottom = rect.y.saturating_add(rect.height).saturating_sub(1);
+        for x in rect.x..=right {
+            if point_in_rect(x, rect.y, clip) {
+                self.set_styled_char(x, rect.y, '#', style);
+            }
+            if point_in_rect(x, bottom, clip) {
+                self.set_styled_char(x, bottom, '#', style);
+            }
+        }
+        for y in rect.y..=bottom {
+            if point_in_rect(rect.x, y, clip) {
+                self.set_styled_char(rect.x, y, '#', style);
+            }
+            if point_in_rect(right, y, clip) {
+                self.set_styled_char(right, y, '#', style);
+            }
+        }
+    }
+
+    fn set_styled_char(&mut self, x: u16, y: u16, ch: char, style: PaintStyle) {
         if x >= self.size.width || y >= self.size.height {
             return;
         }
         let index = usize::from(y) * usize::from(self.size.width) + usize::from(x);
         if let Some(target) = self.cells.get_mut(index) {
-            *target = cell;
+            *target = Cell::new(ch).with_style(style);
         }
     }
 
@@ -264,10 +323,10 @@ pub fn diff_screens(previous: &Screen, next: &Screen) -> ScreenPatch {
     };
 
     let regions = if full {
-            full_regions(next.size)
-        } else {
-            dirty_regions_from_cells(next.size, &cells)
-        };
+        full_regions(next.size)
+    } else {
+        dirty_regions_from_cells(next.size, &cells)
+    };
 
     ScreenPatch {
         size: next.size,
@@ -322,8 +381,26 @@ fn intersect_rects(a: Rect, b: Rect) -> Option<Rect> {
     let x1 = a.x.max(b.x);
     let y1 = a.y.max(b.y);
     let x2 = a.x.saturating_add(a.width).min(b.x.saturating_add(b.width));
-    let y2 = a.y.saturating_add(a.height).min(b.y.saturating_add(b.height));
+    let y2 =
+        a.y.saturating_add(a.height)
+            .min(b.y.saturating_add(b.height));
     (x2 > x1 && y2 > y1).then(|| Rect::new(x1, y1, x2 - x1, y2 - y1))
+}
+
+fn point_in_rect(x: u16, y: u16, rect: Rect) -> bool {
+    x >= rect.x
+        && y >= rect.y
+        && x < rect.x.saturating_add(rect.width)
+        && y < rect.y.saturating_add(rect.height)
+}
+
+fn sorted_layer_children(children: &[PaintPrimitive]) -> Vec<&PaintPrimitive> {
+    let mut children = children.iter().collect::<Vec<_>>();
+    children.sort_by_key(|primitive| match primitive {
+        PaintPrimitive::Layer { z_index, .. } => *z_index,
+        _ => 0,
+    });
+    children
 }
 
 fn screen_cells_as_patches(screen: &Screen) -> Vec<CellPatch> {
@@ -498,13 +575,81 @@ mod tests {
 
         screen.apply(&[PaintPrimitive::FillRect {
             rect: Rect::new(1, 0, 2, 2),
-            cell: Cell::new(' ').with_background(Color::Indexed(4)),
+            style: PaintStyle {
+                background: Some(PaintColor::Indexed(4)),
+                ..PaintStyle::default()
+            },
         }]);
 
         assert_eq!(screen.cells[1].background, Some(Color::Indexed(4)));
         assert_eq!(screen.cells[2].background, Some(Color::Indexed(4)));
         assert_eq!(screen.cells[4].background, Some(Color::Indexed(4)));
         assert_eq!(screen.cells[5].background, Some(Color::Indexed(4)));
+    }
+
+    #[test]
+    fn text_run_preserves_existing_background() {
+        let mut screen = Screen::new(Size::new(3, 1));
+        screen.apply(&[PaintPrimitive::FillRect {
+            rect: Rect::new(0, 0, 3, 1),
+            style: PaintStyle {
+                background: Some(PaintColor::Indexed(4)),
+                ..PaintStyle::default()
+            },
+        }]);
+
+        screen.apply(&[PaintPrimitive::TextRun {
+            x: 1,
+            y: 0,
+            text: "x".to_string(),
+        }]);
+
+        assert_eq!(screen.cells[1].ch, 'x');
+        assert_eq!(screen.cells[1].background, Some(Color::Indexed(4)));
+    }
+
+    #[test]
+    fn clipped_border_keeps_original_edges_not_clip_edges() {
+        let mut screen = Screen::new(Size::new(5, 3));
+
+        screen.apply(&[PaintPrimitive::Clip {
+            rect: Rect::new(1, 1, 3, 1),
+            children: vec![PaintPrimitive::Border {
+                rect: Rect::new(0, 0, 5, 3),
+                style: PaintStyle::default(),
+            }],
+        }]);
+
+        assert!(!screen.to_plain_text().contains('#'));
+    }
+
+    #[test]
+    fn layer_children_are_applied_by_z_index() {
+        let mut screen = Screen::new(Size::new(1, 1));
+
+        screen.apply(&[PaintPrimitive::Layer {
+            z_index: 0,
+            children: vec![
+                PaintPrimitive::Layer {
+                    z_index: 10,
+                    children: vec![PaintPrimitive::TextRun {
+                        x: 0,
+                        y: 0,
+                        text: "b".to_string(),
+                    }],
+                },
+                PaintPrimitive::Layer {
+                    z_index: 1,
+                    children: vec![PaintPrimitive::TextRun {
+                        x: 0,
+                        y: 0,
+                        text: "a".to_string(),
+                    }],
+                },
+            ],
+        }]);
+
+        assert_eq!(screen.to_plain_text(), "b");
     }
 
     #[test]
