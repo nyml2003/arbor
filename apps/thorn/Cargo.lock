@@ -38,3 +38,10 @@ dependencies = [
  "thorn-core",
  "thorn-runtime",
 ]
+
+[[package]]
+name = "thorn-win32"
+version = "0.1.0"
+dependencies = [
+ "thorn-core",
+]
