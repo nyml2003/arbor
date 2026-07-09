@@ -79,11 +79,12 @@ fn main() -> std::io::Result<()> {
     let mut output = Vec::new();
     runtime.run_with_io(&b"p\nq\n"[..], &mut output)?;
     let output = String::from_utf8_lossy(&output);
+    let final_screen = runtime.render_text();
     print!("{output}");
 
-    if output.contains("Aster Agent [ready]")
-        && output.contains("prompts: 1")
-        && output.contains("tool: cargo check passed")
+    if final_screen.contains("Aster Agent [ready]")
+        && final_screen.contains("prompts: 1")
+        && final_screen.contains("tool: cargo check passed")
     {
         println!("\nASTER_AGENT_READY");
         Ok(())

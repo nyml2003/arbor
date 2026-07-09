@@ -11,6 +11,9 @@ thorn-headless = { path = "../thorn-headless" }
 thorn-runtime = { path = "../thorn-runtime" }
 thorn-terminal = { path = "../thorn-terminal" }
 
+[dev-dependencies]
+toml = "0.8"
+
 [lib]
 path = "src/lib.rs"
 

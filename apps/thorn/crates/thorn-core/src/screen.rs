@@ -1,6 +1,6 @@
 use crate::{
-    layout_tree, lower_element, paint_tree, Element, HostNode, LayoutNode, PaintAttrs, PaintColor,
-    PaintPrimitive, PaintStyle, Rect, Size,
+    layout_tree, lower_element, paint_tree_with_theme, Element, HostNode, LayoutNode, PaintAttrs,
+    PaintColor, PaintPrimitive, PaintStyle, Rect, Size, Theme,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +139,7 @@ impl Screen {
     }
 
     pub fn apply(&mut self, paint: &[PaintPrimitive]) {
-        for primitive in paint {
+        for primitive in sorted_paint_primitives(paint) {
             self.apply_primitive(primitive);
         }
     }
@@ -151,12 +151,12 @@ impl Screen {
             PaintPrimitive::Border { rect, style } => self.draw_border(*rect, *style),
             PaintPrimitive::Cursor { .. } => {}
             PaintPrimitive::Clip { rect, children } => {
-                for child in children {
+                for child in sorted_paint_primitives(children) {
                     self.apply_clipped(*rect, child);
                 }
             }
             PaintPrimitive::Layer { children, .. } => {
-                for child in sorted_layer_children(children) {
+                for child in sorted_paint_primitives(children) {
                     self.apply_primitive(child);
                 }
             }
@@ -191,13 +191,13 @@ impl Screen {
             PaintPrimitive::Cursor { .. } => {}
             PaintPrimitive::Clip { rect, children } => {
                 if let Some(rect) = intersect_rects(*rect, clip) {
-                    for child in children {
+                    for child in sorted_paint_primitives(children) {
                         self.apply_clipped(rect, child);
                     }
                 }
             }
             PaintPrimitive::Layer { children, .. } => {
-                for child in sorted_layer_children(children) {
+                for child in sorted_paint_primitives(children) {
                     self.apply_clipped(clip, child);
                 }
             }
@@ -394,13 +394,13 @@ fn point_in_rect(x: u16, y: u16, rect: Rect) -> bool {
         && y < rect.y.saturating_add(rect.height)
 }
 
-fn sorted_layer_children(children: &[PaintPrimitive]) -> Vec<&PaintPrimitive> {
-    let mut children = children.iter().collect::<Vec<_>>();
-    children.sort_by_key(|primitive| match primitive {
+fn sorted_paint_primitives(primitives: &[PaintPrimitive]) -> Vec<&PaintPrimitive> {
+    let mut primitives = primitives.iter().collect::<Vec<_>>();
+    primitives.sort_by_key(|primitive| match primitive {
         PaintPrimitive::Layer { z_index, .. } => *z_index,
         _ => 0,
     });
-    children
+    primitives
 }
 
 fn screen_cells_as_patches(screen: &Screen) -> Vec<CellPatch> {
@@ -449,9 +449,17 @@ pub struct RenderedFrame<Action> {
 }
 
 pub fn render_pipeline<Action>(element: &Element<Action>, size: Size) -> RenderedFrame<Action> {
+    render_pipeline_with_theme(element, size, &Theme::default())
+}
+
+pub fn render_pipeline_with_theme<Action>(
+    element: &Element<Action>,
+    size: Size,
+    theme: &Theme,
+) -> RenderedFrame<Action> {
     let host = lower_element(element);
     let layout = layout_tree(&host, size);
-    let paint = paint_tree(&host, &layout);
+    let paint = paint_tree_with_theme(&host, &layout, theme, size);
     let mut screen = Screen::new(size);
     screen.apply(&paint);
     RenderedFrame {
@@ -466,10 +474,18 @@ pub fn render_to_screen<Action>(element: &Element<Action>, size: Size) -> Screen
     render_pipeline(element, size).screen
 }
 
+pub fn render_to_screen_with_theme<Action>(
+    element: &Element<Action>,
+    size: Size,
+    theme: &Theme,
+) -> Screen {
+    render_pipeline_with_theme(element, size, theme).screen
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{row, text};
+    use crate::{clip, column, layer, row, scroll_view, text, view, ScrollOffset};
 
     #[test]
     fn paint_text_run_writes_cells() {
@@ -498,6 +514,16 @@ mod tests {
     }
 
     #[test]
+    fn default_row_render_behavior_is_unchanged_without_gap_or_padding() {
+        let frame = render_pipeline(&row((text::<()>("a"), text::<()>("bb"))), Size::new(10, 2));
+
+        assert_eq!(frame.layout[0].content_rect, Rect::new(0, 0, 10, 2));
+        assert_eq!(frame.layout[1].rect, Rect::new(0, 0, 1, 2));
+        assert_eq!(frame.layout[2].rect, Rect::new(1, 0, 2, 2));
+        assert_eq!(frame.screen.to_plain_text(), "abb\n");
+    }
+
+    #[test]
     fn render_pipeline_exposes_intermediate_outputs() {
         let frame = render_pipeline(&text::<()>("hello"), Size::new(10, 2));
 
@@ -511,6 +537,59 @@ mod tests {
         let screen = render_to_screen(&text::<()>("hello"), Size::new(3, 1));
 
         assert_eq!(screen.to_plain_text(), "hel");
+    }
+
+    #[test]
+    fn vertical_scroll_offset_renders_later_logical_content_in_viewport() {
+        let screen = render_to_screen(
+            &view((column((text::<()>("a"), text::<()>("b"), text::<()>("c"))),))
+                .scroll_offset(ScrollOffset::new(0, 1)),
+            Size::new(1, 1),
+        );
+
+        assert_eq!(screen.to_plain_text(), "b");
+    }
+
+    #[test]
+    fn horizontal_scroll_offset_renders_visible_text_window() {
+        let screen = render_to_screen(
+            &view((text::<()>("hello"),)).scroll_offset(ScrollOffset::new(2, 0)),
+            Size::new(3, 1),
+        );
+
+        assert_eq!(screen.to_plain_text(), "llo");
+    }
+
+    #[test]
+    fn scroll_view_helper_renders_later_logical_content_in_viewport() {
+        let screen = render_to_screen(
+            &scroll_view((column((text::<()>("a"), text::<()>("b"), text::<()>("c"))),))
+                .scroll_offset(ScrollOffset::new(0, 1)),
+            Size::new(1, 1),
+        );
+
+        assert_eq!(screen.to_plain_text(), "b");
+    }
+
+    #[test]
+    fn render_pipeline_applies_theme_canvas_before_paint() {
+        let theme = Theme::new(PaintStyle {
+            background: Some(PaintColor::Indexed(5)),
+            ..PaintStyle::default()
+        });
+
+        let frame = render_pipeline_with_theme(&text::<()>("hi"), Size::new(3, 1), &theme);
+
+        assert_eq!(
+            frame.paint.first(),
+            Some(&PaintPrimitive::FillRect {
+                rect: Rect::new(0, 0, 3, 1),
+                style: theme.canvas,
+            })
+        );
+        assert_eq!(frame.screen.cells[0].background, Some(Color::Indexed(5)));
+        assert_eq!(frame.screen.cells[1].background, Some(Color::Indexed(5)));
+        assert_eq!(frame.screen.cells[2].background, Some(Color::Indexed(5)));
     }
 
     #[test]
@@ -609,6 +688,30 @@ mod tests {
     }
 
     #[test]
+    fn text_run_preserves_existing_foreground_and_attrs() {
+        let mut screen = Screen::new(Size::new(1, 1));
+        screen.apply(&[PaintPrimitive::FillRect {
+            rect: Rect::new(0, 0, 1, 1),
+            style: PaintStyle {
+                foreground: Some(PaintColor::Indexed(2)),
+                background: Some(PaintColor::Indexed(4)),
+                attrs: PaintAttrs::BOLD,
+            },
+        }]);
+
+        screen.apply(&[PaintPrimitive::TextRun {
+            x: 0,
+            y: 0,
+            text: "x".to_string(),
+        }]);
+
+        assert_eq!(screen.cells[0].ch, 'x');
+        assert_eq!(screen.cells[0].foreground, Some(Color::Indexed(2)));
+        assert_eq!(screen.cells[0].background, Some(Color::Indexed(4)));
+        assert!(screen.cells[0].attrs.contains(CellAttrs::BOLD));
+    }
+
+    #[test]
     fn clipped_border_keeps_original_edges_not_clip_edges() {
         let mut screen = Screen::new(Size::new(5, 3));
 
@@ -621,6 +724,34 @@ mod tests {
         }]);
 
         assert!(!screen.to_plain_text().contains('#'));
+    }
+
+    #[test]
+    fn clipped_border_does_not_draw_a_new_border_around_clip_rect() {
+        let mut screen = Screen::new(Size::new(5, 5));
+
+        screen.apply(&[PaintPrimitive::Clip {
+            rect: Rect::new(1, 0, 2, 2),
+            children: vec![PaintPrimitive::Border {
+                rect: Rect::new(0, 0, 5, 5),
+                style: PaintStyle::default(),
+            }],
+        }]);
+
+        assert_eq!(screen.cells[1].ch, '#');
+        assert_eq!(screen.cells[2].ch, '#');
+        assert_eq!(screen.cells[6].ch, ' ');
+        assert_eq!(screen.cells[7].ch, ' ');
+    }
+
+    #[test]
+    fn clip_helper_clips_rendered_content_without_backend_specific_code() {
+        let screen = render_to_screen(
+            &clip((text::<()>("hello"),)).fixed_size(Size::new(3, 1)),
+            Size::new(3, 1),
+        );
+
+        assert_eq!(screen.to_plain_text(), "hel");
     }
 
     #[test]
@@ -648,6 +779,45 @@ mod tests {
                 },
             ],
         }]);
+
+        assert_eq!(screen.to_plain_text(), "b");
+    }
+
+    #[test]
+    fn top_level_layers_are_applied_by_z_index() {
+        let mut screen = Screen::new(Size::new(1, 1));
+
+        screen.apply(&[
+            PaintPrimitive::Layer {
+                z_index: 10,
+                children: vec![PaintPrimitive::TextRun {
+                    x: 0,
+                    y: 0,
+                    text: "b".to_string(),
+                }],
+            },
+            PaintPrimitive::Layer {
+                z_index: 1,
+                children: vec![PaintPrimitive::TextRun {
+                    x: 0,
+                    y: 0,
+                    text: "a".to_string(),
+                }],
+            },
+        ]);
+
+        assert_eq!(screen.to_plain_text(), "b");
+    }
+
+    #[test]
+    fn layer_helper_orders_screen_output_by_z_index() {
+        let screen = render_to_screen(
+            &layer(
+                0,
+                (layer(1, (text::<()>("a"),)), layer(10, (text::<()>("b"),))),
+            ),
+            Size::new(1, 1),
+        );
 
         assert_eq!(screen.to_plain_text(), "b");
     }

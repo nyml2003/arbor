@@ -1,4 +1,7 @@
-use thorn_core::{IntentMapper, KeyIntent, KeyMap, PaintPrimitive, RuntimeInput, Screen, ThornApp};
+use thorn_core::{
+    IntentMapper, KeyIntent, KeyMap, LayeredKeyMap, PaintPrimitive, RuntimeInput, Screen, Size,
+    ThornApp,
+};
 use thorn_runtime::AppRuntime;
 
 pub struct TestRuntime<App>
@@ -25,6 +28,21 @@ where
 
     pub fn keymap(mut self, keymap: KeyMap) -> Self {
         self.runtime = self.runtime.keymap(keymap);
+        self
+    }
+
+    pub fn layered_keymap(mut self, keymap: LayeredKeyMap) -> Self {
+        self.runtime = self.runtime.layered_keymap(keymap);
+        self
+    }
+
+    pub fn app_keymap(mut self, keymap: KeyMap) -> Self {
+        self.runtime = self.runtime.app_keymap(keymap);
+        self
+    }
+
+    pub fn mode_keymap(mut self, mode: &'static str, keymap: KeyMap) -> Self {
+        self.runtime = self.runtime.mode_keymap(mode, keymap);
         self
     }
 
@@ -97,7 +115,7 @@ pub struct PaintSnapshot {
 }
 
 impl PaintSnapshot {
-    pub fn from_primitives(size: thorn_core::Size, paint: &[PaintPrimitive]) -> Self {
+    pub fn from_primitives(size: Size, paint: &[PaintPrimitive]) -> Self {
         let mut screen = Screen::new(size);
         screen.apply(paint);
         Self {
@@ -140,7 +158,10 @@ impl ScreenSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use thorn_core::{column, row, text, AppContext, Element, KeyAction, KeyEvent};
+    use thorn_core::{
+        column, render_pipeline_with_theme, row, text, AppContext, Element, KeyAction, KeyEvent,
+        PaintColor, PaintPrimitive, PaintStyle, Size, Theme,
+    };
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum CounterAction {
@@ -288,7 +309,7 @@ mod tests {
     #[test]
     fn headless_can_snapshot_paint_output_not_only_plain_text() {
         let snapshot = PaintSnapshot::from_primitives(
-            thorn_core::Size::new(8, 1),
+            Size::new(8, 1),
             &[PaintPrimitive::TextRun {
                 x: 0,
                 y: 0,
@@ -298,6 +319,23 @@ mod tests {
 
         assert_eq!(snapshot.cells, 8);
         assert!(snapshot.text.contains("paint"));
+    }
+
+    #[test]
+    fn headless_paint_snapshot_observes_theme_canvas_primitive() {
+        let theme = Theme::new(PaintStyle {
+            background: Some(PaintColor::Indexed(2)),
+            ..PaintStyle::default()
+        });
+        let frame = render_pipeline_with_theme(&text::<()>("ok"), Size::new(4, 1), &theme);
+        let snapshot = PaintSnapshot::from_primitives(Size::new(4, 1), &frame.paint);
+
+        assert_eq!(snapshot.cells, 4);
+        assert!(matches!(
+            frame.paint.first(),
+            Some(PaintPrimitive::FillRect { .. })
+        ));
+        assert_eq!(snapshot.text, "ok");
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

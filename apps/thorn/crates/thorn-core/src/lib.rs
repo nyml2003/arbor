@@ -6,15 +6,16 @@ mod input;
 mod layout;
 mod paint;
 mod screen;
+mod theme;
 
-pub use app::{AppContext, ThornApp};
+pub use app::{AppContext, DirtyKind, FrameInvalidation, ThornApp};
 pub use backend::{
     BackendCapabilities, BackendError, BackendFeature, BackendPresenter, PresentedFrame,
     UnsupportedBackendFeature,
 };
 pub use element::{
-    column, row, text, view, Axis, Element, ElementNode, IntoChildren, StackElement, TextElement,
-    ViewElement,
+    clip, column, layer, row, scroll_view, text, view, Axis, Element, ElementNode, IntoChildren,
+    LayerElement, StackElement, TextElement, ViewElement,
 };
 pub use host::{lower_element, HostKind, HostNode, HostNodeId};
 pub use input::{
@@ -26,9 +27,17 @@ pub use input::{
     LayeredKeyMapResolution, PlatformFallbackKeyMap, ReadOnlyNavigationKeyMap, RuntimeInput,
     TextInputKeyMap, VimNavigationKeyMap,
 };
-pub use layout::{layout_tree, LayoutNode, Rect, Size};
-pub use paint::{paint_tree, PaintAttrs, PaintColor, PaintPrimitive, PaintStyle};
-pub use screen::{
-    diff_screens, render_pipeline, render_to_screen, Cell, CellAttrs, CellPatch, Color,
-    DirtyRegion, RenderedFrame, Screen, ScreenPatch, WideCell,
+pub use layout::{
+    layout_tree, layout_tree_with_metrics, text_display_width, BackendMetrics, CrossAxisAlignment,
+    LayoutConstraints, LayoutNode, LayoutOverflow, LayoutStyle, MainAxisAlignment, Margin, Padding,
+    Rect, ScrollOffset, Size, TextMetrics,
 };
+pub use paint::{
+    paint_tree, paint_tree_with_theme, PaintAttrs, PaintColor, PaintPrimitive, PaintStyle,
+};
+pub use screen::{
+    diff_screens, render_pipeline, render_pipeline_with_theme, render_to_screen,
+    render_to_screen_with_theme, Cell, CellAttrs, CellPatch, Color, DirtyRegion, RenderedFrame,
+    Screen, ScreenPatch, WideCell,
+};
+pub use theme::Theme;
