@@ -21,7 +21,7 @@ Arbor 现在按两条线推进：
 当前默认策略是孵化器 monorepo：
 
 - `apps/container`、`workspace/*` 是 Arbor 本体，长期留在本仓库。
-- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock`、`apps/thorn`、`apps/netmon` 是孵化项目，先留在本仓库。
+- `apps/capture`、`apps/keydock`、`apps/clipdock`、`apps/memvfs`、`apps/aster`、`apps/shamrock`、`apps/thorn`、`apps/punctum`、`apps/netmon` 是孵化项目，先留在本仓库。
 - `packages/arbor-ui-*`、`packages/skill-manager-core` 是可复用基础设施，先跟随使用方一起演化。
 - 只有当一个项目有独立用户、独立发布节奏、独立构建测试，并且不再依赖 Arbor 私有数据时，才拆独立 git 仓库。
 
@@ -282,6 +282,22 @@ Arbor 现在按两条线推进：
 - 已完成 `apps/thorn` MVP 纵向切片。
 - 已覆盖 `Signal -> Effect -> dynamic text slot -> layout -> theme -> screen render -> diff -> TestApp assert`。
 - 后续再补 `Memo`、`Show`、`For`、真实 terminal runtime 和更完整的 THEP 测试矩阵。
+
+---
+
+## Build 域离散网格实验：Punctum
+
+**目标**：验证同一种离散二维表面和增量提交协议能否同时服务终端 UI 与点阵 2D 游戏渲染。
+
+**定位**：
+- 它是独立 Rust 框架实验，不继承 Thorn 的响应式组件模型。
+- `punctum-grid-core` 只承载整数网格、泛型表面、裁剪和帧差分。
+- Crossterm 与 winit/wgpu 分别留在终端和图形适配层。
+
+**当前阶段**：
+- 已建立 PEP 流程和首份技术方向提案。
+- 尚未初始化 Rust workspace，也没有引入运行时依赖。
+- 下一步通过同一场景双后端、diff 基准和 Unicode 宽字符三个实验验证核心边界。
 
 ---
 

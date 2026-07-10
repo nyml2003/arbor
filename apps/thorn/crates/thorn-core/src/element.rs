@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use crate::layout::{
     CrossAxisAlignment, LayoutStyle, MainAxisAlignment, Margin, Padding, ScrollOffset, Size,
 };
+use crate::PaintStyle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Element<Action> {
@@ -76,6 +77,18 @@ impl<Action> Element<Action> {
         }
     }
 
+    pub fn border(children: Vec<Self>) -> Self {
+        Self {
+            node: ElementNode::Border(BorderElement {
+                axis: Axis::Vertical,
+                layout_style: LayoutStyle::default(),
+                border_style: PaintStyle::default(),
+                children: children.into_iter().map(|child| child.node).collect(),
+            }),
+            _action: PhantomData,
+        }
+    }
+
     pub fn layer(z_index: i16, children: Vec<Self>) -> Self {
         Self {
             node: ElementNode::Layer(LayerElement {
@@ -140,6 +153,13 @@ impl<Action> Element<Action> {
         self
     }
 
+    pub fn border_style(mut self, style: PaintStyle) -> Self {
+        if let ElementNode::Border(border) = &mut self.node {
+            border.border_style = style;
+        }
+        self
+    }
+
     pub fn node(&self) -> &ElementNode {
         &self.node
     }
@@ -151,6 +171,7 @@ impl<Action> Element<Action> {
             ElementNode::Clip(view) => update(&mut view.layout_style),
             ElementNode::Stack(stack) => update(&mut stack.layout_style),
             ElementNode::Layer(layer) => update(&mut layer.layout_style),
+            ElementNode::Border(border) => update(&mut border.layout_style),
             ElementNode::Text(text) => update(&mut text.layout_style),
         }
     }
@@ -164,6 +185,7 @@ pub enum ElementNode {
     Clip(ViewElement),
     Stack(StackElement),
     Layer(LayerElement),
+    Border(BorderElement),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +213,14 @@ pub struct LayerElement {
     pub axis: Axis,
     pub z_index: i16,
     pub layout_style: LayoutStyle,
+    pub children: Vec<ElementNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BorderElement {
+    pub axis: Axis,
+    pub layout_style: LayoutStyle,
+    pub border_style: PaintStyle,
     pub children: Vec<ElementNode>,
 }
 
@@ -256,6 +286,10 @@ pub fn scroll_view<Action>(children: impl IntoChildren<Action>) -> Element<Actio
 
 pub fn clip<Action>(children: impl IntoChildren<Action>) -> Element<Action> {
     Element::clip(children.into_children())
+}
+
+pub fn border<Action>(children: impl IntoChildren<Action>) -> Element<Action> {
+    Element::border(children.into_children())
 }
 
 pub fn layer<Action>(z_index: i16, children: impl IntoChildren<Action>) -> Element<Action> {

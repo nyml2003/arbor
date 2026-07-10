@@ -49,6 +49,7 @@ pub struct UnsupportedBackendFeature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendError {
     UnsupportedFeature(UnsupportedBackendFeature),
+    PresentationFailed { message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

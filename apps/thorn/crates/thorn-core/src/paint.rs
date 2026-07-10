@@ -162,6 +162,21 @@ fn paint_node<Action>(
             }
             paint.push(PaintPrimitive::Layer { z_index, children });
         }
+        HostKind::Border { style, .. } => {
+            if let Some(rect) = translate_rect(layout_node.rect, translate_x, translate_y) {
+                paint.push(PaintPrimitive::Border { rect, style });
+            }
+            for child in &host.children {
+                paint_node(
+                    child,
+                    layout,
+                    translate_x,
+                    translate_y,
+                    inherited_clip,
+                    paint,
+                );
+            }
+        }
         HostKind::View { .. } | HostKind::ScrollView { .. } => {
             for child in &host.children {
                 paint_node(
@@ -265,8 +280,8 @@ fn translate_rect(rect: Rect, translate_x: i32, translate_y: i32) -> Option<Rect
 mod tests {
     use super::*;
     use crate::{
-        clip, column, layer, layout_tree, lower_element, scroll_view, text, view, PaintColor,
-        ScrollOffset, Size,
+        border, clip, column, layer, layout_tree, lower_element, scroll_view, text, view,
+        PaintColor, ScrollOffset, Size,
     };
 
     #[test]
@@ -457,6 +472,29 @@ mod tests {
                     text: "top".to_string(),
                 }],
             }]
+        );
+    }
+
+    #[test]
+    fn border_helper_lowers_to_border_primitive_and_children() {
+        let element = border((text::<()>("ok"),)).fixed_size(Size::new(4, 3));
+        let host = lower_element(&element);
+        let layout = layout_tree(&host, Size::new(4, 3));
+        let paint = paint_tree(&host, &layout);
+
+        assert_eq!(
+            paint,
+            vec![
+                PaintPrimitive::Border {
+                    rect: Rect::new(0, 0, 4, 3),
+                    style: PaintStyle::default(),
+                },
+                PaintPrimitive::TextRun {
+                    x: 1,
+                    y: 1,
+                    text: "ok".to_string(),
+                },
+            ]
         );
     }
 

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{Axis, Element, ElementNode, LayoutStyle};
+use crate::{Axis, Element, ElementNode, LayoutStyle, PaintStyle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HostNodeId(u32);
@@ -21,6 +21,7 @@ pub enum HostKind {
     View { axis: Axis },
     ScrollView { axis: Axis },
     Clip { axis: Axis },
+    Border { axis: Axis, style: PaintStyle },
     Layer { axis: Axis, z_index: i16 },
 }
 
@@ -94,6 +95,17 @@ fn lower_element_node<Action>(node: &ElementNode, next_id: &mut u32) -> HostNode
             children: lower_children(layer.axis, &layer.children, next_id),
             _action: PhantomData,
         },
+        ElementNode::Border(border) => HostNode {
+            id,
+            kind: HostKind::Border {
+                axis: border.axis,
+                style: border.border_style,
+            },
+            layout_style: border.layout_style,
+            text: None,
+            children: lower_children(border.axis, &border.children, next_id),
+            _action: PhantomData,
+        },
     }
 }
 
@@ -120,8 +132,8 @@ fn lower_children<Action>(
 mod tests {
     use super::*;
     use crate::{
-        clip, column, layer, row, scroll_view, text, CrossAxisAlignment, MainAxisAlignment, Margin,
-        Padding, ScrollOffset, Size,
+        border, clip, column, layer, row, scroll_view, text, CrossAxisAlignment, MainAxisAlignment,
+        Margin, Padding, PaintColor, PaintStyle, ScrollOffset, Size,
     };
 
     #[test]
@@ -410,6 +422,28 @@ mod tests {
             }
         );
         assert_eq!(host.children[1].layout_style.padding, Padding::all(1));
+    }
+
+    #[test]
+    fn border_helper_lowers_to_distinct_host_boundary() {
+        let style = PaintStyle {
+            foreground: Some(PaintColor::Indexed(2)),
+            ..PaintStyle::default()
+        };
+        let element = column((
+            text::<()>("a"),
+            border((text::<()>("b"), text::<()>("c"))).border_style(style),
+        ));
+        let host = lower_element(&element);
+
+        assert_eq!(host.children.len(), 2);
+        assert_eq!(
+            host.children[1].kind,
+            HostKind::Border {
+                axis: Axis::Vertical,
+                style
+            }
+        );
     }
 
     #[test]

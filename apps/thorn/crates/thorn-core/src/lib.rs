@@ -14,8 +14,8 @@ pub use backend::{
     UnsupportedBackendFeature,
 };
 pub use element::{
-    clip, column, layer, row, scroll_view, text, view, Axis, Element, ElementNode, IntoChildren,
-    LayerElement, StackElement, TextElement, ViewElement,
+    border, clip, column, layer, row, scroll_view, text, view, Axis, BorderElement, Element,
+    ElementNode, IntoChildren, LayerElement, StackElement, TextElement, ViewElement,
 };
 pub use host::{lower_element, HostKind, HostNode, HostNodeId};
 pub use input::{

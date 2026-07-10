@@ -5,14 +5,14 @@ pub mod prelude {
         app, AppBuilder, AppBuilderWithUpdate, ClosureApp, DefaultIntentMapper,
     };
     pub use thorn_core::{
-        clip, column, layer, row, scroll_view, text, view, AppContext, Axis, BackendCapabilities,
-        BackendError, BackendEventSource, BackendFeature, BackendInputEvent, BackendKey,
-        BackendKeyEvent, BackendPresenter, BoundedInputQueue, Cell, CellAttrs, CellPatch, Color,
-        ControlKeyAction, DefaultKeyMap, Direction, DirtyKind, DirtyRegion, Element,
-        EmacsTextKeyMap, FocusedControlKind, FrameInvalidation, HostKind, HostNode, HostNodeId,
-        InputShutdownSignal, InputThreadDriver, InputThreadStep, IntentContext, IntentMapper,
-        IntentResolver, Key, KeyAction, KeyEvent, KeyEventKind, KeyIntent, KeyMap, KeyMapError,
-        KeyMapLayer, KeyMapLayerKind, KeyMapResult, KeyModifiers, LayeredKeyMap,
+        border, clip, column, layer, row, scroll_view, text, view, AppContext, Axis,
+        BackendCapabilities, BackendError, BackendEventSource, BackendFeature, BackendInputEvent,
+        BackendKey, BackendKeyEvent, BackendPresenter, BoundedInputQueue, Cell, CellAttrs,
+        CellPatch, Color, ControlKeyAction, DefaultKeyMap, Direction, DirtyKind, DirtyRegion,
+        Element, EmacsTextKeyMap, FocusedControlKind, FrameInvalidation, HostKind, HostNode,
+        HostNodeId, InputShutdownSignal, InputThreadDriver, InputThreadStep, IntentContext,
+        IntentMapper, IntentResolver, Key, KeyAction, KeyEvent, KeyEventKind, KeyIntent, KeyMap,
+        KeyMapError, KeyMapLayer, KeyMapLayerKind, KeyMapResult, KeyModifiers, LayeredKeyMap,
         LayeredKeyMapResolution, LayoutNode, PaintAttrs, PaintColor, PaintPrimitive, PaintStyle,
         PlatformFallbackKeyMap, PresentedFrame, ReadOnlyNavigationKeyMap, Rect, RuntimeInput,
         Screen, ScreenPatch, Size, TextInputKeyMap, Theme, ThornApp, UnsupportedBackendFeature,
@@ -20,13 +20,17 @@ pub mod prelude {
     };
     pub use thorn_headless::{PaintSnapshot, ScreenSnapshot, TestRuntime};
     pub use thorn_runtime::{AppRuntime, FrameStats, NoopPerfSink, PerfSink};
-    pub use thorn_terminal::TerminalRuntime;
+    pub use thorn_terminal::{
+        crossterm_event_to_runtime_input, crossterm_terminal_size, read_crossterm_runtime_input,
+        write_screen_patch_crossterm, CrosstermPresenter, CrosstermSession,
+        CrosstermTerminalRuntime, TerminalRuntime,
+    };
 }
 
 pub use facade::{app, AppBuilder, AppBuilderWithUpdate, ClosureApp, DefaultIntentMapper};
 pub use thorn_core::{
-    clip, column, layer, row, scroll_view, text, view, AppContext, DirtyKind, FrameInvalidation,
-    Theme,
+    border, clip, column, layer, row, scroll_view, text, view, AppContext, DirtyKind,
+    FrameInvalidation, Theme,
 };
 
 #[cfg(test)]

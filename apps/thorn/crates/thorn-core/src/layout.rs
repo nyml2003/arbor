@@ -466,9 +466,13 @@ fn layout_metadata<Action>(
         HostKind::View { .. }
         | HostKind::ScrollView { .. }
         | HostKind::Clip { .. }
+        | HostKind::Border { .. }
         | HostKind::Layer { .. } => {
             let measured_size = measure_host(host, metrics);
-            let content_rect = host.layout_style.padding.inset_rect(rect);
+            let content_rect = host
+                .layout_style
+                .padding
+                .inset_rect(border_inset(host.kind).inset_rect(rect));
             let resolved_clip_rect = intersect_rects(content_rect, clip_rect).unwrap_or(Rect::new(
                 content_rect.x.max(clip_rect.x),
                 content_rect.y.max(clip_rect.y),
@@ -512,23 +516,25 @@ fn natural_intrinsic_inline_width<Action>(
             .as_deref()
             .map(|text| measure_text_width(text, metrics))
             .unwrap_or(0),
-        Some(Axis::Horizontal) => {
-            host.layout_style
-                .padding
-                .horizontal()
-                .saturating_add(measure_main_axis_extent(
-                    host.children
-                        .iter()
-                        .map(|child| outer_inline_width(child, metrics)),
-                    host.layout_style.gap,
-                ))
-        }
+        Some(Axis::Horizontal) => host
+            .layout_style
+            .padding
+            .horizontal()
+            .saturating_add(border_inset(host.kind).horizontal())
+            .saturating_add(measure_main_axis_extent(
+                host.children
+                    .iter()
+                    .map(|child| outer_inline_width(child, metrics)),
+                host.layout_style.gap,
+            )),
         Some(Axis::Vertical) => host.layout_style.padding.horizontal().saturating_add(
-            host.children
-                .iter()
-                .map(|child| outer_inline_width(child, metrics))
-                .max()
-                .unwrap_or(0),
+            border_inset(host.kind).horizontal().saturating_add(
+                host.children
+                    .iter()
+                    .map(|child| outer_inline_width(child, metrics))
+                    .max()
+                    .unwrap_or(0),
+            ),
         ),
     }
 }
@@ -543,23 +549,25 @@ fn natural_intrinsic_block_height<Action>(
 ) -> u16 {
     match container_axis(host.kind) {
         None => metrics.line_height.max(1),
-        Some(Axis::Vertical) => {
-            host.layout_style
-                .padding
-                .vertical()
-                .saturating_add(measure_main_axis_extent(
-                    host.children
-                        .iter()
-                        .map(|child| outer_block_height(child, metrics)),
-                    host.layout_style.gap,
-                ))
-        }
+        Some(Axis::Vertical) => host
+            .layout_style
+            .padding
+            .vertical()
+            .saturating_add(border_inset(host.kind).vertical())
+            .saturating_add(measure_main_axis_extent(
+                host.children
+                    .iter()
+                    .map(|child| outer_block_height(child, metrics)),
+                host.layout_style.gap,
+            )),
         Some(Axis::Horizontal) => host.layout_style.padding.vertical().saturating_add(
-            host.children
-                .iter()
-                .map(|child| outer_block_height(child, metrics))
-                .max()
-                .unwrap_or(1),
+            border_inset(host.kind).vertical().saturating_add(
+                host.children
+                    .iter()
+                    .map(|child| outer_block_height(child, metrics))
+                    .max()
+                    .unwrap_or(1),
+            ),
         ),
     }
 }
@@ -1294,7 +1302,12 @@ fn desired_view_content_size<Action>(host: &HostNode<Action>, metrics: &BackendM
         let fixed_content_rect =
             host.layout_style
                 .padding
-                .inset_rect(Rect::new(0, 0, measured.width, measured.height));
+                .inset_rect(border_inset(host.kind).inset_rect(Rect::new(
+                    0,
+                    0,
+                    measured.width,
+                    measured.height,
+                )));
         Size::new(
             natural.width.max(fixed_content_rect.width),
             natural.height.max(fixed_content_rect.height),
@@ -1321,7 +1334,15 @@ fn container_axis(kind: HostKind) -> Option<Axis> {
         HostKind::View { axis }
         | HostKind::ScrollView { axis }
         | HostKind::Clip { axis }
+        | HostKind::Border { axis, .. }
         | HostKind::Layer { axis, .. } => Some(axis),
+    }
+}
+
+fn border_inset(kind: HostKind) -> Padding {
+    match kind {
+        HostKind::Border { .. } => Padding::all(1),
+        _ => Padding::default(),
     }
 }
 

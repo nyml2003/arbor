@@ -224,12 +224,20 @@ impl Screen {
         let right = rect.x.saturating_add(rect.width).saturating_sub(1);
         let bottom = rect.y.saturating_add(rect.height).saturating_sub(1);
         for x in rect.x..=right.min(self.size.width.saturating_sub(1)) {
-            self.set_styled_char(x, rect.y, '#', style);
-            self.set_styled_char(x, bottom, '#', style);
+            if let Some(ch) = border_char_at(rect, x, rect.y) {
+                self.set_styled_char(x, rect.y, ch, style);
+            }
+            if let Some(ch) = border_char_at(rect, x, bottom) {
+                self.set_styled_char(x, bottom, ch, style);
+            }
         }
         for y in rect.y..=bottom.min(self.size.height.saturating_sub(1)) {
-            self.set_styled_char(rect.x, y, '#', style);
-            self.set_styled_char(right, y, '#', style);
+            if let Some(ch) = border_char_at(rect, rect.x, y) {
+                self.set_styled_char(rect.x, y, ch, style);
+            }
+            if let Some(ch) = border_char_at(rect, right, y) {
+                self.set_styled_char(right, y, ch, style);
+            }
         }
     }
 
@@ -241,18 +249,26 @@ impl Screen {
         let bottom = rect.y.saturating_add(rect.height).saturating_sub(1);
         for x in rect.x..=right {
             if point_in_rect(x, rect.y, clip) {
-                self.set_styled_char(x, rect.y, '#', style);
+                if let Some(ch) = border_char_at(rect, x, rect.y) {
+                    self.set_styled_char(x, rect.y, ch, style);
+                }
             }
             if point_in_rect(x, bottom, clip) {
-                self.set_styled_char(x, bottom, '#', style);
+                if let Some(ch) = border_char_at(rect, x, bottom) {
+                    self.set_styled_char(x, bottom, ch, style);
+                }
             }
         }
         for y in rect.y..=bottom {
             if point_in_rect(rect.x, y, clip) {
-                self.set_styled_char(rect.x, y, '#', style);
+                if let Some(ch) = border_char_at(rect, rect.x, y) {
+                    self.set_styled_char(rect.x, y, ch, style);
+                }
             }
             if point_in_rect(right, y, clip) {
-                self.set_styled_char(right, y, '#', style);
+                if let Some(ch) = border_char_at(rect, right, y) {
+                    self.set_styled_char(right, y, ch, style);
+                }
             }
         }
     }
@@ -394,6 +410,29 @@ fn point_in_rect(x: u16, y: u16, rect: Rect) -> bool {
         && y < rect.y.saturating_add(rect.height)
 }
 
+fn border_char_at(rect: Rect, x: u16, y: u16) -> Option<char> {
+    if rect.width == 0 || rect.height == 0 || !point_in_rect(x, y, rect) {
+        return None;
+    }
+
+    let right = rect.x.saturating_add(rect.width).saturating_sub(1);
+    let bottom = rect.y.saturating_add(rect.height).saturating_sub(1);
+    let left_edge = x == rect.x;
+    let right_edge = x == right;
+    let top_edge = y == rect.y;
+    let bottom_edge = y == bottom;
+
+    match (left_edge, right_edge, top_edge, bottom_edge) {
+        (true, _, true, _) => Some('┌'),
+        (_, true, true, _) => Some('┐'),
+        (true, _, _, true) => Some('└'),
+        (_, true, _, true) => Some('┘'),
+        (_, _, true, _) | (_, _, _, true) => Some('─'),
+        (true, _, _, _) | (_, true, _, _) => Some('│'),
+        _ => None,
+    }
+}
+
 fn sorted_paint_primitives(primitives: &[PaintPrimitive]) -> Vec<&PaintPrimitive> {
     let mut primitives = primitives.iter().collect::<Vec<_>>();
     primitives.sort_by_key(|primitive| match primitive {
@@ -485,7 +524,7 @@ pub fn render_to_screen_with_theme<Action>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{clip, column, layer, row, scroll_view, text, view, ScrollOffset};
+    use crate::{border, clip, column, layer, row, scroll_view, text, view, ScrollOffset};
 
     #[test]
     fn paint_text_run_writes_cells() {
@@ -649,6 +688,16 @@ mod tests {
     }
 
     #[test]
+    fn border_element_renders_unicode_box_around_children() {
+        let screen = render_to_screen(
+            &border((text::<()>("ok"),)).fixed_size(Size::new(4, 3)),
+            Size::new(4, 3),
+        );
+
+        assert_eq!(screen.to_plain_text(), "┌──┐\n│ok│\n└──┘");
+    }
+
+    #[test]
     fn fill_rect_paints_cells_with_style() {
         let mut screen = Screen::new(Size::new(3, 2));
 
@@ -723,7 +772,8 @@ mod tests {
             }],
         }]);
 
-        assert!(!screen.to_plain_text().contains('#'));
+        assert!(!screen.to_plain_text().contains('┌'));
+        assert!(!screen.to_plain_text().contains('─'));
     }
 
     #[test]
@@ -738,8 +788,8 @@ mod tests {
             }],
         }]);
 
-        assert_eq!(screen.cells[1].ch, '#');
-        assert_eq!(screen.cells[2].ch, '#');
+        assert_eq!(screen.cells[1].ch, '─');
+        assert_eq!(screen.cells[2].ch, '─');
         assert_eq!(screen.cells[6].ch, ' ');
         assert_eq!(screen.cells[7].ch, ' ');
     }
