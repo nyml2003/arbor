@@ -1,8 +1,0 @@
-{
-  "members": [
-    { "nickname": "Leafy", "species": 3, "moves": [5, 8, 6, 0] },
-    { "nickname": "Sparky", "species": 0, "moves": [2, 1, 7, 0] },
-    { "nickname": "Blaze", "species": 1, "moves": [3, 6, 1, 0] },
-    { "nickname": "Shell", "species": 2, "moves": [4, 9, 0, 0] }
-  ]
-}
