@@ -295,9 +295,25 @@ Arbor 现在按两条线推进：
 - Crossterm 与 winit/wgpu 分别留在终端和图形适配层。
 
 **当前阶段**：
-- 已建立 PEP 流程和首份技术方向提案。
-- 尚未初始化 Rust workspace，也没有引入运行时依赖。
-- 下一步通过同一场景双后端、diff 基准和 Unicode 宽字符三个实验验证核心边界。
+- 已实现 grid、input 和 Terminal 可玩 MVP；pure modules 保持 100% line/function/region coverage。
+- `apps/tetris` 已作为独立消费者验证 surface、diff、键盘输入和 Terminal presenter。
+- 下一步实现 GPU adapter，并补齐 Terminal 的 Unicode width、continuation 和 cursor。
+
+---
+
+## Build 域游戏样例：Tetris
+
+**目标**：用一个可玩的独立项目验证 Punctum，而不把游戏规则写进 UI 框架。
+
+**定位**：
+- 项目位于 `apps/tetris`，拥有独立 `Cargo.toml` 和 `Cargo.lock`。
+- 纯业务核心只依赖 `punctum-grid` 和 `punctum-input`。
+- Terminal example 通过 dev-dependency 使用 `punctum-terminal`，事件循环和 IO 不进入 core。
+
+**当前阶段**：
+- 已实现七种方块、移动、旋转、下落、锁定、消行、结束和重开。
+- Windows Terminal 入口可玩，Tetris core 与 Terminal view 的 pure coverage 为 100%。
+- 下一步在 Punctum GPU adapter 完成后增加 GPU 入口。
 
 ---
 

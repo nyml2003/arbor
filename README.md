@@ -39,6 +39,7 @@ Arbor 已经进入多项目孵化阶段：
 - `apps/shamrock`：Rust 宝可梦对战模拟引擎，保留 core/view/replay/CLI 边界，后续再评估接入容器。
 - `apps/thorn`：Rust TUI 框架实验，已有响应式到内存渲染的 MVP 纵向切片。
 - `apps/punctum`：Rust 离散网格 UI 与渲染实验，先用 PEP 和双后端原型验证 TUI/2D 游戏共享边界。
+- `apps/tetris`：使用 Punctum 的独立俄罗斯方块项目，已提供可玩的 Windows Terminal 入口。
 - `packages/arbor-ui-core`、`packages/arbor-ui-windows`：Rust 原生 GUI 基础层。
 - `packages/manage-core`、`packages/manage-cli`：管理域 v1，提供任务 core、JSON 文件存储和 `arbor-manage` CLI。
 - `packages/skill-manager-core`、`packages/skill-manager-cli`：agent skill 管理器 v1，已支持 path source、显式版本校验、安装、lock 和 prune。

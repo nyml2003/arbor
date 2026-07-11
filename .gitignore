@@ -8,6 +8,7 @@ out/
 
 # Rust build artifacts, including nested workspaces like apps/thorn/target/
 target/
+/.target/
 
 # build artifacts
 *.tsbuildinfo

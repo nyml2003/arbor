@@ -1,0 +1,167 @@
+{
+  "schema_version": "punctum-ramus-b1-records-v1",
+  "recorded_at": "2026-07-11",
+  "status": "Passed",
+  "source_records": "workspace/manage/punctum-vsh-s0/records.json",
+  "baseline_algorithm": {
+    "file_sha256": "SHA-256 of the exact file bytes, lowercase hexadecimal",
+    "sorted_member_list_sha256": "Sort repo-relative member crate directories by ordinal path order, encode each as UTF-8 without BOM followed by LF, concatenate, then SHA-256",
+    "member_manifest_sha256_by_path": "Map each repo-relative member Cargo.toml path to file_sha256, ordered by ordinal path order",
+    "export_sha256": "For each crate, include Cargo.toml and every file below src, fixtures, and tests when present; sort repo-relative file paths by ordinal order; encode each path, NUL, lowercase file_sha256, and LF as UTF-8 without BOM; concatenate and SHA-256"
+  },
+  "retired_paths": [
+    "packages/vsh",
+    "apps/gen3-game/crates/battle-vsh-adapter",
+    "workspace/manage/punctum-vsh-program.md",
+    "workspace/manage/punctum-vsh-architecture-plan.md"
+  ],
+  "canonical_path_dependencies": [
+    {
+      "consumer": "punctum",
+      "dependency": "punctum-grid",
+      "cargo_path": "crates/punctum-grid",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-grid"
+    },
+    {
+      "consumer": "punctum",
+      "dependency": "punctum-input",
+      "cargo_path": "crates/punctum-input",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-input"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-grid",
+      "cargo_path": "../punctum/crates/punctum-grid",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-grid"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-input",
+      "cargo_path": "../punctum/crates/punctum-input",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-input"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-gpu",
+      "cargo_path": "../punctum/crates/punctum-gpu",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-gpu"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "ramus-core",
+      "cargo_path": "../../packages/ramus/crates/ramus-core",
+      "approved_repo_relative_target": "packages/ramus/crates/ramus-core"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-grid",
+      "cargo_path": "../punctum/crates/punctum-grid",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-grid"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-input",
+      "cargo_path": "../punctum/crates/punctum-input",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-input"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-terminal",
+      "cargo_path": "../punctum/crates/punctum-terminal",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-terminal"
+    }
+  ],
+  "workspaces": {
+    "punctum": {
+      "root_manifest": "apps/punctum/Cargo.toml",
+      "root_manifest_sha256": "4e5a29181b6a486d18b27349c196c1b6691a3bd51fcfdf4864e7875ed17918a5",
+      "sorted_member_list_sha256": "bc91218be21cccfb0fb33386a6d29160a682be77e48af75539303655b5e882d3",
+      "member_manifest_sha256_by_path": {
+        "apps/punctum/crates/punctum-gpu/Cargo.toml": "70cb5528aa2a71cf8ec3b4d02c9a49d881d8de11360de0fbc80ab34d346a9632",
+        "apps/punctum/crates/punctum-grid/Cargo.toml": "6c0bb5a25b0a4c4bedcaf0ef23684cfdff2a93db9f5dc4a2204a46dafed436d9",
+        "apps/punctum/crates/punctum-input/Cargo.toml": "c71cd857bc487db5537b1edbc7c418c8d9b66ad9754a9d35b2bb2dab438bf433",
+        "apps/punctum/crates/punctum-terminal/Cargo.toml": "20a84fa3a9d663f6aaf2e4c2255a0501e3e8abd8a0a1b28c483d73b9c1613b23",
+        "apps/punctum/examples/tetris/Cargo.toml": "9030f7f687e6e46c79199c33165526c373524338bed48ad4dc0d10c2070e3b8b"
+      },
+      "lockfile_sha256": "9be2c5c9ed2d00ee6df754c374b3818660f432a24b1dcae197b9f30e14d3d74c",
+      "approved_upstream_crates": [],
+      "approved_upstream_export_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ramus": {
+      "root_manifest": "packages/ramus/Cargo.toml",
+      "root_manifest_sha256": "cb9b208796d7283b191c62648446559ea8ff8aa867b4ab1fc22a8c1c46e69dea",
+      "sorted_member_list_sha256": "0e032a2169c11ec128e741c835748ac95a144f61e2eafc334be378ee4fae5d49",
+      "member_manifest_sha256_by_path": {
+        "packages/ramus/crates/ramus-core/Cargo.toml": "83ac5e14e756f1c71710fcfc846cfb8788bfaeacaf6318037100b0b509d57949"
+      },
+      "lockfile_sha256": "01a1d9b99521eeb3dc332cdfb62cfa36de3962695da73f853c5ca18191f8cc57",
+      "approved_upstream_crates": [],
+      "approved_upstream_export_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "gen3-game": {
+      "root_manifest": "apps/gen3-game/Cargo.toml",
+      "root_manifest_sha256": "845a88b44ec4653a407716f78c46cc568248eaf38a33dcde93985b847e5fee38",
+      "sorted_member_list_sha256": "6ac2016f13e6bbfcf3c542f533e30c8fdf766a5b0dba90d5869f072942200382",
+      "member_manifest_sha256_by_path": {
+        "apps/gen3-game/crates/battle-application/Cargo.toml": "cb5ac6a5ced77609e240724b88ec95a508225f7b8564fb01593d8c768ad9eada",
+        "apps/gen3-game/crates/battle-domain/Cargo.toml": "b83b64f7757ca0869052a0f1df6398ffd88af0bb7990192ccc61927e2f95cc36",
+        "apps/gen3-game/crates/battle-ramus-adapter/Cargo.toml": "569607e77aae24c61994d33c1de9e98791366df170344c9ab3857ce1421d7456",
+        "apps/gen3-game/crates/game-e2e/Cargo.toml": "1c8f262582687f433cb8f333922c7d37f5c592ca67a5a5b3ce55fe7a50d0811f",
+        "apps/gen3-game/crates/game-host/Cargo.toml": "3c95b4be60d7ad78ea232fd8c7f25bf5344ee3f14ef5c12710e7c1bfcf9213af",
+        "apps/gen3-game/crates/game-ui/Cargo.toml": "75488effaf8d971c336d2b7271b104278ed8a14880c203c5a3be30b64c7e2381"
+      },
+      "lockfile_sha256": "294ab1c0c8cf495db50c62a1e9c6e57ba77f9dad57d07fb0703f236f493dde9b",
+      "approved_upstream_crates": [
+        "apps/punctum/crates/punctum-gpu",
+        "apps/punctum/crates/punctum-grid",
+        "apps/punctum/crates/punctum-input",
+        "packages/ramus/crates/ramus-core"
+      ],
+      "approved_upstream_export_sha256": "a4644c0299238c8d6ffa43a84b02aea4a8b00e67f3d719f6b4ec4ceaaf8f52a2"
+    },
+    "tui-chater": {
+      "root_manifest": "apps/tui-chater/Cargo.toml",
+      "root_manifest_sha256": "e5ce972451522e442177b50d6bead515ee68c9189272be89f53d418e86d07b12",
+      "sorted_member_list_sha256": "e7436c6e4a119358d78d0bdc19efdf416b49e25c1f28c185de0aa31bf9bb3e46",
+      "member_manifest_sha256_by_path": {
+        "apps/tui-chater/crates/chat-application/Cargo.toml": "2f37285a3180c929ccca6f740b6f83d28f2af965c8f48a485e37727d53b47ab9",
+        "apps/tui-chater/crates/chater-e2e/Cargo.toml": "08e4e2d88954787dc475773ebd81e811af6163cd857b43dd97418194fcc77850",
+        "apps/tui-chater/crates/chater-ui/Cargo.toml": "9537672f74c30605c1de65995a5f3208f5da3c2d118ab460a2896c5ba4b38ea7",
+        "apps/tui-chater/crates/model-adapter/Cargo.toml": "108c386a8b377c602d4d0916e647ca3a7992975185e685a1d2ee5efce77d427b",
+        "apps/tui-chater/crates/tui-host/Cargo.toml": "71d753ca0ecaf62fa19107da318e9ba3bc07ff1503510394055ff40eda1653b5"
+      },
+      "lockfile_sha256": "7286ec98b6f11c3b047b892320707143ba2f2c4fe36e1ad3eb9d65b0eb704202",
+      "approved_upstream_crates": [
+        "apps/punctum/crates/punctum-grid",
+        "apps/punctum/crates/punctum-input",
+        "apps/punctum/crates/punctum-terminal"
+      ],
+      "approved_upstream_export_sha256": "0a772cc62684f8e56a300ad71b2d5baaa3b4d11f64efaf34016b4bc07b445e25"
+    }
+  },
+  "exports": {
+    "punctum": {
+      "contract_version": "punctum-f1",
+      "crates": [
+        "apps/punctum/crates/punctum-grid",
+        "apps/punctum/crates/punctum-input"
+      ],
+      "sha256": "e7733a2534ece8ea605ec8da155a24a28abfdf7be3afa55b0dcefaff5ba0e4aa"
+    },
+    "ramus": {
+      "contract_version": "ramus-f1",
+      "crates": [
+        "packages/ramus/crates/ramus-core"
+      ],
+      "sha256": "2eab79813eec897e7e2c7171af1db6d8ebf88676985fa6f1bcd058d5b917a109"
+    },
+    "battle": {
+      "contract_version": "battle-f1",
+      "crates": [
+        "apps/gen3-game/crates/battle-domain",
+        "apps/gen3-game/crates/battle-application"
+      ],
+      "sha256": "f9fcd8f55214c964ebaed62327fe3849bf30009fbf625ac1d19400202bd62eb2"
+    }
+  }
+}

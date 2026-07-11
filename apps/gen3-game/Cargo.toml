@@ -2,7 +2,7 @@
 members = [
     "crates/battle-application",
     "crates/battle-domain",
-    "crates/battle-vsh-adapter",
+    "crates/battle-ramus-adapter",
     "crates/game-e2e",
     "crates/game-host",
     "crates/game-ui",
@@ -15,8 +15,8 @@ license = "MIT"
 rust-version = "1.88"
 
 [workspace.dependencies]
+battle-domain = { path = "crates/battle-domain" }
 punctum-gpu = { path = "../punctum/crates/punctum-gpu" }
 punctum-grid = { path = "../punctum/crates/punctum-grid" }
 punctum-input = { path = "../punctum/crates/punctum-input" }
-vsh-core = { path = "../../packages/vsh/crates/vsh-core" }
-
+ramus-core = { path = "../../packages/ramus/crates/ramus-core" }

@@ -1,0 +1,17 @@
+[package]
+name = "punctum-tetris"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+
+[dependencies]
+punctum-grid = { path = "../punctum/crates/punctum-grid" }
+punctum-input = { path = "../punctum/crates/punctum-input" }
+
+[dev-dependencies]
+crossterm = "0.29.0"
+punctum-terminal = { path = "../punctum/crates/punctum-terminal" }
+
+[lib]
+path = "src/lib.rs"

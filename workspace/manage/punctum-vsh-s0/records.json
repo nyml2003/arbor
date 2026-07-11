@@ -120,17 +120,14 @@
   },
   "gates": {
     "BATTLE-RULES-v0.1": {
-      "status": "Blocked",
-      "approval": "Pending Product Owner approval",
+      "status": "Approved",
+      "approval": "Approved by the user on 2026-07-11: Generation III 6v6 singles core rules without abilities, items, or complex status",
       "semantic_owner": "User or Product Owner",
       "custodian": "Program Integration Agent",
-      "canonical_fixture_bundle_path": null,
-      "canonical_fixture_bundle_sha256": null,
-      "blocked_fields": [
-        "canonical_fixture_bundle_path",
-        "canonical_fixture_bundle_sha256"
-      ],
-      "effect": "Battle lane and all game downstream tasks remain blocked. No battle rule was selected or synthesized during S0."
+      "canonical_fixture_bundle_path": "apps/gen3-game/fixtures/battle-rules-v0.1.json",
+      "canonical_fixture_bundle_sha256": "9e755ae2d930c2923831a77106c93bcf762793c76d18300d038e535dac076c59",
+      "blocked_fields": [],
+      "effect": "Battle F1 lane is unblocked. Downstream UI, VSH adapter, host, and E2E work remains subject to its scheduled waves and dependencies."
     },
     "GPU-REF-v0.1": {
       "status": "Blocked",

@@ -5,16 +5,19 @@ version = 4
 [[package]]
 name = "battle-application"
 version = "0.0.0"
+dependencies = [
+ "battle-domain",
+]
 
 [[package]]
 name = "battle-domain"
 version = "0.0.0"
 
 [[package]]
-name = "battle-vsh-adapter"
+name = "battle-ramus-adapter"
 version = "0.0.0"
 dependencies = [
- "vsh-core",
+ "ramus-core",
 ]
 
 [[package]]
@@ -47,5 +50,5 @@ name = "punctum-input"
 version = "0.0.0"
 
 [[package]]
-name = "vsh-core"
+name = "ramus-core"
 version = "0.0.0"
