@@ -2,7 +2,7 @@
 
 - 状态：已批准
 - 批准日期：2026-07-11
-- 实现状态：`S0`、三个 `F1` lane、`B1` 与 `PT1` 已完成；Terminal Unicode 文本合同和 GPU adapter 本地 smoke 已通过；固定环境 GPU readback 仍受 `GPU-REF-v0.1` 阻塞；上层组件候选尚未进入实现 wave
+- 实现状态：`S0`、三个 `F1` lane、`B1` 与 `PT1` 已完成；Terminal Unicode 文本和 GPU 本地 planner/runtime/smoke 已通过；`F2` 仍缺 winit 输入适配，Tetris GPU 入口留待 `B2`；上层组件候选尚未进入实现 wave
 - 评审结果：Planner、Architect、Critic 共识通过，最终 Critic 结论为 `APPROVE`
 - 产品事实来源：[项目群总控](./punctum-ramus-program.md)
 
@@ -507,26 +507,61 @@ Program Integration Agent 创建四个 workspace、四个 lockfile、canonical p
 ### `F2`：adapter lane
 
 - Terminal adapter。Unicode width、continuation、覆盖修复、裁剪、resize 清理和 cursor 合同已完成，28 项测试通过。
-- GPU adapter。本地 logical planner、wgpu runtime 和 headless pipeline smoke 已通过。固定环境 readback 仍需 `GPU-REF-v0.1` 通过。
+- GPU adapter。本地 logical planner、wgpu runtime 和 headless pipeline smoke 已通过。剩余实现只包含 winit 键盘事件规范化和对应合同测试。
 - Chater lane 已取消，不再占用 `F2` writer。
 
 GPU adapter 的本地 logical oracle 和 smoke test 不受 `GPU-REF-v0.1` 阻塞。只有固定环境 readback 与 release gate 继续 `Blocked`。
 
+`F2` 剩余 task packet 固定为：
+
+1. 在 `punctum-gpu` 内把 winit keyboard event 转为 `punctum-input::KeyEvent`。
+2. 精确映射 physical key、logical key、modifier 和 press/repeat/release。未知键使用 `Unidentified`，不能伪造来源没有提供的身份。
+3. 使用可构造的 raw key fixture 验证方向键、Space、physical `KeyR`、字符、modifier、repeat、release 和未知键。
+4. 本阶段不实现 IME composition、`TextInput` 或文本编辑，也不把 Tetris 类型放入 adapter。
+5. handoff 前运行 `punctum-gpu` 的 format、test、Clippy、pure coverage 和 ignored headless smoke。纯 planner 继续保持 line、function 和 region 100% coverage。
+
 ### `B2`：串行 barrier
 
-更新 Punctum 与 Tetris baseline，冻结 Terminal 和 GPU export hash。Program Integration Agent 接受 Tetris 对 GPU adapter 的 dev-dependency，接通 Tetris GPU 运行入口，并在 Windows 11 本地验证两端使用同一业务核心和同一 input contract。两端可以使用不同 projection，但不能复制规则或状态转换。
+`F2` handoff 通过后，只有 Program Integration Agent 可以写 root manifest、lockfile 和 Tetris GPU composition。它执行以下动作：
+
+1. 接受 Tetris 对 `punctum-gpu`、winit 和 host-local async executor 的 dev-dependency，刷新相关 lockfile。
+2. 新增 `apps/tetris/examples/gpu/main.rs` 和纯 GPU view/projection 模块。projection 调用现有 `paint`，再把 `TetrisCell` 转为 `GpuCell`。
+3. 使用白色单像素 atlas 和 tint 表达边框与七种方块颜色。atlas、resource ID 和颜色属于 Tetris GPU view，不进入业务核心。
+4. host 只负责 winit event loop、tick、resize、redraw 和 GPU submission。Terminal/GPU 必须复用 `TetrisState`、`transition`、`paint` 和 `command_for_key`。
+5. viewport 使用整数 cell size 并居中。窗口小于棋盘时允许裁剪；resize、minimize 和 cell pixel size 变化不能修改业务状态。
+6. 首帧提交完整 surface，后续帧使用 grid diff 和 GPU patch。backend submission 细节不能进入 Tetris core。
+7. 为 GPU projection、颜色映射、viewport、resize、game over、restart 和 input chain 增加 pure fixture 或 golden 测试。
+8. 更新 Punctum 与 Tetris baseline，冻结 Terminal 和 GPU export hash，并在 Windows 11 本地分别运行 Terminal 与 GPU smoke。
 
 Tetris 双后端本地 smoke test 通过后，Punctum adapter 才交给 Poke Game 消费。Tetris 不能替代后续 Game E2E。
 
 ### `F3`：provisional UI foundation
 
-- 建立 UI ADR，冻结 constraints、measure、layout、paint、clip、identity 和 state ownership 的 provisional 合同。
-- 实现第一组 `Text`、`Row`、`Column`、`Border`、`Padding`、`Spacer` 和 `Align`，再用 Tetris 页面验证。
-- 完成焦点 registry、scope、event consumption、`Button` 和 `ChoiceList` 的 headless 验证。
+`B2` 通过后才能启动 `F3`。先新增 Punctum `PEP 0002`，再由一个 UI foundation writer 实现。PEP 必须冻结以下 provisional 合同：
+
+- 整数 constraints、measure、layout、paint、clip stack、resize、identity、state ownership 和结构化错误。
+- 一个 backend-neutral UI 边界。UI core 只产生布局和绘制意图；Terminal/GPU 负责把相同内容投影为各自 cell 或 glyph resource。
+- `Text` 接收只读字符串或独立文本模型，不能接收输入侧 `TextEvent`。measure 和 paint 必须消费同一个 backend text-layout 结果。
+- `WidgetId` 和 focus scope 使用类型安全 ID。ID 由调用方稳定提供，不能从临时树位置推导。
+- framework 只持有 focus、pressed、disabled 等通用 UI 状态。Tetris、Battle 等业务状态仍由各自 application/core 持有。
+
+实现顺序固定为：
+
+1. 在 Punctum workspace 新增单一 `punctum-ui` crate，内部使用 `primitives` 和 `widgets` 模块，不提前拆 crate。
+2. 先实现 `Text`、`Row`、`Column`、`Border`、`Padding`、`Spacer`、`Align` 和 `SurfaceView`。
+3. 用 exact layout fixture、surface golden、零尺寸、空间不足、嵌套 clip 和 resize 测试验证 stateless layout/paint。
+4. 再实现 focus registry、scope、Tab/Shift+Tab、event consumption、`Button` 和 `ChoiceList`。
+5. widget 只返回 action。Tetris restart 仍由 `transition` 执行，UI 不能直接清空棋盘。
+6. 使用这些 primitive 重组 Tetris 的标题、棋盘、累计消行数、快捷键提示和 game-over 页面，并让 Terminal/GPU 继续使用各自 projection。
 
 ### `B3`：串行 barrier
 
-接受 Punctum 与 Tetris 的 UI foundation 依赖变化，更新对应 lockfile 和 baseline，并验证 UI crate 不依赖 Terminal、GPU、Tetris、Battle 或 Ramus 类型。
+Program Integration Agent 接受 Punctum 与 Tetris 的 UI foundation 依赖变化，更新对应 lockfile、baseline 和 export hash。独立 verifier 必须确认：
+
+- `punctum-ui` 不依赖 Terminal、GPU、winit、wgpu、Tetris、Battle 或 Ramus 类型。
+- pure layout、paint、focus 和 dispatch 的 line、function 和 region coverage 全部为 100%。
+- Tetris Terminal/GPU smoke 均通过，且两端继续共享同一业务核心和 input contract。
+- `B3` 通过前不启动 Game UI 实现。`B3` 通过后只把 provisional API 交给 Game 消费，不把它标记为稳定公共合同。
 
 ### `F4`：Game 并行 lane 与串行 integration
 
@@ -549,12 +584,25 @@ Tetris 双后端本地 smoke test 通过后，Punctum adapter 才交给 Poke Gam
 | `F1` | 最多三个 `executor` | `verifier`；Ramus 追加 `security-reviewer` | 三个 lane 可并行，Battle 受规则门禁限制 |
 | `B1` | Program Integration Agent | `verifier` | 串行 barrier |
 | `PT1` | 一个 Tetris `executor` | `verifier` | 只写 `apps/tetris`；core 不接 IO |
-| `F2` | 一个 GPU `executor`；Terminal 已完成 | `verifier` | GPU readback 受 reference gate 限制 |
+| `F2` | 一个 GPU `executor`；Terminal 已完成 | `verifier` | 主线只补 GPU 输入合同；Ramus 验证器可作为独立后台 lane |
 | `B2` | Program Integration Agent | `verifier` | 串行 barrier |
-| `F3` | 一个 UI foundation `executor` | `architect`、`verifier` | 先冻结 provisional ADR，再实现布局、焦点和 widget |
+| `F3` | 一个 UI foundation `executor` | `architect`、`verifier` | 先冻结 provisional `PEP 0002`，再实现布局、焦点和 widget |
 | `B3` | Program Integration Agent | `verifier` | 串行 barrier |
 | `F4` | 最多两个 lane writer，随后 Program Integration Agent | `verifier`；Ramus 追加 `security-reviewer` | Game UI 与 Agent/Ramus 可并行，composition 串行 |
 | `F5` | 无 writer | 独立 `verifier`；Ramus 追加 `security-reviewer` | 只读验证 |
+
+### 四席并行安排
+
+四个席位按下表使用。空闲席位不能通过跨 wave 写代码来提高表面并行度。
+
+| 阶段 | 席位 1 | 席位 2 | 席位 3 | 席位 4 |
+| --- | --- | --- | --- | --- |
+| `F2` | GPU adapter writer | Ramus typed LCOV/branch verifier writer，非关键路径 | Punctum 只读 verifier | Integration lead，只准备 `B2` task packet |
+| `B2` | Program Integration Agent，唯一主线 writer | handoff 后独立 verifier | GPU 只读 reviewer | Ramus verifier 可继续 |
+| `F3` | UI foundation writer，唯一 UI writer | Ramus verifier 可继续 | `architect` 只读评审 PEP/API | 独立 verifier |
+| `B3` | Program Integration Agent，唯一主线 writer | handoff 后独立 verifier | dependency 只读 reviewer | 准备 `F4` task packet，不实现 `F4` |
+
+Ramus verifier lane 只能修改 `packages/arbor-projects` 中的 typed LCOV/branch coverage 能力和对应测试。它不能修改 Punctum、Tetris、root manifest 或 lockfile，也不构成 `B2/B3` 的产品完成条件。
 
 每个 writer handoff 必须报告：
 
@@ -601,7 +649,7 @@ lane 验证把最终 test 和 coverage 收窄为 `-p <owned-package>`。wave bar
 3. 读取本架构计划。
 4. 读取[Punctum PEP 0001](../../apps/punctum/peps/0001-punctum-technical-direction.md)，只作为次级来源；冲突时以前两份文档为准。
 
-下一轮继续 `F2`。Terminal Unicode 文本已经通过合同测试，不再派发文本补全任务。只继续 GPU adapter 和 Tetris GPU 入口；不要把 Tetris 业务类型移入 adapter。
+下一轮继续 `F2`。Terminal Unicode 文本、GPU logical planner、wgpu runtime 和本机 headless smoke 已通过，不再派发这些已完成能力。主线 writer 只补 winit 键盘事件规范化和合同测试；`F2` handoff 通过后，再由 Program Integration Agent 在 `B2` 接通 Tetris GPU 入口。
 
 可在新的 Codex session 中直接发送：
 
@@ -610,9 +658,11 @@ lane 验证把最终 test 和 coverage 收窄为 `-p <owned-package>`。wave bar
 
 遵守当前 session 注入的 AGENTS.md instructions。先读取 workspace/manage/punctum-ramus-program.md 和 workspace/manage/punctum-ramus-architecture-plan.md。产品事实以总控文档为准，架构、所有权、门禁和 wave 以架构计划为准。只关注 Punctum、Tetris、Ramus、gen3-game 和游戏控制台；tui-chater 当前暂停。
 
-`B1` 与 `PT1` 已通过。Tetris Terminal example 已可玩，Terminal Unicode 文本的 28 项合同测试已通过，业务代码位于 `apps/tetris` 独立 workspace。现在继续 `F2`：按 TDD 完成 GPU adapter 与 Tetris GPU example。保持逻辑 grid、scene viewport 和像素投影分层，不要把产品类型移入 Punctum 共享内核，也不要建立 Arbor 根 Cargo workspace。
+`B1` 与 `PT1` 已通过。Tetris Terminal example 已可玩，Terminal Unicode 文本的 28 项合同测试已通过，GPU logical planner、wgpu runtime 和本机 headless smoke 已通过。业务代码位于 `apps/tetris` 独立 workspace。
 
-完成后独立验证 Punctum workspace、write scope、pure coverage、adapter logical oracle 与本地 smoke。GPU 固定环境 readback 继续受 `GPU-REF-v0.1` gate 约束。
+现在继续 `F2`：只在 `punctum-gpu` 内按 TDD 完成 winit 键盘事件规范化和合同测试，不实现 Tetris GPU host，不修改 root manifest 或 lockfile。保持逻辑 grid、scene viewport 和像素投影分层，不要把产品类型移入 Punctum 共享内核，也不要建立 Arbor 根 Cargo workspace。
+
+完成后独立验证 owned package、write scope、pure coverage、input fixture、adapter logical oracle 与本地 smoke。handoff 通过后停止，不跨 wave；由 Program Integration Agent 在 `B2` 接受 Tetris GPU dev-dependency 和运行入口。GPU 固定环境 readback 继续受 `GPU-REF-v0.1` gate 约束。
 ```
 
 当前处于 `F2` adapter lane。Terminal/GPU adapter 完成后，由 Program Integration Agent 在 `B2` 接受两个本地 Tetris 入口。不得一次跨 wave 派发。
@@ -629,6 +679,8 @@ lane 验证把最终 test 和 coverage 收窄为 `-p <owned-package>`。wave bar
 | `PT1 Headless Tetris` | 已通过 | core、paint、input mapping 和 pure coverage 已验收 |
 | `Terminal Unicode Text` | 已通过 | 28 项合同测试覆盖 grapheme、width、continuation、裁剪、resize 和 cursor；共享 `Text` Primitive 仍未实现 |
 | `Punctum GPU Local` | 已通过 | pure planner 100%；本机 headless device、shader、pipeline 和 texture smoke 已通过 |
+| `F2 Adapter Completion` | 进行中 | 等待 winit 键盘事件规范化、合同测试和独立 handoff |
+| `B2 Dual Backend Tetris` | 未开始 | 等待 `F2` handoff；随后串行接通 GPU 入口并运行双后端 smoke |
 | `BATTLE-RULES-v0.1` | 已批准 | Battle 规则核心与侧别观察合同已由 `B1` 接受 |
 | `GPU-REF-v0.1` | 已建立，未通过 | 固定环境 readback 和 release 被阻塞；本地 GPU smoke 不阻塞 |
 
