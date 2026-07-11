@@ -2,7 +2,7 @@
 
 - 状态：已批准
 - 批准日期：2026-07-11
-- 实现状态：`S0`、三个 `F1` lane、`B1`、`PT1`、`F2` 与 `R2` 已完成；下一步并行执行 `F3a` Terminal 文本语义修复与 `B2a` Tetris GPU，再进入汇合任务 `B2b`
+- 实现状态：`S0`、三个 `F1` lane、`B1`、`PT1`、`F2`、`R2` 与 `B2a` 已完成；等待 `F3a` 完成后进入汇合任务 `B2b`
 - 评审结果：Planner、Architect、Critic 共识通过，最终 Critic 结论为 `APPROVE`
 - 产品事实来源：[项目群总控](./punctum-ramus-program.md)
 
@@ -476,6 +476,8 @@ Python 工程使用不可变 dataclass 领域模型和 typing.Protocol 端口。
 - `R2` 后 `punctum-gpu` 不使用文件名排除，结果为 449/449 regions、32/32 functions、332/332 lines。该结果包含 instance/uniform encoding。
 - `R2` 后 Punctum workspace 仍为 109 项测试；`punctum-crossterm` 的 9 项合同、`punctum-wgpu` 的 8 项输入合同和单独运行的 ignored headless smoke 均通过。Clippy 以 `-D warnings` 通过。
 - Tetris 的 format、29 项测试、Clippy、core 覆盖率和 Terminal view 单文件覆盖率全部通过。core 为 328/328 regions、35/35 functions、257/257 lines；Terminal view 为 150/150 regions、11/11 functions、105/105 lines。
+- `B2a` 新增 8 项 Tetris GPU 纯逻辑测试。`cargo test --all-targets --locked` 当前通过 24 项 core、8 项 GPU 和 6 项 Terminal 测试；Clippy 以 `-D warnings` 通过。Tetris core 继续保持 328/328 regions、35/35 functions、257/257 lines。
+- Tetris GPU 本机窗口已完成 adapter、surface、shader、pipeline、白色 atlas 和 submission 初始化。首帧使用完整 surface，后续帧使用 diff patch。窗口由用户手动关闭，进程退出码为 0，未出现 GPU 初始化或提交错误。
 - Ramus Python verifier 的 format、test、Clippy 和 typed LCOV branch coverage 全部通过。生产源码为 1529/1529 line entries、158/158 functions、148/148 branch entries，missed lines 和 missed branches 均为 0。旧 `Test-PureCoverage.ps1` 同时通过，覆盖 10 个生产文件；新验证器通过后仍保留旧脚本。
 - Gen3 Game 和 TUI Chater 的 Python 注册门禁全部通过。因 Punctum path dependency 变化，Punctum、Tetris、Gen3 Game 和 TUI Chater lockfile 已刷新，并通过 `--locked` 复核。
 
@@ -566,7 +568,7 @@ GPU adapter 的本地 logical oracle 和 smoke test 不受 `GPU-REF-v0.1` 阻塞
 
 ### `B2a`：Tetris GPU implementation
 
-`B2a` 是另一个原子任务。它只实现 Tetris GPU 可运行入口，不等待 `F3a`，也不修改 Terminal 文本实现。
+`B2a` 已于 2026-07-12 完成。它只实现 Tetris GPU 可运行入口，没有等待 `F3a`，也没有修改 Terminal 文本实现。
 
 1. 新增 `apps/tetris/examples/gpu/main.rs` 和纯 GPU view/projection 模块。projection 调用现有 `paint`，再把 `TetrisCell` 转为 `GpuCell`。
 2. 使用白色单像素 atlas 和 tint 表达边框与七种方块颜色。atlas、resource ID 和颜色属于 Tetris GPU view，不进入业务核心。
@@ -575,6 +577,17 @@ GPU adapter 的本地 logical oracle 和 smoke test 不受 `GPU-REF-v0.1` 阻塞
 5. 首帧提交完整 surface，后续帧使用 grid diff 和 GPU patch。backend submission 细节不能进入 Tetris core。
 6. 为 GPU projection、颜色映射、viewport、resize、game over、restart 和 input chain 增加 pure fixture 或 golden 测试。
 7. 本任务不实现 GPU 标题、系统字体、文字 shaping、glyph atlas、布局、焦点或 widget。
+
+实现结果：
+
+1. `apps/tetris/examples/gpu/main.rs` 接通 winit event loop、tick、resize、scale、redraw 和 `punctum-wgpu` submission。
+2. `apps/tetris/examples/gpu/view.rs` 调用现有 `paint`，再逐格投影为 `GpuCell`。边框和七种方块共用白色单像素 atlas，通过 tint 区分颜色。
+3. viewport 使用最大可用整数 cell size 并居中。小窗口使用一像素 cell 和负 origin 裁剪；minimize、resize 和 scale 不修改 `TetrisState`。
+4. 首帧提交完整 `Surface<GpuCell>`。后续帧对上一帧执行 `diff`，并提交 `Patch<GpuCell>`。
+5. 键盘事件先由 `punctum-wgpu` 规范化，再复用 `command_for_key` 和 `transition`。tick 复用 `transition(TetrisCommand::Tick)`。
+6. 8 项纯逻辑测试覆盖 atlas、颜色、projection、viewport、裁剪、resize 状态不变式、game over、restart、input chain 和 full/diff 选择。
+7. Tetris manifest 和 lockfile 已加入 `punctum-gpu`、`punctum-wgpu`、winit、wgpu 和 host-local async executor。最终依赖状态仍由 `B2b` 接收。
+8. 本任务没有实现 GPU 文字、系统字体、`punctum-ui`、焦点或 widget。
 
 ### `B2b`：composition barrier
 
@@ -755,7 +768,7 @@ lane 验证把最终 test 和 coverage 收窄为 `-p <owned-package>`。wave bar
 1. 遵守新 session 实际注入的 `AGENTS.md instructions`。仓库根当前没有持久化的 `AGENTS.md` 文件，不要把该路径当成启动依赖。
 2. 读取[项目群总控](./punctum-ramus-program.md)。
 3. 读取本架构计划。
-`F2` adapter lane 和 `R2` crate 边界已完成。下一轮把 `TextBoundary` 与 `TetrisGpu` 同时分配到 `F3a` 和 `B2a`。两项完成后创建新的 `B2b` 汇合任务，不让任一实现 Prompt 等待后继续。
+`F2` adapter lane、`R2` crate 边界和 `B2a` Tetris GPU 已完成。等待 `F3a` 完成后创建新的 `B2b` 汇合任务。`B2a` 的 manifest 和 lockfile 变化等待 `B2b` 接收；验证注册、双后端基线和最终状态仍由 `B2b` 汇合。
 
 ## 当前门禁状态
 
@@ -773,8 +786,8 @@ lane 验证把最终 test 和 coverage 收窄为 `-p <owned-package>`。wave bar
 | `Ramus Python Branch Coverage` | 已通过 | typed LCOV parser 检查逐条 `BRDA`；148/148 branch entries，旧脚本交叉验证通过 |
 | `R2 Adapter Crate Boundary` | 已通过 | `punctum-crossterm` 与 `punctum-wgpu` 已隔离平台副作用，纯 coverage 不再排除文件名 |
 | `F3a Terminal Text Boundary` | 未开始 | 可以与 `B2a` 并行；修复输出 API 对 `TextEvent` 的依赖 |
-| `B2a Tetris GPU Implementation` | 未开始 | 可以与 `F3a` 并行；只实现 GPU 棋盘入口 |
-| `B2b Dual Backend Composition` | 等待上游 | 只依赖 `F3a` 与 `B2a`；接收配置并运行双后端 smoke |
+| `B2a Tetris GPU Implementation` | 已通过 | GPU 棋盘入口、纯 projection、full/diff submission 和本机 smoke 已完成 |
+| `B2b Dual Backend Composition` | 等待 `F3a` | `B2a` 已就绪；待 `F3a` 完成后接收配置并运行双后端 smoke |
 | `F3b Stateless UI Foundation` | 未开始 | 等待 `B2b`；先批准 `PEP 0002` |
 | `F3c Interaction Foundation` | 未开始 | 等待 `F3b`；只实现焦点、事件分发和 `Button` |
 | `BATTLE-RULES-v0.1` | 已批准 | Battle 规则核心与侧别观察合同已由 `B1` 接受 |
