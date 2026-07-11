@@ -1,5 +1,5 @@
-use punctum_gpu::{WinitKeyEventSnapshot, normalize_key_event};
 use punctum_input::{KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
+use punctum_wgpu::{WinitKeyEventSnapshot, normalize_key_event};
 use winit::{
     event::ElementState,
     keyboard::{

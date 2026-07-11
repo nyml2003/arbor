@@ -1,9 +1,11 @@
 [workspace]
 members = [
+    "crates/punctum-crossterm",
     "crates/punctum-gpu",
     "crates/punctum-grid",
     "crates/punctum-input",
     "crates/punctum-terminal",
+    "crates/punctum-wgpu",
 ]
 resolver = "2"
 
@@ -15,3 +17,5 @@ rust-version = "1.88"
 [workspace.dependencies]
 punctum-grid = { path = "crates/punctum-grid" }
 punctum-input = { path = "crates/punctum-input" }
+punctum-terminal = { path = "crates/punctum-terminal" }
+punctum-gpu = { path = "crates/punctum-gpu" }

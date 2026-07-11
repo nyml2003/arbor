@@ -443,6 +443,28 @@ class RealRegistryTests(unittest.TestCase):
                 "gpu-coverage",
             },
         )
+        coverage_commands = tuple(
+            command
+            for command in punctum.commands
+            if command.id.endswith("-coverage")
+        )
+        self.assertTrue(
+            all("--ignore-filename-regex" not in command.argv for command in coverage_commands)
+        )
+
+    def test_punctum_platform_crates_use_contract_tests_and_smoke(self) -> None:
+        registry = Path(__file__).resolve().parents[1] / "projects.json"
+        repository = JsonProjectRepository(registry)
+        punctum = repository.get(ProjectId("punctum"))
+
+        self.assertIsNotNone(punctum)
+        assert punctum is not None
+        commands = {command.id: command.argv for command in punctum.commands}
+        self.assertIn("punctum-crossterm", commands["crossterm-test"])
+        self.assertIn("punctum-wgpu", commands["wgpu-test"])
+        self.assertIn("--ignored", commands["wgpu-headless-smoke"])
+        for command_id in ("crossterm-test", "wgpu-test", "wgpu-headless-smoke"):
+            self.assertNotIn("--fail-under-lines", commands[command_id])
 
     def test_ramus_registry_requires_real_branch_coverage(self) -> None:
         registry = Path(__file__).resolve().parents[1] / "projects.json"

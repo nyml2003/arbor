@@ -9,8 +9,9 @@ use crossterm::{
 };
 use punctum_grid::{GridSize, PatchKind, Surface, diff};
 
-use crate::plan::validate_cell_width;
-use crate::{TerminalCell, TerminalColor, TerminalPlanError, plan_patch};
+use punctum_terminal::{
+    TerminalCell, TerminalColor, TerminalPlanError, plan_patch, validate_cell_width,
+};
 
 #[derive(Debug)]
 pub enum TerminalPresentError {

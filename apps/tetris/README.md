@@ -4,7 +4,7 @@
 
 游戏状态机、方块序列、碰撞、锁定、消行、绘制投影和命令映射位于 `src/lib.rs`。它们只依赖 `punctum-grid` 和 `punctum-input`，不读取时钟、随机源或终端。
 
-Terminal 入口位于 `examples/terminal/`。它通过 dev-dependency 使用 `punctum-terminal`，只负责事件循环、tick 和 IO。项目拥有自己的 `Cargo.toml` 和 `Cargo.lock`，不属于 Punctum workspace。
+Terminal 入口位于 `examples/terminal/`。`view.rs` 使用纯逻辑 `punctum-terminal`，`main.rs` 使用平台侧 `punctum-crossterm` 处理事件循环、tick 和 IO。项目拥有自己的 `Cargo.toml` 和 `Cargo.lock`，不属于 Punctum workspace。
 
 ## 运行
 

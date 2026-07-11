@@ -1,13 +1,11 @@
 use std::{error::Error, fmt};
 
-use punctum_grid::{GridSize, Patch, Surface};
-
-use crate::{
-    GpuAtlas, GpuCell, GpuClip, GpuPlanError, INSTANCE_STRIDE, InstanceData, PixelSize, Rgba8,
-    SubmissionMode, SubmissionPlan, Viewport, plan_patch, plan_surface,
+use punctum_gpu::{
+    GpuAtlas, GpuCell, GpuClip, GpuPlanError, INSTANCE_STRIDE, PixelSize, Rgba8, SubmissionMode,
+    SubmissionPlan, UNIFORM_SIZE, Viewport, encode_instances, encode_uniform, plan_patch,
+    plan_surface,
 };
-
-const UNIFORM_SIZE: u64 = 32;
+use punctum_grid::{GridSize, Patch, Surface};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PresentOutcome {
@@ -448,39 +446,6 @@ fn create_instance_buffer(device: &wgpu::Device, count: u32) -> wgpu::Buffer {
     })
 }
 
-fn encode_instances(instances: &[InstanceData]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(instances.len() * INSTANCE_STRIDE as usize);
-    for instance in instances {
-        for value in instance.grid_position {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in instance.atlas_rect {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        bytes.extend_from_slice(&instance.tint);
-        bytes.extend_from_slice(&instance.visible.to_le_bytes());
-    }
-    bytes
-}
-
-fn encode_uniform(viewport: Viewport, atlas_size: PixelSize) -> [u8; UNIFORM_SIZE as usize] {
-    let mut bytes = [0; UNIFORM_SIZE as usize];
-    let values = [
-        viewport.target_size.width,
-        viewport.target_size.height,
-        viewport.origin.x as u32,
-        viewport.origin.y as u32,
-        viewport.cell_size.width,
-        viewport.cell_size.height,
-        atlas_size.width,
-        atlas_size.height,
-    ];
-    for (chunk, value) in bytes.chunks_exact_mut(4).zip(values) {
-        chunk.copy_from_slice(&value.to_le_bytes());
-    }
-    bytes
-}
-
 fn color_to_wgpu(color: Rgba8) -> wgpu::Color {
     const SCALE: f64 = 1.0 / 255.0;
     wgpu::Color {
@@ -578,6 +543,8 @@ mod tests {
         thread,
     };
 
+    use punctum_gpu::{GpuResource, PixelRect, ResourceId};
+
     use super::*;
 
     struct ThreadWake(thread::Thread);
@@ -605,37 +572,6 @@ mod tests {
     }
 
     #[test]
-    fn instance_encoding_matches_the_declared_vertex_stride() {
-        let instance = InstanceData {
-            grid_position: [1, 2],
-            atlas_rect: [3, 4, 5, 6],
-            tint: [7, 8, 9, 10],
-            visible: 11,
-        };
-        let bytes = encode_instances(&[instance]);
-
-        assert_eq!(bytes.len(), INSTANCE_STRIDE as usize);
-        assert_eq!(&bytes[0..8], &[1, 0, 0, 0, 2, 0, 0, 0]);
-        assert_eq!(&bytes[24..28], &[7, 8, 9, 10]);
-        assert_eq!(&bytes[28..32], &[11, 0, 0, 0]);
-    }
-
-    #[test]
-    fn uniform_encoding_preserves_signed_origin_bits() {
-        let viewport = Viewport::new(
-            PixelSize::new(100, 80),
-            crate::PixelOffset::new(-2, 3),
-            PixelSize::new(8, 9),
-        )
-        .unwrap();
-        let bytes = encode_uniform(viewport, PixelSize::new(64, 32));
-
-        assert_eq!(bytes.len(), UNIFORM_SIZE as usize);
-        assert_eq!(&bytes[8..12], &(-2_i32).to_le_bytes());
-        assert_eq!(&bytes[28..32], &32_u32.to_le_bytes());
-    }
-
-    #[test]
     #[ignore = "requires a local GPU adapter"]
     fn headless_pipeline_smoke() {
         let instance = wgpu::Instance::default();
@@ -653,10 +589,7 @@ mod tests {
         let atlas = GpuAtlas::new(
             PixelSize::new(1, 1),
             vec![255, 255, 255, 255],
-            &[crate::GpuResource::new(
-                crate::ResourceId(1),
-                crate::PixelRect::new(0, 0, 1, 1),
-            )],
+            &[GpuResource::new(ResourceId(1), PixelRect::new(0, 0, 1, 1))],
         )
         .unwrap();
         let texture = create_atlas_texture(&device, &queue, &atlas);

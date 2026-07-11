@@ -144,7 +144,7 @@ fn sanitize_cells(cells: &[TerminalCell]) -> Vec<TerminalCell> {
     sanitized
 }
 
-pub(crate) fn validate_cell_width(cell_width: u16) -> Result<(), TerminalPlanError> {
+pub fn validate_cell_width(cell_width: u16) -> Result<(), TerminalPlanError> {
     if cell_width == 0 {
         Err(TerminalPlanError::ZeroCellWidth)
     } else {

@@ -2,8 +2,7 @@ mod view;
 
 use std::{error::Error, io, time::Duration, time::Instant};
 
-use crossterm::event::{self, Event};
-use punctum_terminal::{TerminalPresenter, TerminalSession, normalize_key_event};
+use punctum_crossterm::{TerminalPresenter, TerminalSession, event, normalize_key_event};
 use punctum_tetris::{PieceKind, TetrisCommand, TetrisState, command_for_key, transition};
 
 use view::{should_quit, terminal_surface};
@@ -22,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let timeout = next_tick.saturating_duration_since(Instant::now());
         if event::poll(timeout)? {
             match event::read()? {
-                Event::Key(raw) => {
+                event::Event::Key(raw) => {
                     let key = normalize_key_event(raw);
                     if should_quit(&key) {
                         break;
@@ -31,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         state = transition(&state, command);
                     }
                 }
-                Event::Resize(_, _) => presenter.invalidate(),
+                event::Event::Resize(_, _) => presenter.invalidate(),
                 _ => {}
             }
         }

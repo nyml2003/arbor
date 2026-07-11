@@ -1369,13 +1369,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
+name = "punctum-crossterm"
+version = "0.0.0"
+dependencies = [
+ "crossterm",
+ "punctum-grid",
+ "punctum-input",
+ "punctum-terminal",
+ "unicode-width",
+]
+
+[[package]]
 name = "punctum-gpu"
 version = "0.0.0"
 dependencies = [
  "punctum-grid",
- "punctum-input",
- "wgpu",
- "winit",
 ]
 
 [[package]]
@@ -1390,11 +1398,21 @@ version = "0.0.0"
 name = "punctum-terminal"
 version = "0.0.0"
 dependencies = [
- "crossterm",
  "punctum-grid",
  "punctum-input",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "punctum-wgpu"
+version = "0.0.0"
+dependencies = [
+ "punctum-gpu",
+ "punctum-grid",
+ "punctum-input",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]

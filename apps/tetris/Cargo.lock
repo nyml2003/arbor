@@ -169,6 +169,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "punctum-crossterm"
+version = "0.0.0"
+dependencies = [
+ "crossterm",
+ "punctum-grid",
+ "punctum-input",
+ "punctum-terminal",
+ "unicode-width",
+]
+
+[[package]]
 name = "punctum-grid"
 version = "0.0.0"
 
@@ -180,7 +191,6 @@ version = "0.0.0"
 name = "punctum-terminal"
 version = "0.0.0"
 dependencies = [
- "crossterm",
  "punctum-grid",
  "punctum-input",
  "unicode-segmentation",
@@ -191,7 +201,7 @@ dependencies = [
 name = "punctum-tetris"
 version = "0.0.0"
 dependencies = [
- "crossterm",
+ "punctum-crossterm",
  "punctum-grid",
  "punctum-input",
  "punctum-terminal",

@@ -10,8 +10,11 @@ Punctum 是仓库内复用的离散网格 UI 基础。Poke Game 和 TUI AI Chate
 - `punctum-input` 已实现规范化键盘事件和已提交 Unicode 文本事件。
 - 各 pure module 均按 TDD 实现，line、function 和 region coverage 为 100%。
 - [`apps/tetris`](../tetris/README.md) 已作为独立项目实现完整 headless 规则、Punctum surface 绘制和 Terminal 入口。
-- `punctum-terminal` 已实现单槽 `TerminalCell`、patch planner、Crossterm 键盘规范化、presenter 和 raw-mode session。纯模块 coverage 为 100%，IO 集中在 `runtime.rs`。
-- `punctum-gpu` 已实现 logical planner、wgpu runtime、winit 键盘规范化和本机 headless pipeline smoke。pure planner 与输入转换 coverage 为 100%。
+- `punctum-terminal` 保留 `TerminalCell`、Unicode 文本、resize 和 patch planning，不依赖 Crossterm。
+- `punctum-crossterm` 提供 Crossterm 输入转换、presenter、raw-mode session 和终端 IO。
+- `punctum-gpu` 保留 atlas、viewport、cell、submission planning、instance encoding 和 uniform encoding，不依赖 winit、wgpu 或 `punctum-input`。
+- `punctum-wgpu` 提供 winit 输入转换、wgpu runtime、shader、pipeline、surface 和 device 操作。
+- `punctum-terminal` 和 `punctum-gpu` 的 line、function 和 region coverage 为 100%。平台 crate 使用合同测试、Clippy 和 headless smoke，不设置 coverage 百分比。
 - 当前先在 Windows 11、Windows Terminal 和本机 GPU 上跑通，不建设 CI。
 
 ## 运行俄罗斯方块
@@ -37,9 +40,11 @@ cargo test --workspace --all-targets --locked --manifest-path apps/punctum/Cargo
 cargo clippy --workspace --all-targets --locked --manifest-path apps/punctum/Cargo.toml -- -D warnings
 cargo llvm-cov -p punctum-grid --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo llvm-cov -p punctum-input --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-cargo llvm-cov -p punctum-terminal --all-targets --locked --manifest-path apps/punctum/Cargo.toml --ignore-filename-regex "runtime\.rs" --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-cargo llvm-cov -p punctum-gpu --all-targets --locked --manifest-path apps/punctum/Cargo.toml --ignore-filename-regex "runtime\.rs" --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-cargo test -p punctum-gpu --locked --manifest-path apps/punctum/Cargo.toml runtime::tests::headless_pipeline_smoke -- --ignored --exact --nocapture
+cargo llvm-cov -p punctum-terminal --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo llvm-cov -p punctum-gpu --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo test -p punctum-crossterm --all-targets --locked --manifest-path apps/punctum/Cargo.toml
+cargo test -p punctum-wgpu --all-targets --locked --manifest-path apps/punctum/Cargo.toml
+cargo test -p punctum-wgpu --locked --manifest-path apps/punctum/Cargo.toml runtime::tests::headless_pipeline_smoke -- --ignored --exact --nocapture
 python packages/arbor-projects/run.py verify tetris
 ```
 
