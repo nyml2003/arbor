@@ -68,8 +68,12 @@
           "argv": ["cargo", "clippy", "--all-targets", "--locked", "--", "-D", "warnings"]
         },
         {
-          "id": "pure-coverage",
-          "argv": ["cargo", "llvm-cov", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+          "id": "core-coverage",
+          "argv": ["cargo", "llvm-cov", "--lib", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        },
+        {
+          "id": "view-coverage-data",
+          "argv": ["cargo", "llvm-cov", "--all-targets", "--locked", "--no-report"]
         }
       ],
       "coverage_targets": [
@@ -77,6 +81,11 @@
           "id": "terminal-view",
           "source": "examples/terminal/view.rs",
           "objects": ["debug/examples/terminal-*"]
+        },
+        {
+          "id": "gpu-view",
+          "source": "examples/gpu/view.rs",
+          "objects": ["debug/examples/gpu-*"]
         }
       ]
     },

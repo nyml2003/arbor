@@ -466,6 +466,24 @@ class RealRegistryTests(unittest.TestCase):
         for command_id in ("crossterm-test", "wgpu-test", "wgpu-headless-smoke"):
             self.assertNotIn("--fail-under-lines", commands[command_id])
 
+    def test_tetris_separates_pure_coverage_from_platform_hosts(self) -> None:
+        registry = Path(__file__).resolve().parents[1] / "projects.json"
+        repository = JsonProjectRepository(registry)
+        tetris = repository.get(ProjectId("tetris"))
+
+        self.assertIsNotNone(tetris)
+        assert tetris is not None
+        commands = {command.id: command.argv for command in tetris.commands}
+        self.assertIn("--lib", commands["core-coverage"])
+        self.assertIn("--fail-under-lines", commands["core-coverage"])
+        self.assertIn("--all-targets", commands["view-coverage-data"])
+        self.assertIn("--no-report", commands["view-coverage-data"])
+        self.assertNotIn("--fail-under-lines", commands["view-coverage-data"])
+        self.assertEqual(
+            {target.id for target in tetris.coverage_targets},
+            {"terminal-view", "gpu-view"},
+        )
+
     def test_ramus_registry_requires_real_branch_coverage(self) -> None:
         registry = Path(__file__).resolve().parents[1] / "projects.json"
         repository = JsonProjectRepository(registry)

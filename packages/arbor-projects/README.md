@@ -42,6 +42,8 @@ Ramus 的 `pure-branch-coverage` 目标运行 nightly `cargo llvm-cov --branch -
 
 Punctum 的 `terminal-coverage` 和 `gpu-coverage` 只覆盖纯逻辑 crate，不使用文件名排除。`punctum-crossterm` 和 `punctum-wgpu` 运行独立合同测试；`punctum-wgpu` 额外运行 ignored headless smoke。平台 crate 不设置 coverage 百分比。
 
+Tetris 的 `core-coverage` 只覆盖 library。Terminal/GPU view 通过 LLVM 单文件结果检查纯 projection，两个 host 只参加 test、Clippy 和本地 smoke，不设置 coverage 百分比。
+
 ## 测试
 
 ~~~text
