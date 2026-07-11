@@ -1,0 +1,198 @@
+{
+  "schema_version": "punctum-vsh-s0-records-v1",
+  "recorded_at": "2026-07-11",
+  "baseline_algorithm": {
+    "file_sha256": "SHA-256 of the exact file bytes, lowercase hexadecimal",
+    "sorted_member_list_sha256": "Sort repo-relative member crate directories by ordinal path order, encode each as UTF-8 without BOM followed by LF, concatenate, then SHA-256",
+    "member_manifest_sha256_by_path": "Map each repo-relative member Cargo.toml path to file_sha256, ordered by ordinal path order",
+    "approved_upstream_export_sha256": "For each approved upstream crate, include Cargo.toml and every file below src, fixtures, and tests when present; sort repo-relative file paths by ordinal order; encode each path, NUL, lowercase file_sha256, and LF as UTF-8 without BOM; concatenate and SHA-256. The empty approved set hashes the empty byte sequence."
+  },
+  "canonical_path_dependencies": [
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-grid",
+      "cargo_path": "../punctum/crates/punctum-grid",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-grid"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-input",
+      "cargo_path": "../punctum/crates/punctum-input",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-input"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "punctum-gpu",
+      "cargo_path": "../punctum/crates/punctum-gpu",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-gpu"
+    },
+    {
+      "consumer": "gen3-game",
+      "dependency": "vsh-core",
+      "cargo_path": "../../packages/vsh/crates/vsh-core",
+      "approved_repo_relative_target": "packages/vsh/crates/vsh-core"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-grid",
+      "cargo_path": "../punctum/crates/punctum-grid",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-grid"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-input",
+      "cargo_path": "../punctum/crates/punctum-input",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-input"
+    },
+    {
+      "consumer": "tui-chater",
+      "dependency": "punctum-terminal",
+      "cargo_path": "../punctum/crates/punctum-terminal",
+      "approved_repo_relative_target": "apps/punctum/crates/punctum-terminal"
+    }
+  ],
+  "workspaces": {
+    "punctum": {
+      "root_manifest": "apps/punctum/Cargo.toml",
+      "root_manifest_sha256": "09e073eb188ea7b5982a50ea4b3e51fd5b0b1b6578f5af8badf683ec0a640fdd",
+      "sorted_member_list_sha256": "66e36bca9a6c09936cb45afb473763588a1834633a5b528d34f7ff169d04a474",
+      "member_manifest_sha256_by_path": {
+        "apps/punctum/crates/punctum-gpu/Cargo.toml": "70cb5528aa2a71cf8ec3b4d02c9a49d881d8de11360de0fbc80ab34d346a9632",
+        "apps/punctum/crates/punctum-grid/Cargo.toml": "6c0bb5a25b0a4c4bedcaf0ef23684cfdff2a93db9f5dc4a2204a46dafed436d9",
+        "apps/punctum/crates/punctum-input/Cargo.toml": "c71cd857bc487db5537b1edbc7c418c8d9b66ad9754a9d35b2bb2dab438bf433",
+        "apps/punctum/crates/punctum-terminal/Cargo.toml": "20a84fa3a9d663f6aaf2e4c2255a0501e3e8abd8a0a1b28c483d73b9c1613b23"
+      },
+      "lockfile_sha256": "8a0c7367af27c0a707017a431116bdfe5e91089bb34d68819aa93415848cfa4c",
+      "approved_upstream_crates": [],
+      "approved_upstream_export_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "vsh": {
+      "root_manifest": "packages/vsh/Cargo.toml",
+      "root_manifest_sha256": "47b91a6cbb7565155c35b48818cdbb9f13a6e04dccd68a3638bab0505cff2102",
+      "sorted_member_list_sha256": "890ce3b21817e3ea989f2f4d74f2d369f44330b18717263ddd562557ffb66d56",
+      "member_manifest_sha256_by_path": {
+        "packages/vsh/crates/vsh-core/Cargo.toml": "8b291d9bb8e25f15a5bf1b0f06ec291fedd17571db412a04bfcfec6ef27adb98"
+      },
+      "lockfile_sha256": "d304b731f303d484b5e014e5e6806fdcd8cb2c8206f5c127e65533a4c826ecc5",
+      "approved_upstream_crates": [],
+      "approved_upstream_export_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "gen3-game": {
+      "root_manifest": "apps/gen3-game/Cargo.toml",
+      "root_manifest_sha256": "8b2d53ca8228be9736b5a9fc28efc4459aa1f2168d4f31dfdbf57f8810d19cc6",
+      "sorted_member_list_sha256": "a10a9c7e17243665531eddaad70f65a798ba8ea4854fa4496d9cd61822c82146",
+      "member_manifest_sha256_by_path": {
+        "apps/gen3-game/crates/battle-application/Cargo.toml": "cf32d30df1135e1cd9fe9c75bf26e05194b597e77a63052e3b5c4684254eed1e",
+        "apps/gen3-game/crates/battle-domain/Cargo.toml": "b83b64f7757ca0869052a0f1df6398ffd88af0bb7990192ccc61927e2f95cc36",
+        "apps/gen3-game/crates/battle-vsh-adapter/Cargo.toml": "ddd11c75ba9537794a90628e87d112b967efdffbc05bdcb80327b7630bdf173f",
+        "apps/gen3-game/crates/game-e2e/Cargo.toml": "1c8f262582687f433cb8f333922c7d37f5c592ca67a5a5b3ce55fe7a50d0811f",
+        "apps/gen3-game/crates/game-host/Cargo.toml": "3c95b4be60d7ad78ea232fd8c7f25bf5344ee3f14ef5c12710e7c1bfcf9213af",
+        "apps/gen3-game/crates/game-ui/Cargo.toml": "75488effaf8d971c336d2b7271b104278ed8a14880c203c5a3be30b64c7e2381"
+      },
+      "lockfile_sha256": "ab523500b11ed540b8c9602284d65e6789fcad468fadd943d0c56e252b0ca545",
+      "approved_upstream_crates": [
+        "apps/punctum/crates/punctum-gpu",
+        "apps/punctum/crates/punctum-grid",
+        "apps/punctum/crates/punctum-input",
+        "packages/vsh/crates/vsh-core"
+      ],
+      "approved_upstream_export_sha256": "764c4214342a53a2e857512903ab89da162cf64960b93b8cd097b7085bfcda8e"
+    },
+    "tui-chater": {
+      "root_manifest": "apps/tui-chater/Cargo.toml",
+      "root_manifest_sha256": "e5ce972451522e442177b50d6bead515ee68c9189272be89f53d418e86d07b12",
+      "sorted_member_list_sha256": "e7436c6e4a119358d78d0bdc19efdf416b49e25c1f28c185de0aa31bf9bb3e46",
+      "member_manifest_sha256_by_path": {
+        "apps/tui-chater/crates/chat-application/Cargo.toml": "2f37285a3180c929ccca6f740b6f83d28f2af965c8f48a485e37727d53b47ab9",
+        "apps/tui-chater/crates/chater-e2e/Cargo.toml": "08e4e2d88954787dc475773ebd81e811af6163cd857b43dd97418194fcc77850",
+        "apps/tui-chater/crates/chater-ui/Cargo.toml": "9537672f74c30605c1de65995a5f3208f5da3c2d118ab460a2896c5ba4b38ea7",
+        "apps/tui-chater/crates/model-adapter/Cargo.toml": "108c386a8b377c602d4d0916e647ca3a7992975185e685a1d2ee5efce77d427b",
+        "apps/tui-chater/crates/tui-host/Cargo.toml": "71d753ca0ecaf62fa19107da318e9ba3bc07ff1503510394055ff40eda1653b5"
+      },
+      "lockfile_sha256": "7286ec98b6f11c3b047b892320707143ba2f2c4fe36e1ad3eb9d65b0eb704202",
+      "approved_upstream_crates": [
+        "apps/punctum/crates/punctum-grid",
+        "apps/punctum/crates/punctum-input",
+        "apps/punctum/crates/punctum-terminal"
+      ],
+      "approved_upstream_export_sha256": "842f8aba012d4faf3e4e91128daabaa78c6fa13f056208fa81f874df2d797a40"
+    }
+  },
+  "gates": {
+    "BATTLE-RULES-v0.1": {
+      "status": "Blocked",
+      "approval": "Pending Product Owner approval",
+      "semantic_owner": "User or Product Owner",
+      "custodian": "Program Integration Agent",
+      "canonical_fixture_bundle_path": null,
+      "canonical_fixture_bundle_sha256": null,
+      "blocked_fields": [
+        "canonical_fixture_bundle_path",
+        "canonical_fixture_bundle_sha256"
+      ],
+      "effect": "Battle lane and all game downstream tasks remain blocked. No battle rule was selected or synthesized during S0."
+    },
+    "GPU-REF-v0.1": {
+      "status": "Blocked",
+      "backend": {
+        "status": "FixedByArchitecture",
+        "value": "Vulkan"
+      },
+      "AdapterInfo.device_type": {
+        "status": "FixedByArchitecture",
+        "value": "Cpu"
+      },
+      "OCI_image_digest": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "No immutable Linux CI image digest is approved."
+      },
+      "Mesa_package_version": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Depends on the unapproved immutable CI image."
+      },
+      "LLVM_version": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Depends on the unapproved immutable CI image."
+      },
+      "wgpu_version": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "The GPU implementation lane has not selected and locked wgpu."
+      },
+      "AdapterInfo.name": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Requires runtime capture from the pinned llvmpipe Vulkan adapter."
+      },
+      "AdapterInfo.vendor": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Requires runtime capture from the pinned llvmpipe Vulkan adapter."
+      },
+      "AdapterInfo.device": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Requires runtime capture from the pinned llvmpipe Vulkan adapter."
+      },
+      "AdapterInfo.driver": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Requires runtime capture from the pinned llvmpipe Vulkan adapter."
+      },
+      "AdapterInfo.driver_info": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "Requires runtime capture from the pinned llvmpipe Vulkan adapter."
+      },
+      "approved_fixture_sha256": {
+        "status": "Blocked",
+        "value": null,
+        "reason": "No GPU readback fixture is implemented or approved in S0."
+      },
+      "effect": "GPU readback and release gates remain blocked. No mutable image tag, guessed adapter identity, or floating version is accepted."
+    }
+  }
+}

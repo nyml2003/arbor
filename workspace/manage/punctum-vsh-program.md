@@ -1,8 +1,8 @@
 # Punctum / VSH 项目群总控
 
-- 状态：产品需求与第一期架构已批准
-- 当前阶段：`A0` 已完成，`S0` 未开始
-- 本轮记录：设计工作已结束，未执行实现
+- 状态：产品需求、第一期架构和 `S0` workspace 已批准
+- 当前阶段：`S0` 已完成，`F1` 未开始
+- 本轮记录：四个独立 Cargo workspace、门禁记录和初始 baseline 已通过独立只读验证
 - 更新日期：2026-07-11
 
 ## 文档职责
@@ -49,11 +49,11 @@ Punctum 可以是一组分层能力，不要求所有产品使用同一套上层
 
 | 项目 | 产品职责 | 当前事实 |
 | --- | --- | --- |
-| Punctum | 可复用 UI 核心及平台适配 | 有 README/PEP，无实现 |
-| 游戏 | 最终成为完整第三世代风格 RPG | 未创建；第一期只验证对战 |
-| VSH | 把结构化 application API 投影成类型安全 shell 命令 | 未创建 |
+| Punctum | 可复用 UI 核心及平台适配 | 有 README/PEP 和 `S0` crate 空壳，无业务实现 |
+| 游戏 | 最终成为完整第三世代风格 RPG | 已建立 `S0` workspace 空壳；第一期只验证对战 |
+| VSH | 把结构化 application API 投影成类型安全 shell 命令 | 已建立 `S0` workspace 空壳，无业务实现 |
 | 游戏控制台 | 玩家可选的 VSH 入口 | 属于游戏，不是独立产品 |
-| TUI AI Chater | Terminal TUI 大模型对话产品，也是第二个 UI 框架消费者 | 未创建 |
+| TUI AI Chater | Terminal TUI 大模型对话产品，也是第二个 UI 框架消费者 | 已建立 `S0` workspace 空壳，无业务实现 |
 
 工作目录名、crate 名和内部模块名尚未批准。架构规划可以提出方案，但不能把技术工作名当成产品事实。
 
@@ -207,9 +207,9 @@ component tree、状态模型、lifecycle、focus、widget、layout tree 和 eve
 | --- | --- | --- |
 | `P0 Product Clarified` | 产品目标、第一期、非目标和决策边界明确 | 已完成 |
 | `A0 Architecture Approved` | 从产品规格推导共享边界、合同和验证方案 | 已完成 |
-| `S0 Workspace Ready` | 四个独立 workspace、门禁记录和 baseline 就绪 | 未开始 |
-| `G1 Battle Proof` | Native GPU 下的人类对 Agent 随机 6v6 跑通 | 等待 `S0` 和 `BATTLE-RULES-v0.1` |
-| `T1 TUI Reuse Proof` | Terminal TUI Chater 复用 grid/input 基础完成对话 | 等待 `S0` |
+| `S0 Workspace Ready` | 四个独立 workspace、门禁记录和 baseline 就绪 | 已完成 |
+| `G1 Battle Proof` | Native GPU 下的人类对 Agent 随机 6v6 跑通 | 等待 `BATTLE-RULES-v0.1` 和后续实现 wave |
+| `T1 TUI Reuse Proof` | Terminal TUI Chater 复用 grid/input 基础完成对话 | 等待后续实现 wave |
 | `U1 Phase-one UI Accepted` | 两个消费者证明分层复用成立 | 等待 `G1` 和 `T1` |
 
 ## 当前规划状态
@@ -224,9 +224,13 @@ component tree、状态模型、lifecycle、focus、widget、layout tree 和 eve
 - 唯一 Program Integration Agent 管理 root manifest、lockfile、path dependency、composition 和跨域 E2E。
 - 实现按 `S0 -> F1 -> B1 -> F2 -> B2 -> F3 -> B3 -> F4 -> F5` 推进。
 
-本轮设计工作没有执行实现。下一次实现 session 从串行 `S0` 开始，`S0` 验收前不得启动并行 `F1`。
+`S0` 已由唯一 Program Integration Agent 完成，并通过独立只读 verifier 复核。记录、baseline 算法、canonical path 表和验证证据位于 [`punctum-vsh-s0`](./punctum-vsh-s0/verification.md)。本轮没有进入 `F1`，没有实现 grid、input、VSH、Battle、GPU、Terminal 或 Chater 业务逻辑。
+
+下一轮可以并行启动 `F1` 的 Punctum grid/input lane 和 VSH lane。Battle lane 在 `BATTLE-RULES-v0.1` 获得用户或 Product Owner 批准前继续阻塞。
 
 `BATTLE-RULES-v0.1` 尚未获得用户批准。它只阻塞 Battle lane 和 game downstream，不阻塞 `S0`、Punctum、VSH 与 Chater 的准备工作。
+
+`GPU-REF-v0.1` record 已建立，但未能固定的必填字段都保持 `Blocked`。因此 GPU readback 和 release gate 尚未通过。
 
 ## 待后续产品确认
 

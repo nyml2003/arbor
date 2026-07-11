@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "crates/punctum-gpu",
+    "crates/punctum-grid",
+    "crates/punctum-input",
+    "crates/punctum-terminal",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+
