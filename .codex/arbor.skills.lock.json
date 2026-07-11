@@ -1,6 +1,6 @@
 {
   "schema": "arbor.skills-lock/v1",
-  "generatedAt": "2026-06-22T17:23:47.151Z",
+  "generatedAt": "2026-07-11T19:56:03.199Z",
   "skills": {
     "arbor/arbor-skill-manager-usage": {
       "name": "arbor-skill-manager-usage",
@@ -95,38 +95,6 @@
       "install": {
         "targetDir": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills",
         "path": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills\\electron-solid-workbench",
-        "mode": "copy"
-      }
-    },
-    "arbor/rust-native-gui-tool": {
-      "name": "rust-native-gui-tool",
-      "version": "1.0.0",
-      "packageMetadataSource": "source",
-      "source": {
-        "type": "path",
-        "path": "../packages/arbor-skills/skills/rust-native-gui-tool",
-        "resolvedPath": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\skills\\rust-native-gui-tool"
-      },
-      "contentHash": "sha256-130f73145f7e96e260da47d36fea839b2b1ce71cb6a63f906dba5948d42e920e",
-      "install": {
-        "targetDir": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills",
-        "path": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills\\rust-native-gui-tool",
-        "mode": "copy"
-      }
-    },
-    "arbor/tauri-rust-system-tool": {
-      "name": "tauri-rust-system-tool",
-      "version": "1.0.0",
-      "packageMetadataSource": "source",
-      "source": {
-        "type": "path",
-        "path": "../packages/arbor-skills/skills/tauri-rust-system-tool",
-        "resolvedPath": "C:\\Users\\nyml\\code\\arbor\\packages\\arbor-skills\\skills\\tauri-rust-system-tool"
-      },
-      "contentHash": "sha256-2c5cb8e355a93aa53e82ac5babcc9a0a83b80adff3019683b5a48d453e59439e",
-      "install": {
-        "targetDir": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills",
-        "path": "C:\\Users\\nyml\\code\\arbor\\.codex\\skills\\tauri-rust-system-tool",
         "mode": "copy"
       }
     },

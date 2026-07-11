@@ -227,6 +227,27 @@ class RealRegistryTests(unittest.TestCase):
             {"punctum", "tetris", "ramus", "gen3-game", "tui-chater"},
         )
 
+    def test_punctum_registry_covers_each_completed_pure_crate(self) -> None:
+        registry = Path(__file__).resolve().parents[1] / "projects.json"
+        repository = JsonProjectRepository(registry)
+        punctum = repository.get(ProjectId("punctum"))
+
+        self.assertIsNotNone(punctum)
+        assert punctum is not None
+        self.assertEqual(
+            {
+                command.id
+                for command in punctum.commands
+                if command.id.endswith("-coverage")
+            },
+            {
+                "grid-coverage",
+                "input-coverage",
+                "terminal-coverage",
+                "gpu-coverage",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -42,8 +42,11 @@ fn vs_main(input: VertexInput, @builtin(vertex_index) vertex_index: u32) -> Vert
     let pixel_origin = vec2<f32>(viewport.origin)
         + vec2<f32>(input.grid_position * viewport.cell_size);
     let pixel = pixel_origin + corner * vec2<f32>(viewport.cell_size);
-    let target = vec2<f32>(viewport.target_size);
-    let ndc = vec2<f32>(pixel.x / target.x * 2.0 - 1.0, 1.0 - pixel.y / target.y * 2.0);
+    let target_size = vec2<f32>(viewport.target_size);
+    let ndc = vec2<f32>(
+        pixel.x / target_size.x * 2.0 - 1.0,
+        1.0 - pixel.y / target_size.y * 2.0,
+    );
     let atlas_pixel = vec2<f32>(input.atlas_rect.xy)
         + corner * vec2<f32>(input.atlas_rect.zw);
 

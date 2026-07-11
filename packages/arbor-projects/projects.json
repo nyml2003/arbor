@@ -26,6 +26,14 @@
         {
           "id": "input-coverage",
           "argv": ["cargo", "llvm-cov", "-p", "punctum-input", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        },
+        {
+          "id": "terminal-coverage",
+          "argv": ["cargo", "llvm-cov", "-p", "punctum-terminal", "--all-targets", "--locked", "--ignore-filename-regex", "runtime\\.rs", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        },
+        {
+          "id": "gpu-coverage",
+          "argv": ["cargo", "llvm-cov", "-p", "punctum-gpu", "--all-targets", "--locked", "--ignore-filename-regex", "runtime\\.rs", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
         }
       ]
     },
@@ -77,10 +85,6 @@
         {
           "id": "clippy",
           "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
-        },
-        {
-          "id": "core-coverage",
-          "argv": ["cargo", "llvm-cov", "-p", "ramus-core", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
         }
       ]
     },

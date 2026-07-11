@@ -571,7 +571,38 @@ impl From<GpuPlanError> for GpuRuntimeError {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        future::Future,
+        sync::Arc,
+        task::{Context, Poll, Wake, Waker},
+        thread,
+    };
+
     use super::*;
+
+    struct ThreadWake(thread::Thread);
+
+    impl Wake for ThreadWake {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+
+    fn block_on<F: Future>(future: F) -> F::Output {
+        let waker = Waker::from(Arc::new(ThreadWake(thread::current())));
+        let mut context = Context::from_waker(&waker);
+        let mut future = Box::pin(future);
+        loop {
+            match future.as_mut().poll(&mut context) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => thread::park(),
+            }
+        }
+    }
 
     #[test]
     fn instance_encoding_matches_the_declared_vertex_stride() {
@@ -602,5 +633,34 @@ mod tests {
         assert_eq!(bytes.len(), UNIFORM_SIZE as usize);
         assert_eq!(&bytes[8..12], &(-2_i32).to_le_bytes());
         assert_eq!(&bytes[28..32], &32_u32.to_le_bytes());
+    }
+
+    #[test]
+    #[ignore = "requires a local GPU adapter"]
+    fn headless_pipeline_smoke() {
+        let instance = wgpu::Instance::default();
+        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .expect("local GPU adapter");
+        let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("punctum-gpu smoke device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            ..Default::default()
+        }))
+        .expect("local GPU device");
+        let layout = create_bind_group_layout(&device);
+        let pipeline = create_pipeline(&device, wgpu::TextureFormat::Rgba8Unorm, &layout);
+        let atlas = GpuAtlas::new(
+            PixelSize::new(1, 1),
+            vec![255, 255, 255, 255],
+            &[crate::GpuResource::new(
+                crate::ResourceId(1),
+                crate::PixelRect::new(0, 0, 1, 1),
+            )],
+        )
+        .unwrap();
+        let texture = create_atlas_texture(&device, &queue, &atlas);
+
+        drop((pipeline, texture));
     }
 }

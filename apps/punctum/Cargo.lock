@@ -712,6 +712,8 @@ dependencies = [
  "crossterm",
  "punctum-grid",
  "punctum-input",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
