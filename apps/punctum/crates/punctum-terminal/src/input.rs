@@ -1,7 +1,28 @@
 use crossterm::event::{
-    KeyCode as RawKeyCode, KeyEvent as RawKeyEvent, KeyEventKind, KeyModifiers, ModifierKeyCode,
+    Event as RawEvent, KeyCode as RawKeyCode, KeyEvent as RawKeyEvent, KeyEventKind, KeyModifiers,
+    ModifierKeyCode,
 };
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey};
+use punctum_input::{
+    KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, TextEvent, TextEventError,
+};
+
+pub fn normalize_text_event(event: &RawEvent) -> Result<Option<TextEvent>, TextEventError> {
+    match event {
+        RawEvent::Paste(text) => TextEvent::new(text).map(Some),
+        RawEvent::Key(event)
+            if matches!(event.kind, KeyEventKind::Press | KeyEventKind::Repeat)
+                && !event.modifiers.intersects(
+                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                ) =>
+        {
+            match event.code {
+                RawKeyCode::Char(character) => TextEvent::new(character.to_string()).map(Some),
+                _ => Ok(None),
+            }
+        }
+        _ => Ok(None),
+    }
+}
 
 pub fn normalize_key_event(event: RawKeyEvent) -> KeyEvent {
     KeyEvent {

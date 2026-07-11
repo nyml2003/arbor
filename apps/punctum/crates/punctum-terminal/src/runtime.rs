@@ -76,19 +76,36 @@ where
         if patch.kind() == PatchKind::Replace {
             self.writer.queue(Clear(ClearType::All))?;
         }
-        for run in runs {
+        for run in runs.runs() {
             self.writer.queue(MoveTo(run.col(), run.row()))?;
+            let mut overflow_into_continuation = 0;
             for cell in run.cells() {
                 self.writer
                     .queue(SetForegroundColor(color(cell.foreground())))?
-                    .queue(SetBackgroundColor(color(cell.background())))?
-                    .queue(Print(cell.symbol()))?;
-                for _ in 1..self.cell_width {
-                    self.writer.queue(Print(' '))?;
+                    .queue(SetBackgroundColor(color(cell.background())))?;
+                if let Some(grapheme) = cell.grapheme() {
+                    self.writer.queue(Print(grapheme))?;
+                    let width = unicode_width::UnicodeWidthStr::width(grapheme);
+                    let cell_width = usize::from(self.cell_width);
+                    for _ in width..cell_width {
+                        self.writer.queue(Print(' '))?;
+                    }
+                    overflow_into_continuation = width.saturating_sub(cell_width);
+                } else {
+                    let remaining =
+                        usize::from(self.cell_width).saturating_sub(overflow_into_continuation);
+                    for _ in 0..remaining {
+                        self.writer.queue(Print(' '))?;
+                    }
+                    overflow_into_continuation =
+                        overflow_into_continuation.saturating_sub(usize::from(self.cell_width));
                 }
             }
         }
-        self.writer.queue(ResetColor)?;
+        let (cursor_col, cursor_row) = runs.final_cursor();
+        self.writer
+            .queue(ResetColor)?
+            .queue(MoveTo(cursor_col, cursor_row))?;
         self.writer.flush()?;
         self.previous = Some(frame.clone());
         Ok(())

@@ -12,6 +12,7 @@ target/
 
 # build artifacts
 *.tsbuildinfo
+*.pyc
 
 # env
 .env

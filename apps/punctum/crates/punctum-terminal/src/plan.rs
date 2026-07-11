@@ -1,6 +1,7 @@
 use std::{error::Error, fmt};
 
 use punctum_grid::Patch;
+use unicode_width::UnicodeWidthStr;
 
 use crate::TerminalCell;
 
@@ -22,6 +23,23 @@ impl TerminalRun {
 
     pub fn cells(&self) -> &[TerminalCell] {
         &self.cells
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerminalPlan {
+    runs: Vec<TerminalRun>,
+    final_cursor: (u16, u16),
+}
+
+impl TerminalPlan {
+    pub fn runs(&self) -> &[TerminalRun] {
+        &self.runs
+    }
+
+    /// The presenter parks its hidden cursor at the origin after every frame.
+    pub const fn final_cursor(&self) -> (u16, u16) {
+        self.final_cursor
     }
 }
 
@@ -54,10 +72,10 @@ impl Error for TerminalPlanError {}
 pub fn plan_patch(
     patch: &Patch<TerminalCell>,
     cell_width: u16,
-) -> Result<Vec<TerminalRun>, TerminalPlanError> {
+) -> Result<TerminalPlan, TerminalPlanError> {
     validate_cell_width(cell_width)?;
 
-    patch
+    let runs = patch
         .spans()
         .iter()
         .map(|span| {
@@ -81,10 +99,49 @@ pub fn plan_patch(
             Ok(TerminalRun {
                 col: (u64::from(span.start_col()) * u64::from(cell_width)) as u16,
                 row,
-                cells: span.cells().to_vec(),
+                cells: sanitize_cells(span.cells()),
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(TerminalPlan {
+        runs,
+        final_cursor: (0, 0),
+    })
+}
+
+fn sanitize_cells(cells: &[TerminalCell]) -> Vec<TerminalCell> {
+    let mut sanitized = Vec::with_capacity(cells.len());
+    let mut index = 0;
+    while index < cells.len() {
+        let cell = &cells[index];
+        if let Some(grapheme) = cell.grapheme() {
+            let width = UnicodeWidthStr::width(grapheme);
+            if width == 1 {
+                sanitized.push(cell.clone());
+                index += 1;
+                continue;
+            }
+            if width == 2
+                && cells
+                    .get(index + 1)
+                    .is_some_and(TerminalCell::is_continuation)
+            {
+                sanitized.push(cell.clone());
+                sanitized.push(cells[index + 1].clone());
+                index += 2;
+                continue;
+            }
+        }
+
+        sanitized.push(TerminalCell::new(
+            '\u{fffd}',
+            cell.foreground(),
+            cell.background(),
+        ));
+        index += 1;
+    }
+    sanitized
 }
 
 pub(crate) fn validate_cell_width(cell_width: u16) -> Result<(), TerminalPlanError> {

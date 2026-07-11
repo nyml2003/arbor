@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "punctum",
+      "name": "Punctum",
+      "kind": "framework",
+      "root": "apps/punctum",
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["cargo", "fmt", "--all", "--", "--check"]
+        },
+        {
+          "id": "test",
+          "argv": ["cargo", "test", "--workspace", "--all-targets", "--locked"]
+        },
+        {
+          "id": "clippy",
+          "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+        },
+        {
+          "id": "grid-coverage",
+          "argv": ["cargo", "llvm-cov", "-p", "punctum-grid", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        },
+        {
+          "id": "input-coverage",
+          "argv": ["cargo", "llvm-cov", "-p", "punctum-input", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        }
+      ]
+    },
+    {
+      "id": "tetris",
+      "name": "Tetris",
+      "kind": "proof",
+      "root": "apps/tetris",
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["cargo", "fmt", "--all", "--", "--check"]
+        },
+        {
+          "id": "test",
+          "argv": ["cargo", "test", "--all-targets", "--locked"]
+        },
+        {
+          "id": "clippy",
+          "argv": ["cargo", "clippy", "--all-targets", "--locked", "--", "-D", "warnings"]
+        },
+        {
+          "id": "pure-coverage",
+          "argv": ["cargo", "llvm-cov", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        }
+      ],
+      "coverage_targets": [
+        {
+          "id": "terminal-view",
+          "source": "examples/terminal/view.rs",
+          "objects": ["debug/examples/terminal-*"]
+        }
+      ]
+    },
+    {
+      "id": "ramus",
+      "name": "Ramus",
+      "kind": "infrastructure",
+      "root": "packages/ramus",
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["cargo", "fmt", "--all", "--", "--check"]
+        },
+        {
+          "id": "test",
+          "argv": ["cargo", "test", "--workspace", "--all-targets", "--locked"]
+        },
+        {
+          "id": "clippy",
+          "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+        },
+        {
+          "id": "core-coverage",
+          "argv": ["cargo", "llvm-cov", "-p", "ramus-core", "--all-targets", "--locked", "--fail-under-lines", "100", "--fail-under-functions", "100", "--fail-under-regions", "100"]
+        }
+      ]
+    },
+    {
+      "id": "gen3-game",
+      "name": "Gen3 Game",
+      "kind": "product",
+      "root": "apps/gen3-game",
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["cargo", "fmt", "--all", "--", "--check"]
+        },
+        {
+          "id": "test",
+          "argv": ["cargo", "test", "--workspace", "--all-targets", "--locked"]
+        },
+        {
+          "id": "clippy",
+          "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+        }
+      ]
+    },
+    {
+      "id": "tui-chater",
+      "name": "TUI Chater",
+      "kind": "product",
+      "root": "apps/tui-chater",
+      "commands": [
+        {
+          "id": "format",
+          "argv": ["cargo", "fmt", "--all", "--", "--check"]
+        },
+        {
+          "id": "test",
+          "argv": ["cargo", "test", "--workspace", "--all-targets", "--locked"]
+        },
+        {
+          "id": "clippy",
+          "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
+        }
+      ]
+    }
+  ]
+}

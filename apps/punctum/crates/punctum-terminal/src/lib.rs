@@ -6,8 +6,10 @@ mod cell;
 mod input;
 mod plan;
 mod runtime;
+mod text;
 
-pub use cell::{TerminalCell, TerminalColor};
-pub use input::normalize_key_event;
-pub use plan::{TerminalPlanError, TerminalRun, plan_patch};
+pub use cell::{TerminalCell, TerminalCellError, TerminalColor};
+pub use input::{normalize_key_event, normalize_text_event};
+pub use plan::{TerminalPlan, TerminalPlanError, TerminalRun, plan_patch};
 pub use runtime::{TerminalPresentError, TerminalPresenter, TerminalSession};
+pub use text::{TerminalTextError, resize_text_surface, write_text};

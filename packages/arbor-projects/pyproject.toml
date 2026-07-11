@@ -1,0 +1,10 @@
+[project]
+name = "arbor-projects"
+version = "0.1.0"
+description = "Arbor project registry and local verification runner"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+arbor-projects = "arbor_projects.cli:main"
+
