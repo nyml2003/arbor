@@ -473,6 +473,9 @@ Python 工程使用不可变 dataclass 领域模型和 typing.Protocol 端口。
 - punctum-terminal 为 457/457 regions、30/30 functions、347/347 lines。
 - punctum-gpu pure planner 与输入转换为 560/560 regions、37/37 functions、460/460 lines。
 - Punctum GPU headless smoke 在本机 adapter 上通过。该测试实际创建 device、shader、pipeline 和 atlas texture。测试发现并修复 WGSL 保留字 `target` 导致的 shader parse failure。
+- `R2` 后 `punctum-terminal` 不使用文件名排除，结果为 385/385 regions、26/26 functions、290/290 lines。
+- `R2` 后 `punctum-gpu` 不使用文件名排除，结果为 449/449 regions、32/32 functions、332/332 lines。该结果包含 instance/uniform encoding。
+- `R2` 后 Punctum workspace 仍为 109 项测试；`punctum-crossterm` 的 9 项合同、`punctum-wgpu` 的 8 项输入合同和单独运行的 ignored headless smoke 均通过。Clippy 以 `-D warnings` 通过。
 - Tetris 的 format、29 项测试、Clippy、core 覆盖率和 Terminal view 单文件覆盖率全部通过。core 为 328/328 regions、35/35 functions、257/257 lines；Terminal view 为 150/150 regions、11/11 functions、105/105 lines。
 - Ramus Python verifier 的 format、test、Clippy 和 typed LCOV branch coverage 全部通过。生产源码为 1529/1529 line entries、158/158 functions、148/148 branch entries，missed lines 和 missed branches 均为 0。旧 `Test-PureCoverage.ps1` 同时通过，覆盖 10 个生产文件；新验证器通过后仍保留旧脚本。
 - Gen3 Game 和 TUI Chater 的 Python 注册门禁全部通过。因 Punctum path dependency 变化，Punctum、Tetris、Gen3 Game 和 TUI Chater lockfile 已刷新，并通过 `--locked` 复核。

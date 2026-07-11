@@ -295,7 +295,22 @@ fn plan_patch_keeps_replacement_rows_in_order() {
 }
 
 #[test]
-fn plan_patch_replaces_an_unpaired_wide_grapheme() {
+fn plan_patch_preserves_complete_wide_pairs_and_replaces_unpaired_graphemes() {
+    let empty = Surface::filled(GridSize::new(2, 1), TerminalCell::default()).unwrap();
+    let mut paired = empty.clone();
+    write_text(
+        &mut paired,
+        GridPos::new(0, 0),
+        &TextEvent::new("界").unwrap(),
+        TerminalColor::Yellow,
+        TerminalColor::Blue,
+    )
+    .unwrap();
+    let paired_plan = plan_patch(&diff(&empty, &paired), 1).unwrap();
+
+    assert_eq!(paired_plan.runs()[0].cells()[0].grapheme(), Some("界"));
+    assert!(paired_plan.runs()[0].cells()[1].is_continuation());
+
     let wide =
         TerminalCell::from_grapheme("界", TerminalColor::Yellow, TerminalColor::Blue).unwrap();
     let patch = patch_with_one_changed_cell(GridSize::new(1, 1), GridPos::new(0, 0), wide);

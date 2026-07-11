@@ -40,6 +40,8 @@ python -m arbor_projects verify tetris
 
 Ramus 的 `pure-branch-coverage` 目标运行 nightly `cargo llvm-cov --branch --lcov`。LCOV parser 必须读到一致的 line、function 和 branch 记录，并要求生产源码三项全部覆盖。branch 使用独立的 `BRF`、`BRH` 和 `BRDA` 校验，不能由 line 或 function coverage 替代。
 
+Punctum 的 `terminal-coverage` 和 `gpu-coverage` 只覆盖纯逻辑 crate，不使用文件名排除。`punctum-crossterm` 和 `punctum-wgpu` 运行独立合同测试；`punctum-wgpu` 额外运行 ignored headless smoke。平台 crate 不设置 coverage 百分比。
+
 ## 测试
 
 ~~~text
