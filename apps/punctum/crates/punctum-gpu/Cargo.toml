@@ -7,7 +7,9 @@ rust-version.workspace = true
 
 [dependencies]
 punctum-grid = { workspace = true }
+punctum-input = { workspace = true }
 wgpu = "30.0.0"
+winit = "0.30.13"
 
 [lib]
 path = "src/lib.rs"

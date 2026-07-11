@@ -86,6 +86,13 @@
           "id": "clippy",
           "argv": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"]
         }
+      ],
+      "branch_coverage_targets": [
+        {
+          "id": "pure-branch-coverage",
+          "argv": ["cargo", "+nightly", "llvm-cov", "--workspace", "--all-targets", "--locked", "--branch", "--ignore-filename-regex", "boundary[\\\\/]|[\\\\/]tests[\\\\/]", "--lcov"],
+          "source_roots": ["src"]
+        }
       ]
     },
     {

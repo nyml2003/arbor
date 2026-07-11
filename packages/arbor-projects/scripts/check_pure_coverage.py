@@ -14,6 +14,7 @@ PURE_SOURCES = (
     "arbor_projects/application/__init__.py",
     "arbor_projects/adapters/registry_format.py",
     "arbor_projects/adapters/llvm_export.py",
+    "arbor_projects/adapters/lcov.py",
 )
 TRACE_COUNT_ENABLED = True
 TRACE_OUTPUT_DISABLED = False

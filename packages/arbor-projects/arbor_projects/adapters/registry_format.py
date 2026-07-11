@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from arbor_projects.domain import (
+    BranchCoverageTarget,
     CoverageTarget,
     Project,
     ProjectId,
@@ -23,8 +24,10 @@ ROOT_KEY = "root"
 COMMANDS_KEY = "commands"
 ARGV_KEY = "argv"
 COVERAGE_TARGETS_KEY = "coverage_targets"
+BRANCH_COVERAGE_TARGETS_KEY = "branch_coverage_targets"
 SOURCE_KEY = "source"
 OBJECTS_KEY = "objects"
+SOURCE_ROOTS_KEY = "source_roots"
 INVALID_JSON_MESSAGE = "invalid project registry JSON: {reason}"
 INVALID_SCHEMA_MESSAGE = "unsupported project registry schema: {version!r}"
 EXPECTED_OBJECT_MESSAGE = "{field!r} must be an object"
@@ -86,6 +89,16 @@ def _parse_coverage_target(value: object) -> CoverageTarget:
     )
 
 
+def _parse_branch_coverage_target(value: object) -> BranchCoverageTarget:
+    item = _require_object(value, BRANCH_COVERAGE_TARGETS_KEY)
+    source_roots = _require_string_list(item.get(SOURCE_ROOTS_KEY), SOURCE_ROOTS_KEY)
+    return BranchCoverageTarget(
+        id=_require_string(item.get(ID_KEY), ID_KEY),
+        argv=_require_string_list(item.get(ARGV_KEY), ARGV_KEY),
+        source_roots=tuple(ProjectPath(root) for root in source_roots),
+    )
+
+
 def _parse_project(value: object) -> Project:
     item = _require_object(value, PROJECTS_KEY)
     commands = tuple(
@@ -97,6 +110,14 @@ def _parse_project(value: object) -> Project:
         _parse_coverage_target(target)
         for target in _require_list(coverage_values, COVERAGE_TARGETS_KEY)
     )
+    branch_coverage_values = item.get(BRANCH_COVERAGE_TARGETS_KEY, _empty_list())
+    branch_coverage_targets = tuple(
+        _parse_branch_coverage_target(target)
+        for target in _require_list(
+            branch_coverage_values,
+            BRANCH_COVERAGE_TARGETS_KEY,
+        )
+    )
     try:
         return Project(
             id=ProjectId(_require_string(item.get(ID_KEY), ID_KEY)),
@@ -105,6 +126,7 @@ def _parse_project(value: object) -> Project:
             root=ProjectPath(_require_string(item.get(ROOT_KEY), ROOT_KEY)),
             commands=commands,
             coverage_targets=coverage_targets,
+            branch_coverage_targets=branch_coverage_targets,
         )
     except (TypeError, ValueError) as error:
         raise RegistryFormatError(

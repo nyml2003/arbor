@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { runCli } from "../src/cli.js";
 
 test("--version prints package version", async () => {
@@ -93,6 +95,40 @@ test("install dry-run uses skill command shape", async () => {
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+test("symlinked executable entry runs the CLI", async () => {
+  const workspace = await createWorkspace();
+  const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const linkedPackageDir = join(workspace, "linked-cli");
+  const cliPath = join(linkedPackageDir, "dist-test", "src", "cli.js");
+
+  try {
+    await symlink(packageDir, linkedPackageDir, process.platform === "win32" ? "junction" : "dir");
+    await writeFile(
+      join(workspace, "arbor.skills.json"),
+      JSON.stringify({ schema: "arbor.skills/v1", targetDir: "installed", skills: [] }),
+      "utf8",
+    );
+
+    const version = spawnCli(cliPath, ["--version"]);
+    assert.ifError(version.error);
+    assert.equal(version.status, 0, version.stderr);
+    assert.equal(version.stdout, "0.1.0\n");
+
+    const lint = spawnCli(cliPath, ["skill", "lint", "--cwd", workspace]);
+    assert.ifError(lint.error);
+    assert.equal(lint.status, 0, lint.stderr);
+    assert.equal(lint.stdout, "No skill issues found.\n");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+function spawnCli(cliPath: string, args: ReadonlyArray<string>) {
+  return spawnSync(process.execPath, [cliPath, ...args], {
+    encoding: "utf8",
+  });
+}
 
 async function createWorkspace(): Promise<string> {
   const dir = join(tmpdir(), `arbor-skill-cli-test-${crypto.randomUUID()}`);

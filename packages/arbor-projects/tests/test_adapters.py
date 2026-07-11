@@ -5,10 +5,17 @@ import unittest
 
 from arbor_projects.adapters import (
     JsonProjectRepository,
+    LcovFormatError,
     RegistryFormatError,
+    parse_lcov_branch_coverage,
     parse_llvm_export,
 )
-from arbor_projects.domain import CoverageTarget, ProjectId, ProjectPath
+from arbor_projects.domain import (
+    BranchCoverageTarget,
+    CoverageTarget,
+    ProjectId,
+    ProjectPath,
+)
 
 
 class JsonProjectRepositoryTests(unittest.TestCase):
@@ -31,6 +38,13 @@ class JsonProjectRepositoryTests(unittest.TestCase):
                             "objects": ["debug/examples/terminal-*"],
                         }
                     ],
+                    "branch_coverage_targets": [
+                        {
+                            "id": "pure-branch-coverage",
+                            "argv": ["cargo", "llvm-cov", "--branch", "--lcov"],
+                            "source_roots": ["src"],
+                        }
+                    ],
                 }
             ],
         }
@@ -45,6 +59,10 @@ class JsonProjectRepositoryTests(unittest.TestCase):
             assert loaded is not None
             self.assertEqual(loaded.root, ProjectPath("apps/tetris"))
             self.assertEqual(loaded.commands[0].argv, ("cargo", "test", "--locked"))
+            self.assertEqual(
+                loaded.branch_coverage_targets[0].source_roots,
+                (ProjectPath("src"),),
+            )
 
     def test_repository_rejects_duplicate_project_ids(self) -> None:
         project = {
@@ -217,6 +235,184 @@ class LlvmExportParserTests(unittest.TestCase):
                 parse_llvm_export(payload, self.target)
 
 
+class LcovBranchParserTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.target = BranchCoverageTarget(
+            "pure-branch-coverage",
+            ("cargo", "llvm-cov", "--branch", "--lcov"),
+            (ProjectPath("src"),),
+        )
+
+    def test_parser_returns_exact_branch_coverage_for_matching_sources(self) -> None:
+        report = "\n".join(
+            (
+                "TN:",
+                "SF:C:\\repo\\packages\\ramus\\crates\\ramus-core\\src\\lib.rs",
+                "FNDA:1,ramus_core::run",
+                "FNF:1",
+                "FNH:1",
+                "BRDA:10,0,0,1",
+                "BRDA:10,0,1,2",
+                "BRF:2",
+                "BRH:2",
+                "DA:10,2",
+                "LF:1",
+                "LH:1",
+                "end_of_record",
+                "SF:C:/repo/packages/ramus/crates/ramus-core/tests/public.rs",
+                "FNF:0",
+                "FNH:0",
+                "BRF:0",
+                "BRH:0",
+                "LF:0",
+                "LH:0",
+                "end_of_record",
+            )
+        )
+
+        coverage = parse_lcov_branch_coverage(report, self.target)
+
+        self.assertTrue(coverage.complete)
+        self.assertEqual(coverage.branches.count, 2)
+        self.assertEqual(coverage.branches.covered, 2)
+        self.assertEqual(coverage.missed_branches, 0)
+
+    def test_parser_rejects_missing_branch_summary_fields(self) -> None:
+        report = "\n".join(
+            (
+                "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                "FNDA:1,ramus_core::run",
+                "FNF:1",
+                "FNH:1",
+                "BRDA:10,0,0,1",
+                "BRF:1",
+                "DA:10,1",
+                "LF:1",
+                "LH:1",
+                "end_of_record",
+            )
+        )
+
+        with self.assertRaises(LcovFormatError):
+            parse_lcov_branch_coverage(report, self.target)
+
+    def test_parser_rejects_invalid_lcov_content(self) -> None:
+        invalid_reports = (
+            "\n".join(
+                (
+                    "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                    "BRDA:line,0,0,1",
+                    "BRF:1",
+                    "BRH:1",
+                    "end_of_record",
+                )
+            ),
+            "\n".join(
+                (
+                    "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                    "BRDA:10,0,0",
+                    "BRF:1",
+                    "BRH:1",
+                    "end_of_record",
+                )
+            ),
+            "\n".join(
+                (
+                    "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                    "FNDA:1,ramus_core::run",
+                    "FNF:1",
+                    "FNH:1",
+                    "BRDA:10,0,0,1",
+                    "BRF:2",
+                    "BRH:3",
+                    "DA:10,1",
+                    "LF:1",
+                    "LH:1",
+                    "end_of_record",
+                )
+            ),
+        )
+        for report in invalid_reports:
+            with self.subTest(report=report), self.assertRaises(LcovFormatError):
+                parse_lcov_branch_coverage(report, self.target)
+
+    def test_parser_reports_incomplete_branch_coverage(self) -> None:
+        report = "\n".join(
+            (
+                "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                "FNDA:1,ramus_core::run",
+                "FNF:1",
+                "FNH:1",
+                "BRDA:10,0,0,1",
+                "BRDA:10,0,1,0",
+                "BRDA:11,0,0,-",
+                "BRF:3",
+                "BRH:1",
+                "DA:10,1",
+                "LF:1",
+                "LH:1",
+                "end_of_record",
+            )
+        )
+
+        coverage = parse_lcov_branch_coverage(report, self.target)
+
+        self.assertFalse(coverage.complete)
+        self.assertEqual(coverage.branches.covered, 1)
+        self.assertEqual(coverage.missed_branches, 2)
+
+    def test_parser_reports_incomplete_line_coverage(self) -> None:
+        report = "\n".join(
+            (
+                "SF:C:/repo/packages/ramus/crates/ramus-core/src/lib.rs",
+                "FNF:0",
+                "FNH:0",
+                "BRF:0",
+                "BRH:0",
+                "DA:10,0",
+                "LF:1",
+                "LH:0",
+                "end_of_record",
+            )
+        )
+
+        coverage = parse_lcov_branch_coverage(report, self.target)
+
+        self.assertFalse(coverage.complete)
+        self.assertEqual(coverage.missed_lines, 1)
+
+    def test_parser_rejects_invalid_record_structure(self) -> None:
+        invalid_reports = (
+            "SF:\nBRF:0\nBRH:0\nend_of_record",
+            "end_of_record",
+            "SF:src/lib.rs\nSF:src/main.rs",
+            "SF:src/lib.rs\nBRF:0\nBRH:0",
+            "SF:src/lib.rs\nBRF:-1\nBRH:0\nend_of_record",
+            "SF:src/lib.rs\nBRF:value\nBRH:0\nend_of_record",
+            "SF:src/lib.rs\nBRF:0\nBRF:0\nBRH:0\nend_of_record",
+            "SF:src/lib.rs\nBRF:0\nBRH:0\nBRH:0\nend_of_record",
+            "SF:src/lib.rs\nBRF:0\nBRH:0\nLF:0\nLH:0\nend_of_record",
+            (
+                "SF:other/lib.rs\nFNF:0\nFNH:0\nBRF:0\nBRH:0"
+                "\nLF:0\nLH:0\nend_of_record"
+            ),
+        )
+        for report in invalid_reports:
+            with self.subTest(report=report), self.assertRaises(LcovFormatError):
+                parse_lcov_branch_coverage(report, self.target)
+
+    def test_parser_rejects_invalid_function_and_line_data(self) -> None:
+        invalid_reports = (
+            "SF:src/lib.rs\nFNDA:1\nend_of_record",
+            "SF:src/lib.rs\nDA:1\nend_of_record",
+            "SF:src/lib.rs\nDA:line,1\nend_of_record",
+            "SF:src/lib.rs\nDA:1,value\nend_of_record",
+        )
+        for report in invalid_reports:
+            with self.subTest(report=report), self.assertRaises(LcovFormatError):
+                parse_lcov_branch_coverage(report, self.target)
+
+
 class RealRegistryTests(unittest.TestCase):
     def test_real_registry_contains_the_phase_projects(self) -> None:
         registry = Path(__file__).resolve().parents[1] / "projects.json"
@@ -246,6 +442,21 @@ class RealRegistryTests(unittest.TestCase):
                 "terminal-coverage",
                 "gpu-coverage",
             },
+        )
+
+    def test_ramus_registry_requires_real_branch_coverage(self) -> None:
+        registry = Path(__file__).resolve().parents[1] / "projects.json"
+        repository = JsonProjectRepository(registry)
+        ramus = repository.get(ProjectId("ramus"))
+
+        self.assertIsNotNone(ramus)
+        assert ramus is not None
+        target = ramus.branch_coverage_targets[0]
+        self.assertIn("--branch", target.argv)
+        self.assertIn("--lcov", target.argv)
+        self.assertEqual(
+            target.source_roots,
+            (ProjectPath("src"),),
         )
 
 

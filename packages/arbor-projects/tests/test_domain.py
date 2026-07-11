@@ -2,6 +2,8 @@ from pathlib import PurePosixPath
 import unittest
 
 from arbor_projects.domain import (
+    BranchCoverage,
+    BranchCoverageTarget,
     CommandResult,
     CoverageMetric,
     CoverageTarget,
@@ -84,6 +86,39 @@ class DomainModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CoverageTarget("view", ProjectPath("../view.py"), ("view-*",))
 
+    def test_branch_coverage_target_requires_id_argv_and_source_roots(self) -> None:
+        root = (ProjectPath("crates/ramus-core/src"),)
+        with self.assertRaises(ValueError):
+            BranchCoverageTarget("", ("cargo",), root)
+        with self.assertRaises(ValueError):
+            BranchCoverageTarget("pure", (), root)
+        with self.assertRaises(ValueError):
+            BranchCoverageTarget("pure", ("cargo",), ())
+
+    def test_project_rejects_duplicate_ids_across_coverage_target_kinds(self) -> None:
+        with self.assertRaises(ValueError):
+            Project(
+                id=ProjectId("ramus"),
+                name="Ramus",
+                kind=ProjectKind.INFRASTRUCTURE,
+                root=ProjectPath("packages/ramus"),
+                commands=(),
+                coverage_targets=(
+                    CoverageTarget(
+                        "pure",
+                        ProjectPath("src/lib.rs"),
+                        ("debug/ramus-*",),
+                    ),
+                ),
+                branch_coverage_targets=(
+                    BranchCoverageTarget(
+                        "pure",
+                        ("cargo", "llvm-cov", "--branch", "--lcov"),
+                        (ProjectPath("crates/ramus-core/src"),),
+                    ),
+                ),
+            )
+
     def test_coverage_metric_rejects_invalid_counts(self) -> None:
         for count, covered in ((-1, 0), (1, -1), (1, 2)):
             with self.subTest(count=count, covered=covered), self.assertRaises(ValueError):
@@ -104,6 +139,17 @@ class DomainModelTests(unittest.TestCase):
         self.assertTrue(complete.complete)
         self.assertFalse(incomplete.complete)
 
+    def test_branch_coverage_is_complete_only_when_all_branches_are_hit(self) -> None:
+        complete = CoverageMetric(1, 1)
+        self.assertTrue(
+            BranchCoverage(complete, complete, CoverageMetric(2, 2), 0, 0).complete
+        )
+        self.assertFalse(
+            BranchCoverage(complete, complete, CoverageMetric(2, 1), 0, 1).complete
+        )
+        with self.assertRaises(ValueError):
+            BranchCoverage(complete, complete, complete, -1, 0)
+
     def test_verification_report_requires_all_commands_and_coverage_to_pass(self) -> None:
         complete = FileCoverage(
             CoverageMetric(1, 1), CoverageMetric(1, 1), CoverageMetric(1, 1)
@@ -116,6 +162,21 @@ class DomainModelTests(unittest.TestCase):
         )
 
         self.assertTrue(report.passed)
+        self.assertFalse(
+            VerificationReport(
+                project_id=ProjectId("ramus"),
+                found=True,
+                branch_coverage_results=(
+                    BranchCoverage(
+                        CoverageMetric(1, 1),
+                        CoverageMetric(1, 1),
+                        CoverageMetric(2, 1),
+                        0,
+                        1,
+                    ),
+                ),
+            ).passed
+        )
         self.assertFalse(
             VerificationReport(
                 project_id=ProjectId("tetris"),

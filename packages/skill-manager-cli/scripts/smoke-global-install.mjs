@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -30,8 +31,17 @@ try {
     PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
   };
 
-  runBin(arborBin, ["--version"], repoRoot, env);
-  runBin(arborBin, ["doctor", "--manifest", ".codex/arbor.skills.json", "--cwd", repoRoot], repoRoot, env);
+  const version = runBin(arborBin, ["--version"], repoRoot, env);
+  assert.equal(version.stdout, `${cliPackage.version}\n`);
+
+  const doctor = runBin(
+    arborBin,
+    ["doctor", "--manifest", ".codex/arbor.skills.json", "--cwd", repoRoot],
+    repoRoot,
+    env,
+  );
+  assert.match(doctor.stdout, /manifest found:/);
+  assert.match(doctor.stdout, /doctor ok/);
 } finally {
   await rm(prefix, { recursive: true, force: true });
 }
@@ -61,17 +71,28 @@ function runBin(command, args, cwd, env) {
     ? spawnSync("cmd.exe", ["/d", "/c", command, ...args], {
       cwd,
       env,
-      stdio: "inherit",
+      encoding: "utf8",
     })
     : spawnSync(command, args, {
       cwd,
       env,
-      stdio: "inherit",
+      encoding: "utf8",
     });
 
-  if (result.status !== 0) {
-    throw new Error(`Command failed: ${command} ${args.join(" ")}`);
+  if (result.error !== undefined) {
+    throw result.error;
   }
+
+  if (result.status !== 0) {
+    throw new Error(
+      `Command failed: ${command} ${args.join(" ")}\n${result.stdout ?? ""}${result.stderr ?? ""}`,
+    );
+  }
+
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
 }
 
 function resolveTool(command) {

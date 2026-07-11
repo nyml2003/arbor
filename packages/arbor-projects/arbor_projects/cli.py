@@ -6,6 +6,7 @@ from typing import Sequence
 
 from arbor_projects.adapters import (
     JsonProjectRepository,
+    LcovBranchCoverageReader,
     LlvmCoverageReader,
     RegistryFormatError,
     SubprocessCommandRunner,
@@ -42,6 +43,13 @@ COVERAGE_ROW = (
     "{status}\tcoverage\tregions={regions_covered}/{regions_count}"
     "\tfunctions={functions_covered}/{functions_count}"
     "\tlines={lines_covered}/{lines_count}"
+)
+BRANCH_COVERAGE_ROW = (
+    "{status}\tbranch-coverage"
+    "\tlines={lines_covered}/{lines_count}"
+    "\tfunctions={functions_covered}/{functions_count}"
+    "\tbranches={branches_covered}/{branches_count}"
+    "\tmissed-lines={missed_lines}\tmissed-branches={missed_branches}"
 )
 DIAGNOSTIC_ROW = "FAIL\t{code}\t{message}"
 STATUS_PASS = "PASS"
@@ -110,6 +118,20 @@ def _print_report(report: VerificationReport) -> None:
                 lines_count=coverage.lines.count,
             )
         )
+    for coverage in report.branch_coverage_results:
+        print(
+            BRANCH_COVERAGE_ROW.format(
+                status=_status(coverage.complete),
+                lines_covered=coverage.lines.covered,
+                lines_count=coverage.lines.count,
+                functions_covered=coverage.functions.covered,
+                functions_count=coverage.functions.count,
+                branches_covered=coverage.branches.covered,
+                branches_count=coverage.branches.count,
+                missed_lines=coverage.missed_lines,
+                missed_branches=coverage.missed_branches,
+            )
+        )
     for diagnostic in report.diagnostics:
         print(
             DIAGNOSTIC_ROW.format(
@@ -145,6 +167,7 @@ def _verify_project(
         repository=repository,
         runner=SubprocessCommandRunner(),
         coverage_reader=LlvmCoverageReader(),
+        branch_coverage_reader=LcovBranchCoverageReader(),
         repo_root=repo_root,
     )
     report = verifier.verify(project_id)

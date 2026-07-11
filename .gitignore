@@ -5,6 +5,7 @@ dist-test/
 out/
 .output/
 .electron-builder/
+.pnpm-store/
 
 # Rust build artifacts, including nested workspaces like apps/thorn/target/
 target/

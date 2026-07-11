@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { cwd as processCwd, exit } from "node:process";
@@ -415,7 +415,19 @@ function usage(): string {
   ].join("\n");
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+function isDirectInvocation(entryPath: string | undefined): boolean {
+  if (entryPath === undefined) {
+    return false;
+  }
+
+  try {
+    return realpathSync.native(fileURLToPath(import.meta.url)) === realpathSync.native(resolve(entryPath));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation(process.argv[1])) {
   const result = await runCli(process.argv.slice(2));
   if (result.stdout.length > 0) {
     process.stdout.write(result.stdout);

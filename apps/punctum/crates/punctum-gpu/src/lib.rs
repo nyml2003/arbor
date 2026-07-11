@@ -2,10 +2,12 @@
 
 #![forbid(unsafe_code)]
 
+mod input;
 mod model;
 mod plan;
 mod runtime;
 
+pub use input::{WinitKeyEventSnapshot, normalize_key_event};
 pub use model::{
     GpuAtlas, GpuAtlasError, GpuCell, GpuClip, GpuResource, PixelOffset, PixelRect, PixelSize,
     ResourceId, Rgba8, Viewport, ViewportError,

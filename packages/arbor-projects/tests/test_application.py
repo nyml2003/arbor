@@ -3,6 +3,8 @@ import unittest
 
 from arbor_projects.application import CoverageReadError, ProjectVerifier
 from arbor_projects.domain import (
+    BranchCoverage,
+    BranchCoverageTarget,
     CommandResult,
     CoverageMetric,
     CoverageTarget,
@@ -68,6 +70,21 @@ class FakeCoverageReader:
         return self.coverage
 
 
+class FakeBranchCoverageReader:
+    def __init__(self, coverage: BranchCoverage) -> None:
+        self.coverage = coverage
+        self.calls: list[str] = []
+
+    def read(
+        self,
+        repo_root: Path,
+        target: Project,
+        coverage_target: BranchCoverageTarget,
+    ) -> BranchCoverage:
+        self.calls.append(coverage_target.id)
+        return self.coverage
+
+
 class FailingCoverageReader:
     def read(
         self, repo_root: Path, target: Project, coverage_target: CoverageTarget
@@ -75,17 +92,38 @@ class FailingCoverageReader:
         raise CoverageReadError("missing profile")
 
 
+class FailingBranchCoverageReader:
+    def read(
+        self,
+        repo_root: Path,
+        target: Project,
+        coverage_target: BranchCoverageTarget,
+    ) -> BranchCoverage:
+        raise CoverageReadError("invalid lcov")
+
+
 class ProjectVerifierTests(unittest.TestCase):
     def setUp(self) -> None:
         self.complete = FileCoverage(
             CoverageMetric(1, 1), CoverageMetric(1, 1), CoverageMetric(1, 1)
+        )
+        self.complete_branches = BranchCoverage(
+            CoverageMetric(1, 1),
+            CoverageMetric(1, 1),
+            CoverageMetric(2, 2),
+            0,
+            0,
         )
 
     def test_verify_runs_commands_in_order_then_checks_coverage(self) -> None:
         runner = FakeRunner({})
         coverage = FakeCoverageReader(self.complete)
         verifier = ProjectVerifier(
-            MemoryRepository((project(),)), runner, coverage, Path("C:/repo")
+            MemoryRepository((project(),)),
+            runner,
+            coverage,
+            FakeBranchCoverageReader(self.complete_branches),
+            Path("C:/repo"),
         )
 
         report = verifier.verify(ProjectId("tetris"))
@@ -98,7 +136,11 @@ class ProjectVerifierTests(unittest.TestCase):
         runner = FakeRunner({"fmt": 2})
         coverage = FakeCoverageReader(self.complete)
         verifier = ProjectVerifier(
-            MemoryRepository((project(),)), runner, coverage, Path("C:/repo")
+            MemoryRepository((project(),)),
+            runner,
+            coverage,
+            FakeBranchCoverageReader(self.complete_branches),
+            Path("C:/repo"),
         )
 
         report = verifier.verify(ProjectId("tetris"))
@@ -109,7 +151,11 @@ class ProjectVerifierTests(unittest.TestCase):
 
     def test_verify_returns_a_structured_missing_project_report(self) -> None:
         verifier = ProjectVerifier(
-            MemoryRepository(()), FakeRunner({}), FakeCoverageReader(self.complete), Path("C:/repo")
+            MemoryRepository(()),
+            FakeRunner({}),
+            FakeCoverageReader(self.complete),
+            FakeBranchCoverageReader(self.complete_branches),
+            Path("C:/repo"),
         )
 
         report = verifier.verify(ProjectId("missing"))
@@ -126,6 +172,7 @@ class ProjectVerifierTests(unittest.TestCase):
             MemoryRepository((project(),)),
             FakeRunner({}),
             FakeCoverageReader(incomplete),
+            FakeBranchCoverageReader(self.complete_branches),
             Path("C:/repo"),
         )
 
@@ -136,10 +183,75 @@ class ProjectVerifierTests(unittest.TestCase):
             MemoryRepository((project(),)),
             FakeRunner({}),
             FailingCoverageReader(),
+            FakeBranchCoverageReader(self.complete_branches),
             Path("C:/repo"),
         )
 
         report = verifier.verify(ProjectId("tetris"))
+
+        self.assertFalse(report.passed)
+        self.assertEqual(report.diagnostics[0].code, "coverage_read_failed")
+
+    def test_branch_coverage_is_checked_after_other_coverage(self) -> None:
+        target = BranchCoverageTarget(
+            "pure-branch-coverage",
+            ("cargo", "llvm-cov", "--branch", "--lcov"),
+            (ProjectPath("crates/ramus-core/src"),),
+        )
+        ramus = Project(
+            id=ProjectId("ramus"),
+            name="Ramus",
+            kind=ProjectKind.INFRASTRUCTURE,
+            root=ProjectPath("packages/ramus"),
+            commands=(),
+            branch_coverage_targets=(target,),
+        )
+        branch_reader = FakeBranchCoverageReader(
+            BranchCoverage(
+                CoverageMetric(1, 1),
+                CoverageMetric(1, 1),
+                CoverageMetric(2, 1),
+                0,
+                1,
+            )
+        )
+        verifier = ProjectVerifier(
+            MemoryRepository((ramus,)),
+            FakeRunner({}),
+            FakeCoverageReader(self.complete),
+            branch_reader,
+            Path("C:/repo"),
+        )
+
+        report = verifier.verify(ProjectId("ramus"))
+
+        self.assertFalse(report.passed)
+        self.assertEqual(branch_reader.calls, ["pure-branch-coverage"])
+
+    def test_branch_coverage_reader_failure_becomes_a_diagnostic(self) -> None:
+        ramus = Project(
+            id=ProjectId("ramus"),
+            name="Ramus",
+            kind=ProjectKind.INFRASTRUCTURE,
+            root=ProjectPath("packages/ramus"),
+            commands=(),
+            branch_coverage_targets=(
+                BranchCoverageTarget(
+                    "pure-branch-coverage",
+                    ("cargo", "llvm-cov", "--branch", "--lcov"),
+                    (ProjectPath("crates/ramus-core/src"),),
+                ),
+            ),
+        )
+        verifier = ProjectVerifier(
+            MemoryRepository((ramus,)),
+            FakeRunner({}),
+            FakeCoverageReader(self.complete),
+            FailingBranchCoverageReader(),
+            Path("C:/repo"),
+        )
+
+        report = verifier.verify(ProjectId("ramus"))
 
         self.assertFalse(report.passed)
         self.assertEqual(report.diagnostics[0].code, "coverage_read_failed")
