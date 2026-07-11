@@ -1,7 +1,6 @@
 use std::{error::Error, fmt};
 
 use punctum_grid::{GridPos, GridSize, Surface, SurfaceError};
-use punctum_input::TextEvent;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -10,7 +9,7 @@ use crate::{TerminalCell, TerminalColor};
 pub fn write_text(
     surface: &mut Surface<TerminalCell>,
     position: GridPos,
-    event: &TextEvent,
+    text: &str,
     foreground: TerminalColor,
     background: TerminalColor,
 ) -> Result<GridPos, TerminalTextError> {
@@ -25,7 +24,7 @@ pub fn write_text(
 
     let row = position.row;
     let mut col = position.col as u32;
-    for grapheme in event.text().graphemes(true) {
+    for grapheme in text.graphemes(true) {
         if col >= size.cols {
             break;
         }

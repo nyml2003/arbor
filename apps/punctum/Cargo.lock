@@ -1399,7 +1399,6 @@ name = "punctum-terminal"
 version = "0.0.0"
 dependencies = [
  "punctum-grid",
- "punctum-input",
  "unicode-segmentation",
  "unicode-width",
 ]

@@ -4,7 +4,7 @@ use crossterm::event::{
 };
 use punctum_crossterm::{TerminalPresenter, normalize_key_event, normalize_text_event};
 use punctum_grid::{GridPos, GridSize, Surface};
-use punctum_input::{KeyPhase, LogicalKey, Modifiers, NamedKey, TextEvent, TextEventError};
+use punctum_input::{KeyPhase, LogicalKey, Modifiers, NamedKey, TextEventError};
 use punctum_terminal::{TerminalCell, TerminalColor, write_text};
 
 fn raw_key(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> RawKeyEvent {
@@ -17,7 +17,7 @@ fn presenter_parks_the_cursor_at_the_origin_after_unicode_output() {
     write_text(
         &mut surface,
         GridPos::new(0, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::White,
         TerminalColor::Black,
     )

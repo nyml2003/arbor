@@ -1,5 +1,4 @@
 use punctum_grid::{GridPos, GridSize, Surface, diff};
-use punctum_input::TextEvent;
 use punctum_terminal::{
     TerminalCell, TerminalCellError, TerminalColor, TerminalPlanError, TerminalTextError,
     plan_patch, resize_text_surface, write_text,
@@ -67,12 +66,11 @@ fn terminal_cell_accepts_exactly_one_grapheme() {
 #[test]
 fn write_text_expands_unicode_into_lead_and_continuation_cells() {
     let mut surface = Surface::filled(GridSize::new(8, 1), TerminalCell::default()).unwrap();
-    let event = TextEvent::new("Ae\u{301}界👩‍💻").unwrap();
 
     let cursor = write_text(
         &mut surface,
         GridPos::new(0, 0),
-        &event,
+        "Ae\u{301}界👩‍💻",
         TerminalColor::White,
         TerminalColor::Black,
     )
@@ -106,7 +104,7 @@ fn overwriting_either_wide_grapheme_slot_clears_the_other_slot() {
         write_text(
             &mut surface,
             GridPos::new(0, 0),
-            &TextEvent::new("界").unwrap(),
+            "界",
             TerminalColor::White,
             TerminalColor::Black,
         )
@@ -115,7 +113,7 @@ fn overwriting_either_wide_grapheme_slot_clears_the_other_slot() {
         write_text(
             &mut surface,
             GridPos::new(overwrite_col, 0),
-            &TextEvent::new("x").unwrap(),
+            "x",
             TerminalColor::Red,
             TerminalColor::Black,
         )
@@ -143,7 +141,7 @@ fn write_text_clips_a_wide_grapheme_as_a_whole() {
     let cursor = write_text(
         &mut surface,
         GridPos::new(2, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::White,
         TerminalColor::Black,
     )
@@ -158,7 +156,6 @@ fn write_text_clips_a_wide_grapheme_as_a_whole() {
 
 #[test]
 fn write_text_rejects_each_out_of_bounds_direction() {
-    let event = TextEvent::new("x").unwrap();
     let size = GridSize::new(2, 2);
     for position in [
         GridPos::new(-1, 0),
@@ -170,7 +167,7 @@ fn write_text_rejects_each_out_of_bounds_direction() {
         let error = write_text(
             &mut surface,
             position,
-            &event,
+            "x",
             TerminalColor::White,
             TerminalColor::Black,
         )
@@ -185,13 +182,36 @@ fn write_text_rejects_each_out_of_bounds_direction() {
 }
 
 #[test]
+fn write_text_treats_empty_text_as_a_no_op() {
+    let mut surface = Surface::filled(
+        GridSize::new(2, 1),
+        TerminalCell::new('x', TerminalColor::Red, TerminalColor::Blue),
+    )
+    .unwrap();
+    let before = surface.clone();
+    let position = GridPos::new(1, 0);
+
+    let cursor = write_text(
+        &mut surface,
+        position,
+        "",
+        TerminalColor::White,
+        TerminalColor::Black,
+    )
+    .unwrap();
+
+    assert_eq!(cursor, position);
+    assert_eq!(surface, before);
+}
+
+#[test]
 fn write_text_ignores_zero_width_graphemes_and_stops_at_the_row_end() {
     let mut surface = Surface::filled(GridSize::new(1, 1), TerminalCell::default()).unwrap();
 
     let cursor = write_text(
         &mut surface,
         GridPos::new(0, 0),
-        &TextEvent::new("\u{301}xy").unwrap(),
+        "\u{301}xy",
         TerminalColor::White,
         TerminalColor::Black,
     )
@@ -207,7 +227,7 @@ fn resize_never_keeps_half_of_a_wide_grapheme() {
     write_text(
         &mut surface,
         GridPos::new(1, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::White,
         TerminalColor::Black,
     )
@@ -229,7 +249,7 @@ fn resize_preserves_complete_pairs_and_cleans_orphan_continuations() {
     write_text(
         &mut surface,
         GridPos::new(0, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::White,
         TerminalColor::Black,
     )
@@ -301,7 +321,7 @@ fn plan_patch_preserves_complete_wide_pairs_and_replaces_unpaired_graphemes() {
     write_text(
         &mut paired,
         GridPos::new(0, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::Yellow,
         TerminalColor::Blue,
     )
@@ -338,7 +358,7 @@ fn plan_patch_replaces_zero_width_and_orphan_continuation_cells() {
     write_text(
         &mut next,
         GridPos::new(0, 0),
-        &TextEvent::new("界").unwrap(),
+        "界",
         TerminalColor::White,
         TerminalColor::Black,
     )

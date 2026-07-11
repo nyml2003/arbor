@@ -1,16 +1,11 @@
 {
   "rust-analyzer.linkedProjects": [
-    "apps/aster-rs/Cargo.toml",
-    "apps/capture/src-tauri/Cargo.toml",
     "apps/clipdock/Cargo.toml",
     "apps/gen3-game/Cargo.toml",
     "apps/keydock/Cargo.toml",
     "apps/memvfs/Cargo.toml",
     "apps/punctum/Cargo.toml",
     "apps/tetris/Cargo.toml",
-    "apps/thorn/Cargo.toml",
-    "apps/tui-chater/Cargo.toml",
-    "apps/tui-framework/Cargo.toml",
     "packages/kaubo-features/next_kaubo/Cargo.toml",
     "packages/ramus/Cargo.toml"
   ]

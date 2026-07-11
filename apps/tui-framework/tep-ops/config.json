@@ -1,8 +1,0 @@
-{
-  "project": {
-    "root": "."
-  },
-  "paths": {
-    "teps_dir": "docs/TEPs"
-  }
-}

@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capability for the local Capture windows.","local":true,"windows":["settings","overlay","toast"],"permissions":["core:default","core:window:default","core:webview:default"]}}

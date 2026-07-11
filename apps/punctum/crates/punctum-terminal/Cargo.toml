@@ -7,7 +7,6 @@ rust-version.workspace = true
 
 [dependencies]
 punctum-grid = { workspace = true }
-punctum-input = { workspace = true }
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 

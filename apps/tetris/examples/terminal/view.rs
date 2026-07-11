@@ -1,5 +1,5 @@
 use punctum_grid::{GridPos, GridSize, Surface};
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey, TextEvent};
+use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
 use punctum_terminal::{TerminalCell, TerminalColor, write_text};
 use punctum_tetris::{PieceKind, TetrisCell, TetrisState, paint};
 
@@ -69,11 +69,10 @@ fn write_label(
     text: &str,
     foreground: TerminalColor,
 ) {
-    let event = TextEvent::new(text).expect("terminal labels are non-empty");
     write_text(
         surface,
         GridPos::new(INFO_COL, row),
-        &event,
+        text,
         foreground,
         TerminalColor::Black,
     )

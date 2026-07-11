@@ -11,7 +11,17 @@ punctum-input = { path = "../punctum/crates/punctum-input" }
 
 [dev-dependencies]
 punctum-crossterm = { path = "../punctum/crates/punctum-crossterm" }
+punctum-gpu = { path = "../punctum/crates/punctum-gpu" }
 punctum-terminal = { path = "../punctum/crates/punctum-terminal" }
+punctum-wgpu = { path = "../punctum/crates/punctum-wgpu" }
+pollster = "0.4.0"
+wgpu = "30.0.0"
+winit = "0.30.13"
+
+[[example]]
+name = "gpu"
+path = "examples/gpu/main.rs"
+test = true
 
 [lib]
 path = "src/lib.rs"
