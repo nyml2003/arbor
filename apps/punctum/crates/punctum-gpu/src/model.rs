@@ -5,12 +5,18 @@ use punctum_grid::GridRect;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResourceId(pub u32);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgba8 {
     pub red: u8,
     pub green: u8,
     pub blue: u8,
     pub alpha: u8,
+}
+
+impl Default for Rgba8 {
+    fn default() -> Self {
+        Self::new(0, 0, 0, 0)
+    }
 }
 
 impl Rgba8 {
@@ -28,10 +34,16 @@ impl Rgba8 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PixelSize {
     pub width: u32,
     pub height: u32,
+}
+
+impl Default for PixelSize {
+    fn default() -> Self {
+        Self::new(0, 0)
+    }
 }
 
 impl PixelSize {
@@ -44,10 +56,16 @@ impl PixelSize {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PixelOffset {
     pub x: i32,
     pub y: i32,
+}
+
+impl Default for PixelOffset {
+    fn default() -> Self {
+        Self::new(0, 0)
+    }
 }
 
 impl PixelOffset {
@@ -56,12 +74,18 @@ impl PixelOffset {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PixelRect {
     pub x: u32,
     pub y: u32,
     pub width: u32,
     pub height: u32,
+}
+
+impl Default for PixelRect {
+    fn default() -> Self {
+        Self::new(0, 0, 0, 0)
+    }
 }
 
 impl PixelRect {
@@ -102,7 +126,7 @@ impl GpuAtlas {
     pub fn new(
         size: PixelSize,
         rgba8: Vec<u8>,
-        resources: impl IntoIterator<Item = GpuResource>,
+        resources: &[GpuResource],
     ) -> Result<Self, GpuAtlasError> {
         if size.is_empty() {
             return Err(GpuAtlasError::EmptyAtlas { size });
@@ -121,7 +145,7 @@ impl GpuAtlas {
         }
 
         let mut entries = BTreeMap::new();
-        for resource in resources {
+        for &resource in resources {
             if resource.atlas_rect.size().is_empty() {
                 return Err(GpuAtlasError::EmptyResource { id: resource.id });
             }
@@ -245,14 +269,16 @@ impl fmt::Display for GpuAtlasError {
 
 impl Error for GpuAtlasError {}
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuCell {
-    #[default]
     Empty,
-    Sprite {
-        resource: ResourceId,
-        tint: Rgba8,
-    },
+    Sprite { resource: ResourceId, tint: Rgba8 },
+}
+
+impl Default for GpuCell {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -306,9 +332,14 @@ impl fmt::Display for ViewportError {
 
 impl Error for ViewportError {}
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuClip {
-    #[default]
     Surface,
     Rect(GridRect),
+}
+
+impl Default for GpuClip {
+    fn default() -> Self {
+        Self::Surface
+    }
 }

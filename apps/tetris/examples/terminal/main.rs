@@ -12,7 +12,7 @@ const TICK_INTERVAL: Duration = Duration::from_millis(450);
 
 fn main() -> Result<(), Box<dyn Error>> {
     let _session = TerminalSession::enter()?;
-    let mut presenter = TerminalPresenter::new(io::stdout(), 2)?;
+    let mut presenter = TerminalPresenter::new(io::stdout(), 1)?;
     let mut state = TetrisState::new(PieceKind::ALL.to_vec())?;
     let mut next_tick = Instant::now() + TICK_INTERVAL;
 

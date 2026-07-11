@@ -1,6 +1,6 @@
 use punctum_gpu::{
-    GpuAtlas, GpuAtlasError, GpuResource, PixelOffset, PixelRect, PixelSize, ResourceId, Viewport,
-    ViewportError,
+    GpuAtlas, GpuAtlasError, GpuCell, GpuClip, GpuResource, PixelOffset, PixelRect, PixelSize,
+    ResourceId, Rgba8, Viewport, ViewportError,
 };
 
 fn resource(id: u32, rect: PixelRect) -> GpuResource {
@@ -12,7 +12,7 @@ fn atlas_exposes_validated_pixels_resources_and_geometry() {
     let atlas = GpuAtlas::new(
         PixelSize::new(2, 2),
         vec![255; 16],
-        [resource(7, PixelRect::new(0, 0, 1, 2))],
+        &[resource(7, PixelRect::new(0, 0, 1, 2))],
     )
     .unwrap();
 
@@ -29,12 +29,12 @@ fn atlas_exposes_validated_pixels_resources_and_geometry() {
 #[test]
 fn atlas_rejects_empty_size_and_invalid_pixel_storage() {
     for size in [PixelSize::new(0, 2), PixelSize::new(2, 0)] {
-        let error = GpuAtlas::new(size, Vec::new(), []).unwrap_err();
+        let error = GpuAtlas::new(size, Vec::new(), &[]).unwrap_err();
         assert_eq!(error, GpuAtlasError::EmptyAtlas { size });
         assert!(error.to_string().contains("non-empty"));
     }
 
-    let mismatch = GpuAtlas::new(PixelSize::new(2, 2), vec![0; 15], []).unwrap_err();
+    let mismatch = GpuAtlas::new(PixelSize::new(2, 2), vec![0; 15], &[]).unwrap_err();
     assert_eq!(
         mismatch,
         GpuAtlasError::PixelLengthMismatch {
@@ -46,7 +46,7 @@ fn atlas_rejects_empty_size_and_invalid_pixel_storage() {
     assert!(mismatch.to_string().contains("16"));
 
     let row_size = PixelSize::new(u32::MAX, 1);
-    let row_overflow = GpuAtlas::new(row_size, Vec::new(), []).unwrap_err();
+    let row_overflow = GpuAtlas::new(row_size, Vec::new(), &[]).unwrap_err();
     assert_eq!(
         row_overflow,
         GpuAtlasError::RowByteLengthOverflow { size: row_size }
@@ -54,7 +54,7 @@ fn atlas_rejects_empty_size_and_invalid_pixel_storage() {
     assert!(row_overflow.to_string().contains("row byte"));
 
     let size = PixelSize::new(65_536, 65_536);
-    let overflow = GpuAtlas::new(size, Vec::new(), []).unwrap_err();
+    let overflow = GpuAtlas::new(size, Vec::new(), &[]).unwrap_err();
     assert_eq!(overflow, GpuAtlasError::PixelLengthOverflow { size });
     assert!(overflow.to_string().contains("overflows"));
 }
@@ -65,13 +65,13 @@ fn atlas_rejects_empty_out_of_bounds_and_duplicate_resources() {
     let pixels = || vec![0; 16];
 
     for rect in [PixelRect::new(0, 0, 0, 1), PixelRect::new(0, 0, 1, 0)] {
-        let error = GpuAtlas::new(size, pixels(), [resource(1, rect)]).unwrap_err();
+        let error = GpuAtlas::new(size, pixels(), &[resource(1, rect)]).unwrap_err();
         assert_eq!(error, GpuAtlasError::EmptyResource { id: ResourceId(1) });
         assert!(error.to_string().contains("empty"));
     }
 
     for rect in [PixelRect::new(1, 0, 2, 1), PixelRect::new(0, 1, 1, 2)] {
-        let error = GpuAtlas::new(size, pixels(), [resource(2, rect)]).unwrap_err();
+        let error = GpuAtlas::new(size, pixels(), &[resource(2, rect)]).unwrap_err();
         assert_eq!(
             error,
             GpuAtlasError::ResourceOutOfBounds {
@@ -86,7 +86,7 @@ fn atlas_rejects_empty_out_of_bounds_and_duplicate_resources() {
     let duplicate = GpuAtlas::new(
         size,
         pixels(),
-        [
+        &[
             resource(3, PixelRect::new(0, 0, 1, 1)),
             resource(3, PixelRect::new(1, 1, 1, 1)),
         ],
@@ -122,4 +122,14 @@ fn viewport_rejects_empty_cells_and_keeps_layout_on_resize() {
             cell_size: PixelSize::new(8, 6),
         }
     );
+}
+
+#[test]
+fn model_defaults_are_transparent_zero_or_unbounded() {
+    assert_eq!(Rgba8::default(), Rgba8::new(0, 0, 0, 0));
+    assert_eq!(PixelSize::default(), PixelSize::new(0, 0));
+    assert_eq!(PixelOffset::default(), PixelOffset::new(0, 0));
+    assert_eq!(PixelRect::default(), PixelRect::new(0, 0, 0, 0));
+    assert_eq!(GpuCell::default(), GpuCell::Empty);
+    assert_eq!(GpuClip::default(), GpuClip::Surface);
 }

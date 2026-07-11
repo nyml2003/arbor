@@ -1,18 +1,83 @@
-use punctum_grid::Surface;
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
-use punctum_terminal::{TerminalCell, TerminalColor};
+use punctum_grid::{GridPos, GridSize, Surface};
+use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey, TextEvent};
+use punctum_terminal::{TerminalCell, TerminalColor, write_text};
 use punctum_tetris::{PieceKind, TetrisCell, TetrisState, paint};
+
+const TERMINAL_COLS: u32 = 46;
+const BOARD_CELL_WIDTH: u32 = 2;
+const INFO_COL: i32 = 26;
 
 pub(crate) fn terminal_surface(state: &TetrisState) -> Surface<TerminalCell> {
     let logical = paint(state);
-    let cells = logical
-        .cells()
-        .iter()
-        .copied()
-        .map(|cell| terminal_cell(cell, state.is_game_over()))
-        .collect();
+    let mut surface = Surface::filled(
+        GridSize::new(TERMINAL_COLS, logical.size().rows),
+        TerminalCell::new(' ', TerminalColor::White, TerminalColor::Black),
+    )
+    .expect("the terminal surface has fixed dimensions");
 
-    Surface::from_cells(logical.size(), cells).expect("mapping a surface preserves its dimensions")
+    for row in 0..logical.size().rows {
+        for col in 0..logical.size().cols {
+            let cell = terminal_cell(
+                *logical
+                    .get(GridPos::new(col as i32, row as i32))
+                    .expect("painted board coordinates are in bounds"),
+                state.is_game_over(),
+            );
+            let terminal_col = col * BOARD_CELL_WIDTH;
+            surface
+                .set(GridPos::new(terminal_col as i32, row as i32), cell.clone())
+                .expect("expanded board coordinates are in bounds");
+            surface
+                .set(GridPos::new(terminal_col as i32 + 1, row as i32), cell)
+                .expect("expanded board coordinates are in bounds");
+        }
+    }
+
+    write_label(
+        &mut surface,
+        1,
+        "Punctum 方块 e\u{301} 🎮",
+        TerminalColor::Cyan,
+    );
+    write_label(
+        &mut surface,
+        3,
+        &format!("Lines {}", state.cleared_lines()),
+        TerminalColor::White,
+    );
+    write_label(
+        &mut surface,
+        5,
+        if state.is_game_over() {
+            "Game over"
+        } else {
+            "Playing"
+        },
+        if state.is_game_over() {
+            TerminalColor::Red
+        } else {
+            TerminalColor::Green
+        },
+    );
+
+    surface
+}
+
+fn write_label(
+    surface: &mut Surface<TerminalCell>,
+    row: i32,
+    text: &str,
+    foreground: TerminalColor,
+) {
+    let event = TextEvent::new(text).expect("terminal labels are non-empty");
+    write_text(
+        surface,
+        GridPos::new(INFO_COL, row),
+        &event,
+        foreground,
+        TerminalColor::Black,
+    )
+    .expect("terminal labels fit inside the fixed information area");
 }
 
 fn terminal_cell(cell: TetrisCell, game_over: bool) -> TerminalCell {
@@ -73,18 +138,56 @@ mod tests {
 
         let surface = terminal_surface(&state);
 
-        assert_eq!(surface.size(), GridSize::new(12, 22));
+        assert_eq!(surface.size(), GridSize::new(46, 22));
         assert_eq!(
             surface.get(GridPos::new(0, 0)).unwrap().background(),
             TerminalColor::Gray
         );
         assert_eq!(
-            surface.get(GridPos::new(4, 1)).unwrap().background(),
+            surface.get(GridPos::new(1, 0)).unwrap().background(),
+            TerminalColor::Gray
+        );
+        assert_eq!(
+            surface.get(GridPos::new(8, 1)).unwrap().background(),
             TerminalColor::Magenta
         );
         assert_eq!(
-            surface.get(GridPos::new(1, 20)).unwrap().background(),
+            surface.get(GridPos::new(9, 1)).unwrap().background(),
+            TerminalColor::Magenta
+        );
+        assert_eq!(
+            surface.get(GridPos::new(2, 20)).unwrap().background(),
             TerminalColor::Black
+        );
+    }
+
+    #[test]
+    fn terminal_surface_shows_unicode_title_and_state_text() {
+        let state = TetrisState::new(vec![PieceKind::T]).unwrap();
+
+        let surface = terminal_surface(&state);
+
+        assert_eq!(
+            surface.get(GridPos::new(34, 1)).unwrap().grapheme(),
+            Some("方")
+        );
+        assert!(surface.get(GridPos::new(35, 1)).unwrap().is_continuation());
+        assert_eq!(
+            surface.get(GridPos::new(39, 1)).unwrap().grapheme(),
+            Some("e\u{301}")
+        );
+        assert_eq!(
+            surface.get(GridPos::new(41, 1)).unwrap().grapheme(),
+            Some("🎮")
+        );
+        assert!(surface.get(GridPos::new(42, 1)).unwrap().is_continuation());
+        assert_eq!(
+            surface.get(GridPos::new(26, 3)).unwrap().grapheme(),
+            Some("L")
+        );
+        assert_eq!(
+            surface.get(GridPos::new(26, 5)).unwrap().grapheme(),
+            Some("P")
         );
     }
 

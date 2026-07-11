@@ -39,11 +39,12 @@ pub struct SubmissionPlan {
 pub fn plan_surface(
     surface: &Surface<GpuCell>,
     atlas: &GpuAtlas,
+    max_instances: u32,
     viewport: Viewport,
     clip: GpuClip,
 ) -> Result<SubmissionPlan, GpuPlanError> {
     let size = surface.size();
-    let instance_count = checked_instance_count(size)?;
+    let instance_count = checked_instance_count(size, max_instances)?;
     let uploads = if surface.cells().is_empty() {
         Vec::new()
     } else {
@@ -76,11 +77,12 @@ pub fn plan_surface(
 pub fn plan_patch(
     patch: &Patch<GpuCell>,
     atlas: &GpuAtlas,
+    max_instances: u32,
     viewport: Viewport,
     clip: GpuClip,
 ) -> Result<SubmissionPlan, GpuPlanError> {
     let size = patch.size();
-    let instance_count = checked_instance_count(size)?;
+    let instance_count = checked_instance_count(size, max_instances)?;
     let mut uploads = Vec::with_capacity(patch.spans().len());
 
     for span in patch.spans() {
@@ -110,9 +112,12 @@ pub fn plan_patch(
     })
 }
 
-fn checked_instance_count(size: GridSize) -> Result<u32, GpuPlanError> {
+fn checked_instance_count(size: GridSize, maximum: u32) -> Result<u32, GpuPlanError> {
     let count = u64::from(size.cols) * u64::from(size.rows);
-    u32::try_from(count).map_err(|_| GpuPlanError::InstanceCountOverflow { size })
+    if count > u64::from(maximum) {
+        return Err(GpuPlanError::InstanceCountOverflow { size, maximum });
+    }
+    Ok(count as u32)
 }
 
 fn plan_cell(
@@ -183,6 +188,7 @@ fn plan_scissor(size: GridSize, viewport: Viewport, clip: GpuClip) -> Option<Pix
 pub enum GpuPlanError {
     InstanceCountOverflow {
         size: GridSize,
+        maximum: u32,
     },
     MissingResource {
         position: GridPos,
@@ -193,8 +199,11 @@ pub enum GpuPlanError {
 impl fmt::Display for GpuPlanError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InstanceCountOverflow { size } => {
-                write!(formatter, "grid {size:?} exceeds the GPU instance limit")
+            Self::InstanceCountOverflow { size, maximum } => {
+                write!(
+                    formatter,
+                    "grid {size:?} exceeds the GPU instance limit {maximum}"
+                )
             }
             Self::MissingResource { position, resource } => write!(
                 formatter,
@@ -205,17 +214,3 @@ impl fmt::Display for GpuPlanError {
 }
 
 impl Error for GpuPlanError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_instance_counts_above_u32() {
-        let size = GridSize::new(u32::MAX, 2);
-        let error = checked_instance_count(size).unwrap_err();
-
-        assert_eq!(error, GpuPlanError::InstanceCountOverflow { size });
-        assert!(error.to_string().contains("instance limit"));
-    }
-}

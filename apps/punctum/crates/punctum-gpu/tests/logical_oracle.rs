@@ -8,7 +8,7 @@ fn atlas() -> GpuAtlas {
     GpuAtlas::new(
         PixelSize::new(4, 2),
         vec![255; 32],
-        [
+        &[
             GpuResource::new(ResourceId(1), PixelRect::new(0, 0, 2, 2)),
             GpuResource::new(ResourceId(2), PixelRect::new(2, 0, 2, 2)),
         ],
@@ -47,7 +47,7 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
     )
     .unwrap();
 
-    let plan = plan_surface(&surface, &atlas(), viewport(), GpuClip::Surface).unwrap();
+    let plan = plan_surface(&surface, &atlas(), u32::MAX, viewport(), GpuClip::Surface).unwrap();
 
     assert_eq!(plan.grid_size, GridSize::new(3, 2));
     assert_eq!(plan.mode, SubmissionMode::Replace);
@@ -102,6 +102,7 @@ fn patch_plan_uploads_only_changed_spans_at_stable_slots() {
     let plan = plan_patch(
         &diff(&previous, &next),
         &atlas(),
+        u32::MAX,
         viewport(),
         GpuClip::Surface,
     )
@@ -133,6 +134,7 @@ fn replacement_patch_rebuilds_all_slots_after_grid_resize() {
     let plan = plan_patch(
         &diff(&previous, &next),
         &atlas(),
+        u32::MAX,
         viewport(),
         GpuClip::Surface,
     )
@@ -151,12 +153,12 @@ fn clip_intersects_grid_and_target_in_pixel_coordinates() {
     let surface = Surface::filled(GridSize::new(4, 3), GpuCell::Empty).unwrap();
     let clip = GpuClip::Rect(GridRect::new(GridPos::new(-1, 1), GridSize::new(4, 3)));
 
-    let plan = plan_surface(&surface, &atlas(), viewport(), clip).unwrap();
+    let plan = plan_surface(&surface, &atlas(), u32::MAX, viewport(), clip).unwrap();
     assert_eq!(plan.scissor, Some(PixelRect::new(0, 18, 25, 16)));
 
     let outside = GpuClip::Rect(GridRect::new(GridPos::new(20, 20), GridSize::new(1, 1)));
     assert_eq!(
-        plan_surface(&surface, &atlas(), viewport(), outside)
+        plan_surface(&surface, &atlas(), u32::MAX, viewport(), outside)
             .unwrap()
             .scissor,
         None
@@ -171,14 +173,14 @@ fn resize_reclamps_scissor_and_minimize_suspends_drawing() {
     let minimized_height = smaller.resized(PixelSize::new(20, 0));
 
     assert_eq!(
-        plan_surface(&surface, &atlas(), smaller, GpuClip::Surface)
+        plan_surface(&surface, &atlas(), u32::MAX, smaller, GpuClip::Surface)
             .unwrap()
             .scissor,
         Some(PixelRect::new(0, 10, 12, 10))
     );
     for minimized in [minimized_width, minimized_height] {
         assert_eq!(
-            plan_surface(&surface, &atlas(), minimized, GpuClip::Surface)
+            plan_surface(&surface, &atlas(), u32::MAX, minimized, GpuClip::Surface,)
                 .unwrap()
                 .scissor,
             None
@@ -190,7 +192,8 @@ fn resize_reclamps_scissor_and_minimize_suspends_drawing() {
 fn empty_surfaces_produce_no_instances_or_scissor() {
     for size in [GridSize::new(0, 3), GridSize::new(3, 0)] {
         let surface = Surface::from_cells(size, Vec::new()).unwrap();
-        let plan = plan_surface(&surface, &atlas(), viewport(), GpuClip::Surface).unwrap();
+        let plan =
+            plan_surface(&surface, &atlas(), u32::MAX, viewport(), GpuClip::Surface).unwrap();
         assert_eq!(plan.instance_count, 0);
         assert!(plan.uploads.is_empty());
         assert_eq!(plan.scissor, None);
@@ -199,12 +202,14 @@ fn empty_surfaces_produce_no_instances_or_scissor() {
 
 #[test]
 fn planner_reports_missing_resources_with_their_coordinate() {
+    let previous = Surface::filled(GridSize::new(2, 1), GpuCell::Empty).unwrap();
     let surface = Surface::from_cells(
         GridSize::new(2, 1),
         vec![GpuCell::Empty, sprite(99, Rgba8::new(1, 2, 3, 4))],
     )
     .unwrap();
-    let error = plan_surface(&surface, &atlas(), viewport(), GpuClip::Surface).unwrap_err();
+    let error =
+        plan_surface(&surface, &atlas(), u32::MAX, viewport(), GpuClip::Surface).unwrap_err();
 
     assert_eq!(
         error,
@@ -214,4 +219,61 @@ fn planner_reports_missing_resources_with_their_coordinate() {
         }
     );
     assert!(error.to_string().contains("99"));
+    assert_eq!(
+        plan_patch(
+            &diff(&previous, &surface),
+            &atlas(),
+            u32::MAX,
+            viewport(),
+            GpuClip::Surface,
+        )
+        .unwrap_err(),
+        error
+    );
+}
+
+#[test]
+fn planner_enforces_the_supplied_device_instance_limit() {
+    let previous = Surface::filled(GridSize::new(2, 1), GpuCell::Empty).unwrap();
+    let next = Surface::from_cells(
+        GridSize::new(2, 1),
+        vec![GpuCell::Empty, sprite(1, Rgba8::new(1, 2, 3, 4))],
+    )
+    .unwrap();
+    let expected = GpuPlanError::InstanceCountOverflow {
+        size: GridSize::new(2, 1),
+        maximum: 1,
+    };
+
+    assert_eq!(
+        plan_surface(&next, &atlas(), 1, viewport(), GpuClip::Surface).unwrap_err(),
+        expected
+    );
+    assert_eq!(
+        plan_patch(
+            &diff(&previous, &next),
+            &atlas(),
+            1,
+            viewport(),
+            GpuClip::Surface,
+        )
+        .unwrap_err(),
+        expected
+    );
+    assert!(expected.to_string().contains("limit 1"));
+}
+
+#[test]
+fn clip_returns_none_when_mapped_grid_is_outside_the_framebuffer() {
+    let surface = Surface::filled(GridSize::new(1, 1), GpuCell::Empty).unwrap();
+    for origin in [PixelOffset::new(200, 0), PixelOffset::new(0, 200)] {
+        let viewport =
+            Viewport::new(PixelSize::new(100, 100), origin, PixelSize::new(10, 10)).unwrap();
+        assert_eq!(
+            plan_surface(&surface, &atlas(), u32::MAX, viewport, GpuClip::Surface,)
+                .unwrap()
+                .scissor,
+            None
+        );
+    }
 }

@@ -24,8 +24,8 @@ projects.json 注册本期五个项目：
 从仓库根目录运行：
 
 ~~~text
-python packages/arbor-projects/arbor_projects list
-python packages/arbor-projects/arbor_projects verify tetris
+python packages/arbor-projects/run.py list
+python packages/arbor-projects/run.py verify tetris
 ~~~
 
 也可以进入工程目录运行：

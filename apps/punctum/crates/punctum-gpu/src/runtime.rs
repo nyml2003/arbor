@@ -28,6 +28,7 @@ pub struct GpuRuntime<'window> {
     surface_size: PixelSize,
     configured: bool,
     atlas_size: PixelSize,
+    max_instances: u32,
     instance_buffer: wgpu::Buffer,
     instance_capacity: u32,
     grid_size: Option<GridSize>,
@@ -114,6 +115,8 @@ impl<'window> GpuRuntime<'window> {
         });
         let pipeline = create_pipeline(&device, config.format, &bind_group_layout);
         let instance_buffer = create_instance_buffer(&device, 1);
+        let max_instances =
+            (device.limits().max_buffer_size / INSTANCE_STRIDE).min(u64::from(u32::MAX)) as u32;
 
         Ok(Self {
             surface,
@@ -123,6 +126,7 @@ impl<'window> GpuRuntime<'window> {
             surface_size,
             configured,
             atlas_size: atlas.size(),
+            max_instances,
             instance_buffer,
             instance_capacity: 1,
             grid_size: None,
@@ -157,7 +161,7 @@ impl<'window> GpuRuntime<'window> {
         viewport: Viewport,
         clip: GpuClip,
     ) -> Result<PresentOutcome, GpuRuntimeError> {
-        let plan = plan_surface(surface, atlas, viewport, clip)?;
+        let plan = plan_surface(surface, atlas, self.max_instances, viewport, clip)?;
         self.present_plan(&plan)
     }
 
@@ -168,7 +172,7 @@ impl<'window> GpuRuntime<'window> {
         viewport: Viewport,
         clip: GpuClip,
     ) -> Result<PresentOutcome, GpuRuntimeError> {
-        let plan = plan_patch(patch, atlas, viewport, clip)?;
+        let plan = plan_patch(patch, atlas, self.max_instances, viewport, clip)?;
         self.present_plan(&plan)
     }
 

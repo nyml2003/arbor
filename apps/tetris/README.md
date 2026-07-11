@@ -27,5 +27,5 @@ cargo run --manifest-path apps/tetris/Cargo.toml --example terminal --locked
 
 ```powershell
 cargo test --manifest-path apps/tetris/Cargo.toml --all-targets --locked
-apps/tetris/scripts/check-pure-coverage.ps1
+python packages/arbor-projects/run.py verify tetris
 ```

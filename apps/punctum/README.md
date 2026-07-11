@@ -38,7 +38,7 @@ cargo clippy --workspace --all-targets --locked --manifest-path apps/punctum/Car
 cargo llvm-cov -p punctum-grid --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo llvm-cov -p punctum-input --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo llvm-cov -p punctum-terminal --all-targets --locked --manifest-path apps/punctum/Cargo.toml --ignore-filename-regex "runtime\.rs" --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-apps/tetris/scripts/check-pure-coverage.ps1
+python packages/arbor-projects/run.py verify tetris
 ```
 
 详细边界、wave 和门禁见[第一期架构计划](../../workspace/manage/punctum-ramus-architecture-plan.md)。技术决策记录见 [`peps/`](peps/README.md)。

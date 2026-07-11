@@ -454,7 +454,7 @@ Program Integration Agent 创建四个 workspace、四个 lockfile、canonical p
 
 `B1` 通过后启动单一 Tetris writer。先完成纯业务核心、`TetrisState -> Surface<TetrisCell>` 和 `KeyEvent -> TetrisCommand`。本阶段不接 Terminal/GPU IO，不修改 Punctum 共享内核。所有非副作用代码按 TDD 实现，line/function/region coverage 均为 100%。
 
-`PT1` 已于 2026-07-12 通过。Tetris core 的 region/function/line coverage 为 328/328、35/35、257/257；Terminal view 的对应结果为 150/150、11/11、106/106。本地门禁由 `apps/tetris/scripts/check-pure-coverage.ps1` 执行。
+`PT1` 已于 2026-07-12 通过。Tetris core 的 region/function/line coverage 为 328/328、35/35、257/257。Terminal view 当前对应结果为 150/150、11/11、105/105。本地门禁由标准库 Python 工程 `packages/arbor-projects` 执行，入口为 `python packages/arbor-projects/run.py verify tetris`。
 
 ### `F2`：三个并行 lane
 
