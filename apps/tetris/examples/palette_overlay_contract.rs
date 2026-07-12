@@ -45,11 +45,11 @@ mod tests {
     #[test]
     fn closed_or_zero_sized_palettes_produce_an_empty_plan() {
         let closed = PaletteState::default();
-        assert!(plan_palette_overlay(&closed, None, PixelSize::new(480, 704)).is_empty());
+        assert!(plan_palette_overlay(&closed, None, None, PixelSize::new(480, 704)).is_empty());
 
         let (_, open) = open_palette();
-        assert!(plan_palette_overlay(&open, None, PixelSize::new(0, 704)).is_empty());
-        assert!(plan_palette_overlay(&open, None, PixelSize::new(480, 0)).is_empty());
+        assert!(plan_palette_overlay(&open, None, None, PixelSize::new(0, 704)).is_empty());
+        assert!(plan_palette_overlay(&open, None, None, PixelSize::new(480, 0)).is_empty());
     }
 
     #[test]
@@ -61,7 +61,7 @@ mod tests {
             PixelSize::new(320, 480),
             PixelSize::new(960, 1408),
         ] {
-            let plan = plan_palette_overlay(&state, None, size);
+            let plan = plan_palette_overlay(&state, None, None, size);
             assert!(!plan.is_empty());
             assert!(plan.panel().is_some());
             assert_within_surface(&plan);
@@ -71,7 +71,7 @@ mod tests {
     #[test]
     fn text_and_rectangles_remain_distinct_plan_primitives() {
         let (_, state) = open_palette();
-        let plan = plan_palette_overlay(&state, None, PixelSize::new(480, 704));
+        let plan = plan_palette_overlay(&state, None, None, PixelSize::new(480, 704));
 
         assert!(plan.primitives().iter().any(|primitive| {
             matches!(
@@ -107,7 +107,7 @@ mod tests {
         let (palette, mut state) = open_palette();
         palette.handle(&mut state, PaletteIntent::Previous);
         let selected = state.selected_index().expect("the last item is selected");
-        let plan = plan_palette_overlay(&state, None, PixelSize::new(320, 480));
+        let plan = plan_palette_overlay(&state, None, None, PixelSize::new(320, 480));
 
         assert!(plan.visible_item_count() <= MAX_VISIBLE_ITEMS);
         assert!(candidate_range(&plan).contains(&selected));
@@ -130,7 +130,7 @@ mod tests {
             PaletteIntent::InsertText("no-command-can-match-this".into()),
         );
         palette.handle(&mut state, PaletteIntent::Execute);
-        let plan = plan_palette_overlay(&state, None, PixelSize::new(320, 480));
+        let plan = plan_palette_overlay(&state, None, None, PixelSize::new(320, 480));
 
         let query = plan
             .primitives()
@@ -173,9 +173,9 @@ mod tests {
     #[test]
     fn selection_changes_do_not_resize_the_panel_or_candidate_rows() {
         let (palette, mut first) = open_palette();
-        let first_plan = plan_palette_overlay(&first, None, PixelSize::new(480, 704));
+        let first_plan = plan_palette_overlay(&first, None, None, PixelSize::new(480, 704));
         palette.handle(&mut first, PaletteIntent::Next);
-        let second_plan = plan_palette_overlay(&first, None, PixelSize::new(480, 704));
+        let second_plan = plan_palette_overlay(&first, None, None, PixelSize::new(480, 704));
 
         assert_eq!(first_plan.panel(), second_plan.panel());
         let candidate_bounds = |plan: &super::palette_overlay::PaletteOverlayPlan| {
@@ -202,9 +202,10 @@ mod tests {
         let (_, state) = open_palette();
         for notice in [
             PlannerNotice::Pending,
-            PlannerNotice::Failed("timeout: the Ollama request timed out"),
+            PlannerNotice::Message("你好！"),
+            PlannerNotice::Failed("timeout: the DeepSeek request timed out"),
         ] {
-            let plan = plan_palette_overlay(&state, Some(notice), PixelSize::new(320, 480));
+            let plan = plan_palette_overlay(&state, Some(notice), None, PixelSize::new(320, 480));
             let planner_rows = plan
                 .primitives()
                 .iter()
@@ -235,6 +236,7 @@ mod tests {
         let plan = plan_palette_overlay(
             &state,
             Some(PlannerNotice::Failed("invalid response")),
+            None,
             PixelSize::new(320, 480),
         );
 
@@ -255,6 +257,24 @@ mod tests {
                     role: TextRole::Diagnostic,
                     ..
                 }
+            )
+        }));
+    }
+
+    #[test]
+    fn ime_preedit_is_visible_without_mutating_committed_query() {
+        let (_, state) = open_palette();
+        let plan = plan_palette_overlay(&state, None, Some("fang kuai"), PixelSize::new(480, 704));
+
+        assert_eq!(state.query(), "");
+        assert!(plan.primitives().iter().any(|primitive| {
+            matches!(
+                primitive,
+                OverlayPrimitive::Text {
+                    role: TextRole::Query,
+                    content,
+                    ..
+                } if content == "> [fang kuai]"
             )
         }));
     }
@@ -305,7 +325,7 @@ mod tests {
             label: Some("Tetris palette smoke encoder"),
         });
         let (_, state) = open_palette();
-        let plan = plan_palette_overlay(&state, None, size);
+        let plan = plan_palette_overlay(&state, None, None, size);
         let mut renderer = PaletteOverlayRenderer::new();
 
         renderer

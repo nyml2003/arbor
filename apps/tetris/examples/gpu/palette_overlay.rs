@@ -112,6 +112,7 @@ pub enum TextRole {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlannerNotice<'a> {
     Pending,
+    Message(&'a str),
     Failed(&'a str),
 }
 
@@ -184,6 +185,7 @@ impl PaletteOverlayPlan {
 pub fn plan_palette_overlay(
     state: &PaletteState,
     planner_notice: Option<PlannerNotice<'_>>,
+    preedit: Option<&str>,
     surface_size: PixelSize,
 ) -> PaletteOverlayPlan {
     if !state.is_open() || surface_size.is_empty() {
@@ -261,7 +263,10 @@ pub fn plan_palette_overlay(
         primitives.push(OverlayPrimitive::Text {
             role: TextRole::Query,
             bounds,
-            content: format!("> {}", state.query()),
+            content: match preedit.filter(|text| !text.is_empty()) {
+                Some(preedit) => format!("> {}[{preedit}]", state.query()),
+                None => format!("> {}", state.query()),
+            },
             color: PRIMARY_TEXT_COLOR,
             font_size: QUERY_FONT_SIZE,
         });
@@ -317,6 +322,11 @@ pub fn plan_palette_overlay(
             PlannerNotice::Pending => (
                 TextRole::Planner,
                 "Planning command...".to_owned(),
+                SECONDARY_TEXT_COLOR,
+            ),
+            PlannerNotice::Message(message) => (
+                TextRole::Planner,
+                format!("agent: {message}"),
                 SECONDARY_TEXT_COLOR,
             ),
             PlannerNotice::Failed(message) => (

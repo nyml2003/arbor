@@ -20,7 +20,7 @@ pollster = "0.4.0"
 ramus-core = { path = "../../packages/ramus/crates/ramus-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-ureq = { version = "3.3.0", default-features = false, features = ["json"] }
+ureq = { version = "3.3.0", default-features = false, features = ["json", "rustls"] }
 wgpu = "30.0.0"
 winit = "0.30.13"
 

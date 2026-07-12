@@ -11,13 +11,25 @@ mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::sync::{Arc, Mutex};
 
-    use punctum_tetris::TetrisCommand;
+    use punctum_tetris::{PieceKind, TetrisCommand, TetrisState, transition};
+    use ramus_core::Value;
 
     use super::ramus_palette::{
-        CommandQueue, DiagnosticStage, PaletteIntent, PaletteOutcome, PaletteState, RamusPalette,
+        AUTOPLAY_INVOCATION, CommandQueue, DiagnosticStage, PaletteIntent, PaletteOutcome,
+        PaletteState, RamusPalette,
     };
 
     const AUTHORIZED: [&str; 6] = [
+        "/tetris/game restart",
+        "/tetris/piece hard-drop",
+        "/tetris/piece left",
+        "/tetris/piece right",
+        "/tetris/piece rotate",
+        "/tetris/piece soft-drop",
+    ];
+
+    const HUMAN_VISIBLE: [&str; 7] = [
+        AUTOPLAY_INVOCATION,
         "/tetris/game restart",
         "/tetris/piece hard-drop",
         "/tetris/piece left",
@@ -44,6 +56,12 @@ mod tests {
                 .contains(&"/developer/tetris inspect".to_owned())
         );
         assert!(palette.complete_invocations("/developer").is_empty());
+        assert!(
+            !palette
+                .discover_invocations()
+                .contains(&AUTOPLAY_INVOCATION.into())
+        );
+        assert!(palette.complete_invocations("autoplay").is_empty());
     }
 
     #[test]
@@ -54,7 +72,7 @@ mod tests {
             palette.handle(&mut state, PaletteIntent::Open),
             PaletteOutcome::Updated
         );
-        assert_eq!(state.items(), AUTHORIZED);
+        assert_eq!(state.items(), HUMAN_VISIBLE);
         assert_eq!(state.selected_index(), Some(0));
         assert_eq!(state.query(), "");
 
@@ -81,7 +99,7 @@ mod tests {
         palette.handle(&mut state, PaletteIntent::Open);
 
         palette.handle(&mut state, PaletteIntent::Previous);
-        assert_eq!(state.selected_index(), Some(AUTHORIZED.len() - 1));
+        assert_eq!(state.selected_index(), Some(HUMAN_VISIBLE.len() - 1));
         palette.handle(&mut state, PaletteIntent::Next);
         assert_eq!(state.selected_index(), Some(0));
 
@@ -116,6 +134,31 @@ mod tests {
     }
 
     #[test]
+    fn read_capability_returns_structured_game_state_without_enqueuing_a_command() {
+        let (queue, palette, _) = fixture();
+        let state = transition(
+            &TetrisState::new(vec![PieceKind::I]).unwrap(),
+            TetrisCommand::SoftDrop,
+        );
+
+        let observation = palette.observe_game_state(&state).unwrap();
+        let Value::Record(snapshot) = &observation else {
+            panic!("game state observation must be a record")
+        };
+        let Value::Record(active) = &snapshot["active"] else {
+            panic!("active piece must be a record")
+        };
+
+        assert_eq!(snapshot["board_width"], Value::Integer(10));
+        assert_eq!(snapshot["board_height"], Value::Integer(20));
+        assert_eq!(snapshot["game_over"], Value::Boolean(false));
+        assert_eq!(active["kind"], Value::String("I".into()));
+        assert_eq!(active["row"], Value::Integer(1));
+        assert!(matches!(&snapshot["locked_board"], Value::List(rows) if rows.len() == 20));
+        assert!(queue.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn selected_execution_uses_ramus_and_closes_after_one_queue_write() {
         let (queue, palette, mut state) = fixture();
         palette.handle(&mut state, PaletteIntent::Open);
@@ -130,6 +173,21 @@ mod tests {
             queue.lock().unwrap().iter().copied().collect::<Vec<_>>(),
             [TetrisCommand::SoftDrop]
         );
+    }
+
+    #[test]
+    fn autoplay_is_a_human_only_host_request_and_never_writes_the_command_queue() {
+        let (queue, palette, mut state) = fixture();
+        palette.handle(&mut state, PaletteIntent::Open);
+        palette.handle(&mut state, PaletteIntent::InsertText("autoplay".into()));
+
+        assert_eq!(state.items(), [AUTOPLAY_INVOCATION]);
+        assert_eq!(
+            palette.handle(&mut state, PaletteIntent::Execute),
+            PaletteOutcome::AutoplayRequested
+        );
+        assert!(!state.is_open());
+        assert!(queue.lock().unwrap().is_empty());
     }
 
     #[test]

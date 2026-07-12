@@ -1,9 +1,9 @@
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use nucleo_matcher::Matcher;
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
-use punctum_tetris::TetrisCommand;
+use punctum_tetris::{BOARD_HEIGHT, BOARD_WIDTH, PieceKind, Rotation, TetrisCommand, TetrisState};
 use ramus_core::{
     AuthorizationService, Capability, Catalog, CompileLimits, Compiler, Diagnostic, Effect,
     EffectPermit, ExecutionError, ExecutionFailure, MethodName, MethodRegistration, MethodSchema,
@@ -14,6 +14,8 @@ use ramus_core::{
 const PLAYER_ID: &str = "local-player";
 const PROVIDER_ID: &str = "tetris";
 const DEVELOPER_INVOCATION: (&str, &str) = ("/developer/tetris", "inspect");
+const STATE_INVOCATION: (&str, &str) = ("/tetris/game", "state");
+pub const AUTOPLAY_INVOCATION: &str = "/tetris/agent autoplay";
 const COMMAND_INVOCATIONS: [(&str, &str); 6] = [
     ("/tetris/piece", "left"),
     ("/tetris/piece", "right"),
@@ -56,6 +58,7 @@ pub enum PaletteOutcome {
     Updated,
     Closed,
     Executed,
+    AutoplayRequested,
     NoSelection,
     Failed,
     Ignored,
@@ -122,12 +125,15 @@ pub struct RamusPalette {
     principal: Principal,
     compiler: Compiler,
     runtime: Runtime,
+    #[allow(dead_code)]
+    game_state: Arc<Mutex<Value>>,
 }
 
 impl RamusPalette {
     pub fn new(command_queue: CommandQueue) -> Self {
         let provider_id = provider_id();
         let catalog = build_catalog(&provider_id);
+        let game_state = Arc::new(Mutex::new(Value::Unit));
         let authorization = AuthorizationService::new();
         let principal = authorization
             .create_principal(PLAYER_ID)
@@ -137,7 +143,13 @@ impl RamusPalette {
         let compiler = Compiler::new(Arc::clone(&catalog));
         let mut runtime = Runtime::new(catalog, authorization.checker());
         runtime
-            .bind_provider(provider_id, Arc::new(TetrisProvider { command_queue }))
+            .bind_provider(
+                provider_id,
+                Arc::new(TetrisProvider {
+                    command_queue,
+                    game_state: Arc::clone(&game_state),
+                }),
+            )
             .expect("the Tetris provider is bound exactly once");
 
         Self {
@@ -145,6 +157,7 @@ impl RamusPalette {
             principal,
             compiler,
             runtime,
+            game_state,
         }
     }
 
@@ -157,6 +170,7 @@ impl RamusPalette {
             .compiler
             .discover(&session.view())
             .into_iter()
+            .filter(|entry| is_command_invocation(entry.path.as_str(), entry.method.as_str()))
             .map(|entry| format!("{} {}", entry.path.as_str(), entry.method.as_str()))
             .collect::<Vec<_>>();
         invocations.sort();
@@ -172,6 +186,7 @@ impl RamusPalette {
             .compiler
             .complete(&session.view(), prefix)
             .into_iter()
+            .filter(|completion| is_command_text(&completion.invocation))
             .map(|completion| completion.invocation)
             .collect::<Vec<_>>();
         invocations.sort();
@@ -227,6 +242,24 @@ impl RamusPalette {
     }
 
     pub fn execute_invocation(&self, invocation: &str) -> Result<(), PaletteDiagnostic> {
+        self.execute_outputs(invocation).map(|_| ())
+    }
+
+    #[allow(dead_code)]
+    pub fn observe_game_state(&self, state: &TetrisState) -> Result<Value, PaletteDiagnostic> {
+        *self.game_state.lock().map_err(|_| PaletteDiagnostic {
+            stage: DiagnosticStage::Provider,
+            code: "observation-unavailable".into(),
+            message: "the Tetris observation store is unavailable".into(),
+        })? = game_state_value(state);
+        let invocation = format!("{} {}", STATE_INVOCATION.0, STATE_INVOCATION.1);
+        let mut outputs = self.execute_outputs(&invocation)?;
+        Ok(outputs
+            .pop()
+            .expect("a single read call produces exactly one output"))
+    }
+
+    fn execute_outputs(&self, invocation: &str) -> Result<Vec<Value>, PaletteDiagnostic> {
         let document = parse_with_limits(invocation, PARSE_LIMITS).map_err(parse_diagnostic)?;
         let plan = {
             let session = self
@@ -237,8 +270,8 @@ impl RamusPalette {
                 .seal_with_limits(&session.view(), PlanDraft::from(document), COMPILE_LIMITS)
                 .map_err(seal_diagnostic)?
         };
-        self.runtime.execute(plan).map_err(execution_diagnostic)?;
-        Ok(())
+        let report = self.runtime.execute(plan).map_err(execution_diagnostic)?;
+        Ok(report.outputs)
     }
 
     fn authorized_invocations(&self) -> Vec<String> {
@@ -252,6 +285,13 @@ impl RamusPalette {
             .collect()
     }
 
+    fn human_invocations(&self) -> Vec<String> {
+        let mut invocations = self.authorized_invocations();
+        invocations.push(AUTOPLAY_INVOCATION.into());
+        invocations.sort();
+        invocations
+    }
+
     fn refresh_items(&self, state: &mut PaletteState) {
         let pattern = Pattern::new(
             &state.query,
@@ -260,7 +300,7 @@ impl RamusPalette {
             AtomKind::Fuzzy,
         );
         let mut matcher = Matcher::default();
-        let mut matches = pattern.match_list(self.authorized_invocations(), &mut matcher);
+        let mut matches = pattern.match_list(self.human_invocations(), &mut matcher);
         matches.sort_by(|(left, left_score), (right, right_score)| {
             right_score.cmp(left_score).then_with(|| left.cmp(right))
         });
@@ -286,6 +326,12 @@ impl RamusPalette {
             return PaletteOutcome::NoSelection;
         };
 
+        if invocation == AUTOPLAY_INVOCATION {
+            state.open = false;
+            state.clear_diagnostic();
+            return PaletteOutcome::AutoplayRequested;
+        }
+
         match self.execute_invocation(&invocation) {
             Ok(()) => {
                 state.open = false;
@@ -302,6 +348,7 @@ impl RamusPalette {
 
 struct TetrisProvider {
     command_queue: CommandQueue,
+    game_state: Arc<Mutex<Value>>,
 }
 
 impl Provider for TetrisProvider {
@@ -310,8 +357,14 @@ impl Provider for TetrisProvider {
         permit: EffectPermit,
         request: &ProviderRequest,
     ) -> Result<Value, ProviderError> {
+        let state_request = is_state_request(request);
+        let expected_capability = if state_request {
+            Capability::Read
+        } else {
+            Capability::Invoke
+        };
         if permit.principal().as_str() != PLAYER_ID
-            || permit.capability() != Capability::Invoke
+            || permit.capability() != expected_capability
             || permit.path() != &request.path
             || permit.method() != &request.method
         {
@@ -325,6 +378,19 @@ impl Provider for TetrisProvider {
                 "unexpected-arguments",
                 "Tetris palette commands do not accept arguments",
             ));
+        }
+
+        if state_request {
+            return self
+                .game_state
+                .lock()
+                .map(|state| state.clone())
+                .map_err(|_| {
+                    rejected(
+                        "observation-unavailable",
+                        "the Tetris observation store is unavailable",
+                    )
+                });
         }
 
         let command = command_for_request(request).ok_or_else(|| {
@@ -364,6 +430,19 @@ fn build_catalog(provider_id: &ProviderId) -> Arc<Catalog> {
             })
             .expect("fixed catalog entries are unique");
     }
+    catalog
+        .register(MethodRegistration {
+            provider_id: provider_id.clone(),
+            path: NodePath::parse(STATE_INVOCATION.0).expect("the state path is valid"),
+            schema: MethodSchema::new(
+                MethodName::new(STATE_INVOCATION.1).expect("the state method is valid"),
+                vec![],
+            )
+            .expect("the state method schema is valid"),
+            schema_version: SchemaVersion::new(1).expect("schema version is non-zero"),
+            effect: Effect::Read,
+        })
+        .expect("the state method is unique");
     Arc::new(catalog)
 }
 
@@ -381,6 +460,13 @@ fn grant_player_commands(authorization: &AuthorizationService, principal: &Princ
                 .expect("the local player belongs to this authority");
         }
     }
+    let path = NodePath::parse(STATE_INVOCATION.0).expect("the state path is valid");
+    let method = MethodName::new(STATE_INVOCATION.1).expect("the state method is valid");
+    for capability in [Capability::Discover, Capability::Read] {
+        authorization
+            .grant(principal, path.clone(), Some(method.clone()), capability)
+            .expect("the local player belongs to this authority");
+    }
 }
 
 fn provider_id() -> ProviderId {
@@ -396,6 +482,99 @@ fn command_for_request(request: &ProviderRequest) -> Option<TetrisCommand> {
         ("/tetris/piece", "hard-drop") => Some(TetrisCommand::HardDrop),
         ("/tetris/game", "restart") => Some(TetrisCommand::Restart),
         _ => None,
+    }
+}
+
+fn is_command_invocation(path: &str, method: &str) -> bool {
+    COMMAND_INVOCATIONS
+        .iter()
+        .any(|candidate| candidate.0 == path && candidate.1 == method)
+}
+
+fn is_command_text(invocation: &str) -> bool {
+    COMMAND_INVOCATIONS
+        .iter()
+        .any(|candidate| invocation == format!("{} {}", candidate.0, candidate.1))
+}
+
+fn is_state_request(request: &ProviderRequest) -> bool {
+    request.path.as_str() == STATE_INVOCATION.0 && request.method.as_str() == STATE_INVOCATION.1
+}
+
+#[allow(dead_code)]
+fn game_state_value(state: &TetrisState) -> Value {
+    let active = state.active_piece().map_or(Value::Unit, |piece| {
+        Value::Record(BTreeMap::from([
+            ("col".into(), Value::Integer(i64::from(piece.col()))),
+            (
+                "kind".into(),
+                Value::String(piece_name(piece.kind()).into()),
+            ),
+            (
+                "rotation".into(),
+                Value::String(rotation_name(piece.rotation()).into()),
+            ),
+            ("row".into(), Value::Integer(i64::from(piece.row()))),
+        ]))
+    });
+    let locked_board = (0..BOARD_HEIGHT)
+        .map(|row| {
+            let cells = (0..BOARD_WIDTH)
+                .map(|col| state.locked_cell(col, row).map_or('.', piece_symbol))
+                .collect::<String>();
+            Value::String(cells)
+        })
+        .collect::<Vec<_>>();
+
+    Value::Record(BTreeMap::from([
+        ("active".into(), active),
+        (
+            "board_height".into(),
+            Value::Integer(i64::from(BOARD_HEIGHT)),
+        ),
+        ("board_width".into(), Value::Integer(i64::from(BOARD_WIDTH))),
+        (
+            "cleared_lines".into(),
+            Value::Integer(i64::from(state.cleared_lines())),
+        ),
+        ("game_over".into(), Value::Boolean(state.is_game_over())),
+        ("locked_board".into(), Value::List(locked_board)),
+    ]))
+}
+
+#[allow(dead_code)]
+const fn piece_name(kind: PieceKind) -> &'static str {
+    match kind {
+        PieceKind::I => "I",
+        PieceKind::O => "O",
+        PieceKind::T => "T",
+        PieceKind::S => "S",
+        PieceKind::Z => "Z",
+        PieceKind::J => "J",
+        PieceKind::L => "L",
+    }
+}
+
+#[allow(dead_code)]
+const fn piece_symbol(kind: PieceKind) -> char {
+    match kind {
+        PieceKind::I => 'I',
+        PieceKind::O => 'O',
+        PieceKind::T => 'T',
+        PieceKind::S => 'S',
+        PieceKind::Z => 'Z',
+        PieceKind::J => 'J',
+        PieceKind::L => 'L',
+    }
+}
+
+#[allow(dead_code)]
+const fn rotation_name(rotation: Rotation) -> &'static str {
+    match rotation {
+        Rotation::Spawn => "spawn",
+        Rotation::Right => "right",
+        Rotation::Reverse => "reverse",
+        Rotation::Left => "left",
     }
 }
 
