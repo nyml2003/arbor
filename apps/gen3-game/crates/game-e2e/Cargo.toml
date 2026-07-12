@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+battle-application = { path = "../battle-application" }
+game-host = { path = "../game-host" }
+
 [lib]
 path = "src/lib.rs"
-
