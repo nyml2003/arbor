@@ -3,18 +3,24 @@ name = "punctum-tetris"
 version = "0.0.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [dependencies]
 punctum-grid = { path = "../punctum/crates/punctum-grid" }
 punctum-input = { path = "../punctum/crates/punctum-input" }
 
 [dev-dependencies]
+glyphon = "0.12.0"
+nucleo-matcher = "0.3.1"
 punctum-crossterm = { path = "../punctum/crates/punctum-crossterm" }
 punctum-gpu = { path = "../punctum/crates/punctum-gpu" }
 punctum-terminal = { path = "../punctum/crates/punctum-terminal" }
 punctum-wgpu = { path = "../punctum/crates/punctum-wgpu" }
 pollster = "0.4.0"
+ramus-core = { path = "../../packages/ramus/crates/ramus-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ureq = { version = "3.3.0", default-features = false, features = ["json"] }
 wgpu = "30.0.0"
 winit = "0.30.13"
 

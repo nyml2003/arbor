@@ -18,6 +18,70 @@ pub enum PresentOutcome {
     SurfaceLost,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SurfaceAcquisition {
+    Success,
+    Suboptimal,
+    Timeout,
+    Occluded,
+    Outdated,
+    Lost,
+    Validation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SurfaceFramePolicy {
+    encode_overlay: bool,
+    reconfigure: bool,
+    outcome: Option<PresentOutcome>,
+}
+
+impl SurfaceFramePolicy {
+    const fn encode(outcome: PresentOutcome, reconfigure: bool) -> Self {
+        Self {
+            encode_overlay: true,
+            reconfigure,
+            outcome: Some(outcome),
+        }
+    }
+
+    const fn skip(outcome: PresentOutcome, reconfigure: bool) -> Self {
+        Self {
+            encode_overlay: false,
+            reconfigure,
+            outcome: Some(outcome),
+        }
+    }
+
+    const fn validation_error() -> Self {
+        Self {
+            encode_overlay: false,
+            reconfigure: false,
+            outcome: None,
+        }
+    }
+}
+
+const fn surface_frame_policy(acquisition: SurfaceAcquisition) -> SurfaceFramePolicy {
+    match acquisition {
+        SurfaceAcquisition::Success => SurfaceFramePolicy::encode(PresentOutcome::Presented, false),
+        SurfaceAcquisition::Suboptimal => {
+            SurfaceFramePolicy::encode(PresentOutcome::PresentedAndReconfigured, true)
+        }
+        SurfaceAcquisition::Timeout => {
+            SurfaceFramePolicy::skip(PresentOutcome::SkippedTimeout, false)
+        }
+        SurfaceAcquisition::Occluded => {
+            SurfaceFramePolicy::skip(PresentOutcome::SkippedOccluded, false)
+        }
+        SurfaceAcquisition::Outdated => {
+            SurfaceFramePolicy::skip(PresentOutcome::Reconfigured, true)
+        }
+        SurfaceAcquisition::Lost => SurfaceFramePolicy::skip(PresentOutcome::SurfaceLost, false),
+        SurfaceAcquisition::Validation => SurfaceFramePolicy::validation_error(),
+    }
+}
+
 pub struct GpuRuntime<'window> {
     surface: wgpu::Surface<'window>,
     device: wgpu::Device,
@@ -178,6 +242,24 @@ impl<'window> GpuRuntime<'window> {
         &mut self,
         plan: &SubmissionPlan,
     ) -> Result<PresentOutcome, GpuRuntimeError> {
+        self.present_plan_with_overlay(plan, |_, _, _, _, _, _| {})
+    }
+
+    pub fn present_plan_with_overlay<F>(
+        &mut self,
+        plan: &SubmissionPlan,
+        encode_overlay: F,
+    ) -> Result<PresentOutcome, GpuRuntimeError>
+    where
+        F: FnOnce(
+            &wgpu::Device,
+            &wgpu::Queue,
+            &wgpu::TextureView,
+            &mut wgpu::CommandEncoder,
+            wgpu::TextureFormat,
+            PixelSize,
+        ),
+    {
         if plan.viewport.target_size != self.surface_size {
             return Err(GpuRuntimeError::ViewportSizeMismatch {
                 viewport_size: plan.viewport.target_size,
@@ -198,23 +280,53 @@ impl<'window> GpuRuntime<'window> {
 
         match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame) => {
-                self.render(frame, plan);
-                Ok(PresentOutcome::Presented)
+                self.render_with_overlay(frame, plan, encode_overlay);
+                self.finish_acquired_frame(SurfaceAcquisition::Success)
             }
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
-                self.render(frame, plan);
-                self.surface.configure(&self.device, &self.config);
-                Ok(PresentOutcome::PresentedAndReconfigured)
+                self.render_with_overlay(frame, plan, encode_overlay);
+                self.finish_acquired_frame(SurfaceAcquisition::Suboptimal)
             }
-            wgpu::CurrentSurfaceTexture::Timeout => Ok(PresentOutcome::SkippedTimeout),
-            wgpu::CurrentSurfaceTexture::Occluded => Ok(PresentOutcome::SkippedOccluded),
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                self.finish_unacquired_frame(SurfaceAcquisition::Timeout)
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                self.finish_unacquired_frame(SurfaceAcquisition::Occluded)
+            }
             wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.config);
-                Ok(PresentOutcome::Reconfigured)
+                self.finish_unacquired_frame(SurfaceAcquisition::Outdated)
             }
-            wgpu::CurrentSurfaceTexture::Lost => Ok(PresentOutcome::SurfaceLost),
-            wgpu::CurrentSurfaceTexture::Validation => Err(GpuRuntimeError::SurfaceValidation),
+            wgpu::CurrentSurfaceTexture::Lost => {
+                self.finish_unacquired_frame(SurfaceAcquisition::Lost)
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                self.finish_unacquired_frame(SurfaceAcquisition::Validation)
+            }
         }
+    }
+
+    fn finish_acquired_frame(
+        &self,
+        acquisition: SurfaceAcquisition,
+    ) -> Result<PresentOutcome, GpuRuntimeError> {
+        let policy = surface_frame_policy(acquisition);
+        debug_assert!(policy.encode_overlay);
+        if policy.reconfigure {
+            self.surface.configure(&self.device, &self.config);
+        }
+        Ok(policy.outcome.expect("acquired frames have an outcome"))
+    }
+
+    fn finish_unacquired_frame(
+        &self,
+        acquisition: SurfaceAcquisition,
+    ) -> Result<PresentOutcome, GpuRuntimeError> {
+        let policy = surface_frame_policy(acquisition);
+        debug_assert!(!policy.encode_overlay);
+        if policy.reconfigure {
+            self.surface.configure(&self.device, &self.config);
+        }
+        policy.outcome.ok_or(GpuRuntimeError::SurfaceValidation)
     }
 
     fn apply_uploads(&mut self, plan: &SubmissionPlan) -> Result<(), GpuRuntimeError> {
@@ -260,7 +372,21 @@ impl<'window> GpuRuntime<'window> {
         Ok(())
     }
 
-    fn render(&self, frame: wgpu::SurfaceTexture, plan: &SubmissionPlan) {
+    fn render_with_overlay<F>(
+        &self,
+        frame: wgpu::SurfaceTexture,
+        plan: &SubmissionPlan,
+        encode_overlay: F,
+    ) where
+        F: FnOnce(
+            &wgpu::Device,
+            &wgpu::Queue,
+            &wgpu::TextureView,
+            &mut wgpu::CommandEncoder,
+            wgpu::TextureFormat,
+            PixelSize,
+        ),
+    {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -291,6 +417,14 @@ impl<'window> GpuRuntime<'window> {
                 pass.draw(0..6, 0..plan.instance_count);
             }
         }
+        encode_overlay(
+            &self.device,
+            &self.queue,
+            &view,
+            &mut encoder,
+            self.config.format,
+            self.surface_size,
+        );
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
     }
@@ -568,6 +702,44 @@ mod tests {
                 Poll::Ready(output) => return output,
                 Poll::Pending => thread::park(),
             }
+        }
+    }
+
+    #[test]
+    fn surface_frame_policy_controls_overlay_and_outcome() {
+        let cases = [
+            (
+                SurfaceAcquisition::Success,
+                SurfaceFramePolicy::encode(PresentOutcome::Presented, false),
+            ),
+            (
+                SurfaceAcquisition::Suboptimal,
+                SurfaceFramePolicy::encode(PresentOutcome::PresentedAndReconfigured, true),
+            ),
+            (
+                SurfaceAcquisition::Timeout,
+                SurfaceFramePolicy::skip(PresentOutcome::SkippedTimeout, false),
+            ),
+            (
+                SurfaceAcquisition::Occluded,
+                SurfaceFramePolicy::skip(PresentOutcome::SkippedOccluded, false),
+            ),
+            (
+                SurfaceAcquisition::Outdated,
+                SurfaceFramePolicy::skip(PresentOutcome::Reconfigured, true),
+            ),
+            (
+                SurfaceAcquisition::Lost,
+                SurfaceFramePolicy::skip(PresentOutcome::SurfaceLost, false),
+            ),
+            (
+                SurfaceAcquisition::Validation,
+                SurfaceFramePolicy::validation_error(),
+            ),
+        ];
+
+        for (acquisition, expected) in cases {
+            assert_eq!(surface_frame_policy(acquisition), expected);
         }
     }
 

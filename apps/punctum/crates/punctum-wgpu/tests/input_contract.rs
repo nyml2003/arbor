@@ -1,5 +1,8 @@
-use punctum_input::{KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
-use punctum_wgpu::{WinitKeyEventSnapshot, normalize_key_event};
+use punctum_input::{KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode, TextEventError};
+use punctum_wgpu::{
+    WinitCommittedTextSnapshot, WinitKeyEventSnapshot, normalize_committed_text,
+    normalize_key_event,
+};
 use winit::{
     event::ElementState,
     keyboard::{
@@ -26,6 +29,58 @@ fn pressed(physical_key: KeyCode, logical_key: WinitNamedKey) -> WinitKeyEventSn
         ElementState::Pressed,
         false,
     )
+}
+
+fn committed_text(text: Option<&str>) -> WinitCommittedTextSnapshot {
+    WinitCommittedTextSnapshot::new(text.map(str::to_owned))
+}
+
+#[test]
+fn missing_committed_text_produces_no_text_event() {
+    assert_eq!(normalize_committed_text(committed_text(None)), Ok(None));
+}
+
+#[test]
+fn committed_text_preserves_ascii_and_cjk_text() {
+    for text in [" hello ", "你好"] {
+        let event = normalize_committed_text(committed_text(Some(text)))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(event.text(), text);
+    }
+}
+
+#[test]
+fn committed_text_preserves_multiple_code_points() {
+    let text = "e\u{301}👩‍💻";
+    let event = normalize_committed_text(committed_text(Some(text)))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(event.text(), text);
+}
+
+#[test]
+fn empty_committed_text_uses_the_text_event_error_contract() {
+    assert_eq!(
+        normalize_committed_text(committed_text(Some(""))),
+        Err(TextEventError::EmptyText)
+    );
+}
+
+#[test]
+fn logical_character_and_committed_text_are_independent_channels() {
+    let key = normalize_key_event(raw_key(
+        PhysicalKey::Code(KeyCode::KeyA),
+        Key::Character("界".into()),
+        ModifiersState::empty(),
+        ElementState::Pressed,
+        false,
+    ));
+
+    assert_eq!(key.logical, LogicalKey::Character("界".into()));
+    assert_eq!(normalize_committed_text(committed_text(None)), Ok(None));
 }
 
 #[test]

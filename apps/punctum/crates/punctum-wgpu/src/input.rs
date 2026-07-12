@@ -1,4 +1,6 @@
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
+use punctum_input::{
+    KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode, TextEvent, TextEventError,
+};
 use winit::{
     event::ElementState,
     keyboard::{
@@ -36,6 +38,25 @@ impl WinitKeyEventSnapshot {
             repeat,
         }
     }
+}
+
+/// The committed text reported alongside a winit keyboard event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WinitCommittedTextSnapshot {
+    pub text: Option<String>,
+}
+
+impl WinitCommittedTextSnapshot {
+    pub fn new(text: Option<String>) -> Self {
+        Self { text }
+    }
+}
+
+/// Converts winit committed text into Punctum's text input contract.
+pub fn normalize_committed_text(
+    event: WinitCommittedTextSnapshot,
+) -> Result<Option<TextEvent>, TextEventError> {
+    event.text.map(TextEvent::new).transpose()
 }
 
 /// Converts the public data from a winit keyboard event into Punctum's input contract.
