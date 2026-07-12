@@ -269,15 +269,32 @@ impl fmt::Display for GpuAtlasError {
 
 impl Error for GpuAtlasError {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GpuCell {
+    #[default]
     Empty,
-    Sprite { resource: ResourceId, tint: Rgba8 },
+    Sprite {
+        resource: ResourceId,
+        tint: Rgba8,
+    },
 }
 
-impl Default for GpuCell {
-    fn default() -> Self {
-        Self::Empty
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpuImage {
+    pub bounds: GridRect,
+    pub resource: ResourceId,
+    pub tint: Rgba8,
+    pub z_index: i32,
+}
+
+impl GpuImage {
+    pub const fn new(bounds: GridRect, resource: ResourceId, tint: Rgba8, z_index: i32) -> Self {
+        Self {
+            bounds,
+            resource,
+            tint,
+            z_index,
+        }
     }
 }
 
@@ -332,14 +349,9 @@ impl fmt::Display for ViewportError {
 
 impl Error for ViewportError {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GpuClip {
+    #[default]
     Surface,
     Rect(GridRect),
-}
-
-impl Default for GpuClip {
-    fn default() -> Self {
-        Self::Surface
-    }
 }

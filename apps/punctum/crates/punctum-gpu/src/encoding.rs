@@ -8,6 +8,9 @@ pub fn encode_instances(instances: &[InstanceData]) -> Vec<u8> {
         for value in instance.grid_position {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
+        for value in instance.grid_span {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
         for value in instance.atlas_rect {
             bytes.extend_from_slice(&value.to_le_bytes());
         }

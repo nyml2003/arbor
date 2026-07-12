@@ -4,6 +4,7 @@ members = [
     "crates/battle-domain",
     "crates/battle-ramus-adapter",
     "crates/game-e2e",
+    "crates/game-assets",
     "crates/game-host",
     "crates/game-ui",
     "crates/world-application",

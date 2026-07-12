@@ -575,7 +575,8 @@ fn demo_pokemon(
 mod tests {
     use battle_application::Action;
     use game_ui::{CANVAS_HEIGHT, CANVAS_WIDTH, TextRole};
-    use punctum_grid::GridSize;
+    use punctum_gpu::ResourceId;
+    use punctum_grid::{GridPos, GridRect, GridSize};
 
     use super::DemoBattle;
 
@@ -663,6 +664,17 @@ mod tests {
                 .filter(|label| matches!(label.role, TextRole::Action(_)))
                 .count()
                 == 4
+        );
+        assert_eq!(view.images().len(), 2);
+        assert_eq!(view.images()[0].resource, ResourceId(2));
+        assert_eq!(
+            view.images()[0].bounds,
+            GridRect::new(GridPos::new(5, 10), GridSize::new(8, 8))
+        );
+        assert_eq!(view.images()[1].resource, ResourceId(3));
+        assert_eq!(
+            view.images()[1].bounds,
+            GridRect::new(GridPos::new(22, 4), GridSize::new(8, 8))
         );
     }
 }

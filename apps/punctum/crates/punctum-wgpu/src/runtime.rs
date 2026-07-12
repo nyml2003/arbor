@@ -524,19 +524,24 @@ fn create_pipeline(
             shader_location: 0,
         },
         wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint32x4,
+            format: wgpu::VertexFormat::Uint32x2,
             offset: 8,
             shader_location: 1,
         },
         wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Unorm8x4,
-            offset: 24,
+            format: wgpu::VertexFormat::Uint32x4,
+            offset: 16,
             shader_location: 2,
         },
         wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Uint32,
-            offset: 28,
+            format: wgpu::VertexFormat::Unorm8x4,
+            offset: 32,
             shader_location: 3,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint32,
+            offset: 36,
+            shader_location: 4,
         },
     ];
     let buffers = [Some(wgpu::VertexBufferLayout {

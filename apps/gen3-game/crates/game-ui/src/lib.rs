@@ -5,8 +5,9 @@
 use battle_application::{
     Action, BattleObservation, BattlePhase, MoveSlot, Pokemon, Side, TeamSlot,
 };
-use punctum_gpu::{GpuAtlas, GpuCell, GpuResource, PixelRect, PixelSize, ResourceId, Rgba8};
-use punctum_grid::{GridSize, Surface};
+use game_assets::{DecodedImage, build_atlas};
+use punctum_gpu::{GpuAtlas, GpuCell, GpuImage, ResourceId, Rgba8};
+use punctum_grid::{GridPos, GridRect, GridSize, Surface};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
 use world_application::{
     Direction as WorldDirection, Position, Tile, WorldCommand, WorldObservation,
@@ -16,7 +17,11 @@ pub const CANVAS_WIDTH: u32 = 32;
 pub const CANVAS_HEIGHT: u32 = 24;
 
 const WHITE_RESOURCE: ResourceId = ResourceId(1);
-const WHITE_PIXEL: [u8; 4] = [255; 4];
+const PLAYER_BACK_RESOURCE: ResourceId = ResourceId(2);
+const OPPONENT_FRONT_RESOURCE: ResourceId = ResourceId(3);
+const WHITE_PIXEL: Rgba8 = Rgba8::new(255, 255, 255, 255);
+const PLAYER_BACK_PNG: &[u8] = include_bytes!("../../../assets/testtest/back/001.png");
+const OPPONENT_FRONT_PNG: &[u8] = include_bytes!("../../../assets/testtest/front/001.png");
 
 const SKY: Rgba8 = Rgba8::new(145, 205, 210, 255);
 const DISTANT_GRASS: Rgba8 = Rgba8::new(104, 164, 112, 255);
@@ -27,15 +32,8 @@ const PANEL_EDGE: Rgba8 = Rgba8::new(218, 225, 214, 255);
 const SELECTED: Rgba8 = Rgba8::new(45, 125, 137, 255);
 const HP_GOOD: Rgba8 = Rgba8::new(74, 190, 102, 255);
 const HP_LOW: Rgba8 = Rgba8::new(224, 91, 72, 255);
-const PLAYER_DARK: Rgba8 = Rgba8::new(22, 79, 82, 255);
-const PLAYER_LIGHT: Rgba8 = Rgba8::new(62, 198, 184, 255);
-const ENEMY_DARK: Rgba8 = Rgba8::new(117, 48, 54, 255);
-const ENEMY_LIGHT: Rgba8 = Rgba8::new(224, 105, 83, 255);
-const CREATURE_EYE: Rgba8 = Rgba8::new(242, 239, 214, 255);
 const TEXT: Rgba8 = Rgba8::new(244, 246, 239, 255);
 const MUTED_TEXT: Rgba8 = Rgba8::new(182, 194, 194, 255);
-const FAINTED_DARK: Rgba8 = Rgba8::new(68, 72, 78, 255);
-const FAINTED_LIGHT: Rgba8 = Rgba8::new(120, 124, 128, 255);
 const MAP_GROUND: Rgba8 = Rgba8::new(138, 187, 116, 255);
 const MAP_GROUND_LIGHT: Rgba8 = Rgba8::new(157, 202, 132, 255);
 const MAP_GRASS: Rgba8 = Rgba8::new(54, 137, 79, 255);
@@ -139,6 +137,7 @@ pub struct TextLabel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GameView {
     surface: Surface<GpuCell>,
+    images: Vec<GpuImage>,
     labels: Vec<TextLabel>,
 }
 
@@ -150,15 +149,24 @@ impl GameView {
     pub fn labels(&self) -> &[TextLabel] {
         &self.labels
     }
+
+    pub fn images(&self) -> &[GpuImage] {
+        &self.images
+    }
 }
 
 pub fn atlas() -> GpuAtlas {
-    GpuAtlas::new(
-        PixelSize::new(1, 1),
-        WHITE_PIXEL.to_vec(),
-        &[GpuResource::new(WHITE_RESOURCE, PixelRect::new(0, 0, 1, 1))],
-    )
-    .expect("the embedded battle atlas is valid")
+    let white = DecodedImage::solid(WHITE_PIXEL);
+    let player_back = game_assets::decode_png(PLAYER_BACK_PNG)
+        .expect("the embedded player back sprite is a valid PNG");
+    let opponent_front = game_assets::decode_png(OPPONENT_FRONT_PNG)
+        .expect("the embedded opponent front sprite is a valid PNG");
+    build_atlas(&[
+        (WHITE_RESOURCE, &white),
+        (PLAYER_BACK_RESOURCE, &player_back),
+        (OPPONENT_FRONT_RESOURCE, &opponent_front),
+    ])
+    .expect("the embedded game atlas is valid")
 }
 
 pub fn project_battle(
@@ -174,8 +182,6 @@ pub fn project_battle(
     canvas.fill(0, 12, CANVAS_WIDTH, 5, GROUND);
     canvas.ellipse(20, 7, 10, 3, PLATFORM);
     canvas.ellipse(2, 13, 13, 3, PLATFORM);
-    draw_enemy(&mut canvas, animation);
-    draw_player(&mut canvas, animation);
 
     let own = observation.own().members()[observation.own().active_slot().index()].clone();
     draw_status_panel(
@@ -235,6 +241,7 @@ pub fn project_battle(
 
     GameView {
         surface: canvas.finish(),
+        images: battle_images(animation),
         labels,
     }
 }
@@ -276,6 +283,7 @@ pub fn project_world(observation: &WorldObservation, message: &str) -> GameView 
 
     GameView {
         surface: canvas.finish(),
+        images: Vec::new(),
         labels: vec![
             label(TextRole::Location, 2, 21, 10, 1, "青叶原野", TEXT),
             label(TextRole::Message, 12, 21, 18, 1, message, MUTED_TEXT),
@@ -343,58 +351,39 @@ fn draw_action_panel(canvas: &mut Canvas, action_count: usize, selected: usize) 
     }
 }
 
-fn draw_player(canvas: &mut Canvas, animation: BattleAnimation) {
-    const MASK: [&str; 7] = [
-        "..dd....", ".dLLd...", "dLEELd..", "dLLLLdd.", ".dLLLLd.", "..d..d..", ".dd..dd.",
-    ];
-    let (col, row) = if animation == BattleAnimation::Acting(Side::One) {
-        (6, 9)
+fn battle_images(animation: BattleAnimation) -> Vec<GpuImage> {
+    let player_origin = if animation == BattleAnimation::Acting(Side::One) {
+        GridPos::new(6, 9)
     } else {
-        (5, 10)
+        GridPos::new(5, 10)
     };
-    let (dark, light) = creature_colors(animation, Side::One, PLAYER_DARK, PLAYER_LIGHT);
-    draw_mask(canvas, col, row, &MASK, dark, light);
+    let opponent_origin = if animation == BattleAnimation::Acting(Side::Two) {
+        GridPos::new(21, 5)
+    } else {
+        GridPos::new(22, 4)
+    };
+
+    vec![
+        GpuImage::new(
+            GridRect::new(player_origin, GridSize::new(8, 8)),
+            PLAYER_BACK_RESOURCE,
+            creature_tint(animation, Side::One),
+            10,
+        ),
+        GpuImage::new(
+            GridRect::new(opponent_origin, GridSize::new(8, 8)),
+            OPPONENT_FRONT_RESOURCE,
+            creature_tint(animation, Side::Two),
+            10,
+        ),
+    ]
 }
 
-fn draw_enemy(canvas: &mut Canvas, animation: BattleAnimation) {
-    const MASK: [&str; 7] = [
-        ".d....d.", "..d..d..", ".dLLLLd.", "dLLEELLd", "dLLLLLLd", ".dLLLLd.", "..dddd..",
-    ];
-    let (col, row) = if animation == BattleAnimation::Acting(Side::Two) {
-        (21, 5)
-    } else {
-        (22, 4)
-    };
-    let (dark, light) = creature_colors(animation, Side::Two, ENEMY_DARK, ENEMY_LIGHT);
-    draw_mask(canvas, col, row, &MASK, dark, light);
-}
-
-fn creature_colors(
-    animation: BattleAnimation,
-    side: Side,
-    dark: Rgba8,
-    light: Rgba8,
-) -> (Rgba8, Rgba8) {
+fn creature_tint(animation: BattleAnimation, side: Side) -> Rgba8 {
     match animation {
-        BattleAnimation::Hit(target) if target == side => (HP_LOW, CREATURE_EYE),
-        BattleAnimation::Fainted(target) if target == side => (FAINTED_DARK, FAINTED_LIGHT),
-        _ => (dark, light),
-    }
-}
-
-fn draw_mask(canvas: &mut Canvas, col: u32, row: u32, mask: &[&str], dark: Rgba8, light: Rgba8) {
-    for (y, line) in mask.iter().enumerate() {
-        for (x, pixel) in line.chars().enumerate() {
-            let color = match pixel {
-                'd' => Some(dark),
-                'L' => Some(light),
-                'E' => Some(CREATURE_EYE),
-                _ => None,
-            };
-            if let Some(color) = color {
-                canvas.set(col + x as u32, row + y as u32, color);
-            }
-        }
+        BattleAnimation::Hit(target) if target == side => Rgba8::new(255, 112, 112, 255),
+        BattleAnimation::Fainted(target) if target == side => Rgba8::new(112, 112, 112, 255),
+        _ => Rgba8::new(255, 255, 255, 255),
     }
 }
 

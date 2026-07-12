@@ -1,6 +1,7 @@
 use punctum_gpu::{
-    GpuAtlas, GpuCell, GpuClip, GpuPlanError, GpuResource, InstanceData, PixelOffset, PixelRect,
-    PixelSize, ResourceId, Rgba8, SubmissionMode, Viewport, plan_patch, plan_surface,
+    GpuAtlas, GpuCell, GpuClip, GpuImage, GpuPlanError, GpuResource, InstanceData, PixelOffset,
+    PixelRect, PixelSize, ResourceId, Rgba8, SubmissionMode, Viewport, plan_composite, plan_patch,
+    plan_surface,
 };
 use punctum_grid::{GridPos, GridRect, GridSize, Surface, diff};
 
@@ -61,6 +62,7 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
         plan.uploads[0].instances[0],
         InstanceData {
             grid_position: [0, 0],
+            grid_span: [1, 1],
             atlas_rect: [0, 0, 2, 2],
             tint: [255, 0, 0, 128],
             visible: 1,
@@ -70,6 +72,7 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
         plan.uploads[0].instances[1],
         InstanceData {
             grid_position: [1, 0],
+            grid_span: [1, 1],
             atlas_rect: [0; 4],
             tint: [0; 4],
             visible: 0,
@@ -78,6 +81,68 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
     assert_eq!(plan.uploads[0].instances[2].grid_position, [2, 0]);
     assert_eq!(plan.uploads[0].instances[2].atlas_rect, [2, 0, 2, 2]);
     assert_eq!(plan.uploads[0].instances[4].grid_position, [1, 1]);
+}
+
+#[test]
+fn composite_plan_draws_cells_then_images_in_stable_z_order() {
+    let surface = Surface::filled(GridSize::new(4, 3), GpuCell::Empty).unwrap();
+    let images = [
+        GpuImage::new(
+            GridRect::new(GridPos::new(2, 1), GridSize::new(2, 2)),
+            ResourceId(2),
+            Rgba8::new(10, 20, 30, 255),
+            5,
+        ),
+        GpuImage::new(
+            GridRect::new(GridPos::new(0, 0), GridSize::new(1, 2)),
+            ResourceId(1),
+            Rgba8::new(255, 255, 255, 255),
+            -1,
+        ),
+    ];
+
+    let plan = plan_composite(
+        &surface,
+        &images,
+        &atlas(),
+        u32::MAX,
+        viewport(),
+        GpuClip::Surface,
+    )
+    .unwrap();
+    let instances = &plan.uploads[0].instances;
+
+    assert_eq!(plan.instance_count, 14);
+    assert_eq!(instances[11].grid_span, [1, 1]);
+    assert_eq!(instances[12].grid_position, [0, 0]);
+    assert_eq!(instances[12].grid_span, [1, 2]);
+    assert_eq!(instances[12].atlas_rect, [0, 0, 2, 2]);
+    assert_eq!(instances[13].grid_position, [2, 1]);
+    assert_eq!(instances[13].grid_span, [2, 2]);
+    assert_eq!(instances[13].atlas_rect, [2, 0, 2, 2]);
+}
+
+#[test]
+fn composite_plan_rejects_images_outside_the_grid() {
+    let surface = Surface::filled(GridSize::new(4, 3), GpuCell::Empty).unwrap();
+    let bounds = GridRect::new(GridPos::new(3, 2), GridSize::new(2, 2));
+    let image = GpuImage::new(bounds, ResourceId(1), Rgba8::new(255, 255, 255, 255), 0);
+
+    assert_eq!(
+        plan_composite(
+            &surface,
+            &[image],
+            &atlas(),
+            u32::MAX,
+            viewport(),
+            GpuClip::Surface,
+        )
+        .unwrap_err(),
+        GpuPlanError::ImageOutOfBounds {
+            bounds,
+            grid_size: GridSize::new(4, 3),
+        }
+    );
 }
 
 #[test]

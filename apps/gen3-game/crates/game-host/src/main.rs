@@ -8,7 +8,7 @@ use std::{
 
 use game_host::DemoGame;
 use game_ui::{CANVAS_HEIGHT, CANVAS_WIDTH, atlas};
-use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_surface};
+use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_composite};
 use punctum_wgpu::{GpuRuntime, PresentOutcome, WinitKeyEventSnapshot, normalize_key_event};
 use text::BattleTextRenderer;
 use winit::{
@@ -76,8 +76,9 @@ impl CreatureGameApp {
         let view = self.game.view();
         let surface_size = runtime.surface_size();
         let viewport = battle_viewport(surface_size);
-        let plan = match plan_surface(
+        let plan = match plan_composite(
             view.surface(),
+            view.images(),
             &self.atlas,
             u32::MAX,
             viewport,

@@ -16,9 +16,10 @@ var atlas_sampler: sampler;
 
 struct VertexInput {
     @location(0) grid_position: vec2<u32>,
-    @location(1) atlas_rect: vec4<u32>,
-    @location(2) tint: vec4<f32>,
-    @location(3) visible: u32,
+    @location(1) grid_span: vec2<u32>,
+    @location(2) atlas_rect: vec4<u32>,
+    @location(3) tint: vec4<f32>,
+    @location(4) visible: u32,
 }
 
 struct VertexOutput {
@@ -41,7 +42,7 @@ fn vs_main(input: VertexInput, @builtin(vertex_index) vertex_index: u32) -> Vert
     let corner = QUAD[vertex_index];
     let pixel_origin = vec2<f32>(viewport.origin)
         + vec2<f32>(input.grid_position * viewport.cell_size);
-    let pixel = pixel_origin + corner * vec2<f32>(viewport.cell_size);
+    let pixel = pixel_origin + corner * vec2<f32>(input.grid_span * viewport.cell_size);
     let target_size = vec2<f32>(viewport.target_size);
     let ndc = vec2<f32>(
         pixel.x / target_size.x * 2.0 - 1.0,
