@@ -26,6 +26,7 @@ use world_application::{Direction, WorldEvent};
 
 const CLEAR_COLOR: Rgba8 = Rgba8::new(14, 18, 24, 255);
 const BATTLE_FRAME_INTERVAL: Duration = Duration::from_millis(300);
+const TURN_HOLD_DURATION: Duration = Duration::from_millis(90);
 
 struct CreatureGameApp {
     game: DemoGame,
@@ -38,6 +39,7 @@ struct CreatureGameApp {
     pressed_directions: PressedDirections,
     world_motion: Option<WorldMotion>,
     next_world_tick: Option<Instant>,
+    turn_hold_ends: Option<Instant>,
     run_stop_ends: Option<Instant>,
     window: Option<Arc<Window>>,
     runtime: Option<GpuRuntime<'static>>,
@@ -57,6 +59,7 @@ impl CreatureGameApp {
             pressed_directions: PressedDirections::default(),
             world_motion: None,
             next_world_tick: None,
+            turn_hold_ends: None,
             run_stop_ends: None,
             window: None,
             runtime: None,
@@ -201,6 +204,9 @@ impl CreatureGameApp {
             KeyPhase::Repeat => {}
             KeyPhase::Release => {
                 self.pressed_directions.release(direction);
+                if self.pressed_directions.active().is_none() {
+                    self.turn_hold_ends = None;
+                }
                 self.settle_if_direction_changed(now);
                 if self.world_motion.is_none() {
                     self.try_start_world_step(now);
@@ -230,8 +236,13 @@ impl CreatureGameApp {
         } else {
             Gait::Walk
         };
-        match self.game.move_world(direction) {
+        match self.game.step_world(direction) {
+            Ok(WorldEvent::Turned { .. }) => {
+                self.turn_hold_ends = Some(now + TURN_HOLD_DURATION);
+                self.request_redraw();
+            }
             Ok(WorldEvent::Moved { .. }) => {
+                self.turn_hold_ends = None;
                 self.world_motion = Some(WorldMotion::new(direction, gait, now));
                 self.next_world_tick = Some(now);
                 self.run_stop_ends = None;
@@ -251,6 +262,7 @@ impl CreatureGameApp {
         self.pressed_directions.clear();
         self.world_motion = None;
         self.next_world_tick = None;
+        self.turn_hold_ends = None;
         self.run_stop_ends = None;
     }
 
@@ -322,6 +334,7 @@ impl ApplicationHandler for CreatureGameApp {
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::Focused(false) => {
                 self.pressed_directions.clear();
+                self.turn_hold_ends = None;
                 if let Some(motion) = &mut self.world_motion {
                     motion.settle(Instant::now());
                 } else {
@@ -353,6 +366,10 @@ impl ApplicationHandler for CreatureGameApp {
             self.next_sprite_frame = Some(now + BATTLE_FRAME_INTERVAL);
             self.request_redraw();
         }
+        if self.turn_hold_ends.is_some_and(|deadline| now >= deadline) {
+            self.turn_hold_ends = None;
+            self.try_start_world_step(now);
+        }
         if self
             .world_motion
             .is_some_and(|motion| motion.is_complete(now))
@@ -377,6 +394,7 @@ impl ApplicationHandler for CreatureGameApp {
             self.next_playback,
             self.next_sprite_frame,
             self.next_world_tick,
+            self.turn_hold_ends,
             self.run_stop_ends,
         ]) {
             event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(deadline));

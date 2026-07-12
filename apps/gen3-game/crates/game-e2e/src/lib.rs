@@ -7,7 +7,7 @@ mod tests {
     use battle_application::{Action, BattlePhase};
     use game_host::{DemoBattle, DemoGame, GameScene};
     use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
-    use world_application::Position;
+    use world_application::{Direction, Position};
 
     fn key(name: NamedKey) -> KeyEvent {
         KeyEvent {
@@ -48,6 +48,10 @@ mod tests {
         let mut game = DemoGame::new().unwrap();
         let right = key(NamedKey::ArrowRight);
         let enter = key(NamedKey::Enter);
+
+        game.handle_key(&right).unwrap();
+        assert_eq!(game.world_observation().player(), Position::new(3, 6));
+        assert_eq!(game.world_observation().facing(), Direction::Right);
 
         for _ in 0..3 {
             game.handle_key(&right).unwrap();

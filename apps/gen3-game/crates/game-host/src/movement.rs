@@ -24,8 +24,8 @@ impl Gait {
 
     const fn frame_interval(self) -> Duration {
         match self {
-            Self::Walk => Duration::from_millis(120),
-            Self::Run => Duration::from_millis(75),
+            Self::Walk => Duration::from_millis(60),
+            Self::Run => Duration::from_millis(40),
         }
     }
 
@@ -218,8 +218,8 @@ mod tests {
         let walk = WorldMotion::new(Direction::Down, Gait::Walk, started);
         let run = WorldMotion::new(Direction::Down, Gait::Run, started);
 
-        assert_eq!(walk.sprite_frame(started + Duration::from_millis(120)), 1);
-        assert_eq!(run.sprite_frame(started + Duration::from_millis(75)), 1);
+        assert_eq!(walk.sprite_frame(started + Duration::from_millis(120)), 2);
+        assert_eq!(run.sprite_frame(started + Duration::from_millis(80)), 2);
     }
 
     #[test]

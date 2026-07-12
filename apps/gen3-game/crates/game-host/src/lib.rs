@@ -114,8 +114,10 @@ impl DemoGame {
                 let Some(command) = world_command_for_key(key) else {
                     return Ok(false);
                 };
-                let world_application::WorldCommand::Move(direction) = command;
-                self.move_world(direction)?;
+                let world_application::WorldCommand::Move(direction) = command else {
+                    return Ok(false);
+                };
+                self.step_world(direction)?;
                 Ok(true)
             }
             GameScene::Battle => {
@@ -146,6 +148,7 @@ impl DemoGame {
             .submit(world_application::WorldCommand::Move(direction));
         let event = outcome.event();
         self.world_message = match event {
+            WorldEvent::Turned { .. } => "风吹过草地。",
             WorldEvent::Moved { .. } => "风吹过草地。",
             WorldEvent::Blocked { .. } => "前面过不去。",
             WorldEvent::EncounterTriggered { .. } => "草丛里有动静！",
@@ -155,6 +158,28 @@ impl DemoGame {
             self.battle = Some(DemoBattle::new()?);
             self.scene = GameScene::Battle;
         }
+        Ok(event)
+    }
+
+    pub fn step_world(&mut self, direction: Direction) -> Result<WorldEvent, GameError> {
+        if self.world_observation().facing() == direction {
+            self.move_world(direction)
+        } else {
+            self.face_world(direction)
+        }
+    }
+
+    pub fn face_world(&mut self, direction: Direction) -> Result<WorldEvent, GameError> {
+        if self.scene != GameScene::World {
+            return Err(GameError::WrongScene {
+                expected: GameScene::World,
+                actual: self.scene,
+            });
+        }
+        let event = self
+            .world
+            .submit(world_application::WorldCommand::Face(direction))
+            .event();
         Ok(event)
     }
 

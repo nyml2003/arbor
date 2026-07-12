@@ -496,8 +496,16 @@ const fn world_character_resource(
     };
     let frame_offset = match animation {
         WorldAnimation::Stand => 0,
-        WorldAnimation::Walk => 1 + sprite_frame % 2,
-        WorldAnimation::Run => 4 + sprite_frame % 2,
+        WorldAnimation::Walk => match sprite_frame % 4 {
+            0 => 1,
+            1 | 3 => 0,
+            _ => 2,
+        },
+        WorldAnimation::Run => match sprite_frame % 4 {
+            0 => 4,
+            1 | 3 => 3,
+            _ => 5,
+        },
         WorldAnimation::RunStopping => 3,
     };
     ResourceId(CHARACTER_RESOURCE_START + direction_index * 6 + frame_offset as u32)
@@ -740,11 +748,35 @@ mod tests {
         );
         assert_eq!(
             world_character_resource(Direction::Up, WorldAnimation::Run, 2),
-            ResourceId(28)
+            ResourceId(29)
         );
         assert_eq!(
             world_character_resource(Direction::Up, WorldAnimation::RunStopping, 99),
             ResourceId(27)
+        );
+        assert_eq!(
+            (0..4)
+                .map(|frame| world_character_resource(Direction::Left, WorldAnimation::Walk, frame))
+                .collect::<Vec<_>>(),
+            vec![
+                ResourceId(13),
+                ResourceId(12),
+                ResourceId(14),
+                ResourceId(12)
+            ]
+        );
+        assert_eq!(
+            (0..4)
+                .map(|frame| {
+                    world_character_resource(Direction::Right, WorldAnimation::Run, frame)
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                ResourceId(22),
+                ResourceId(21),
+                ResourceId(23),
+                ResourceId(21)
+            ]
         );
     }
 }

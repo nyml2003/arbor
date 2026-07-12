@@ -102,11 +102,13 @@ impl TileMap {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorldCommand {
+    Face(Direction),
     Move(Direction),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorldEvent {
+    Turned { from: Direction, to: Direction },
     Moved { from: Position, to: Position },
     Blocked { at: Position },
     EncounterTriggered { at: Position },
@@ -163,7 +165,19 @@ impl World {
     }
 
     pub fn submit(&mut self, command: WorldCommand) -> WorldOutcome {
-        let WorldCommand::Move(direction) = command;
+        let direction = match command {
+            WorldCommand::Face(direction) => {
+                let from = self.facing;
+                self.facing = direction;
+                return WorldOutcome {
+                    event: WorldEvent::Turned {
+                        from,
+                        to: direction,
+                    },
+                };
+            }
+            WorldCommand::Move(direction) => direction,
+        };
         self.facing = direction;
         let Some(target) = self.player.neighbor(direction) else {
             return WorldOutcome {
@@ -240,6 +254,22 @@ mod tests {
             outcome.event(),
             WorldEvent::Blocked {
                 at: Position::new(1, 0)
+            }
+        );
+    }
+
+    #[test]
+    fn face_changes_direction_without_changing_position() {
+        let mut world = world();
+        let outcome = world.submit(WorldCommand::Face(Direction::Left));
+
+        assert_eq!(world.player(), Position::new(1, 1));
+        assert_eq!(world.facing(), Direction::Left);
+        assert_eq!(
+            outcome.event(),
+            WorldEvent::Turned {
+                from: Direction::Down,
+                to: Direction::Left,
             }
         );
     }
