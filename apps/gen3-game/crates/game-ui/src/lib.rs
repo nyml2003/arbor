@@ -166,8 +166,13 @@ pub fn project_battle(
     draw_player(&mut canvas, animation);
 
     let own = observation.own().members()[observation.own().active_slot().index()].clone();
-    let opponent = observation.opponent().active();
-    draw_status_panel(&mut canvas, 1, 1, display.opponent_hp, display.opponent_max_hp);
+    draw_status_panel(
+        &mut canvas,
+        1,
+        1,
+        display.opponent_hp,
+        display.opponent_max_hp,
+    );
     draw_status_panel(&mut canvas, 18, 11, display.own_hp, display.own_max_hp);
     draw_action_panel(&mut canvas, actions.len(), ui.selected_index);
 
@@ -190,15 +195,7 @@ pub fn project_battle(
             &format!("生命 {}/{}", display.opponent_hp, display.opponent_max_hp),
             MUTED_TEXT,
         ),
-        label(
-            TextRole::PlayerName,
-            19,
-            12,
-            12,
-            1,
-            &display.own_name,
-            TEXT,
-        ),
+        label(TextRole::PlayerName, 19, 12, 12, 1, &display.own_name, TEXT),
         label(
             TextRole::PlayerHp,
             19,

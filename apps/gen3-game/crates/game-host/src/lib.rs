@@ -10,7 +10,8 @@ use battle_application::{
     Side, Team, TypeEffectiveness, UsedMove,
 };
 use game_ui::{
-    BattleAnimation, BattleUiOutcome, BattleUiState, BattleView, phase_message, project_battle,
+    BattleAnimation, BattleDisplayState, BattleUiOutcome, BattleUiState, BattleView, phase_message,
+    project_battle,
 };
 use punctum_input::KeyEvent;
 
@@ -21,6 +22,7 @@ pub struct DemoBattle {
     ui: BattleUiState,
     message: String,
     animation: BattleAnimation,
+    display: BattleDisplayState,
     playback: VecDeque<PlaybackFrame>,
 }
 
@@ -28,6 +30,7 @@ pub struct DemoBattle {
 struct PlaybackFrame {
     message: String,
     animation: BattleAnimation,
+    display: BattleDisplayState,
 }
 
 impl DemoBattle {
@@ -38,6 +41,7 @@ impl DemoBattle {
             0xA2B3_C4D5,
         )?;
         let (player, opponent) = application.perspectives();
+        let display = display_from_observation(&application.observe(&player));
         Ok(Self {
             application,
             player,
@@ -45,6 +49,7 @@ impl DemoBattle {
             ui: BattleUiState::default(),
             message: "请选择行动".into(),
             animation: BattleAnimation::Idle,
+            display,
             playback: VecDeque::new(),
         })
     }
@@ -59,7 +64,11 @@ impl DemoBattle {
 
     pub fn view(&mut self) -> BattleView {
         let observation = self.observation();
-        let actions = self.legal_actions();
+        let actions = if self.is_playing() {
+            Vec::new()
+        } else {
+            self.legal_actions()
+        };
         self.ui.reconcile(&actions);
         project_battle(
             &observation,
@@ -67,6 +76,7 @@ impl DemoBattle {
             self.ui,
             &self.message,
             self.animation,
+            &self.display,
         )
     }
 
@@ -86,6 +96,7 @@ impl DemoBattle {
     }
 
     pub fn submit_player(&mut self, action: Action) -> Result<(), BattleError> {
+        self.display = display_from_observation(&self.observation());
         self.playback.clear();
         self.animation = BattleAnimation::Idle;
         let mut events = Vec::new();
@@ -110,6 +121,7 @@ impl DemoBattle {
         };
         self.message = frame.message;
         self.animation = frame.animation;
+        self.display = frame.display;
         true
     }
 
@@ -138,22 +150,29 @@ impl DemoBattle {
     }
 
     fn start_playback(&mut self, events: &[BattleEvent]) {
+        let mut display = self.display.clone();
         let mut frames = events
             .iter()
-            .filter_map(|event| self.event_frame(event))
+            .filter_map(|event| self.event_frame(event, &mut display))
             .collect::<VecDeque<_>>();
         frames.push_back(PlaybackFrame {
             message: phase_message(self.observation().phase()).into(),
             animation: BattleAnimation::Idle,
+            display: display_from_observation(&self.observation()),
         });
         if let Some(frame) = frames.pop_front() {
             self.message = frame.message;
             self.animation = frame.animation;
+            self.display = frame.display;
         }
         self.playback = frames;
     }
 
-    fn event_frame(&self, event: &BattleEvent) -> Option<PlaybackFrame> {
+    fn event_frame(
+        &self,
+        event: &BattleEvent,
+        display: &mut BattleDisplayState,
+    ) -> Option<PlaybackFrame> {
         let (message, animation) = match event {
             BattleEvent::TurnStarted { turn } => (format!("第 {turn} 回合"), BattleAnimation::Idle),
             BattleEvent::MoveUsed {
@@ -210,7 +229,28 @@ impl DemoBattle {
             | BattleEvent::OpponentCommandCommitted
             | BattleEvent::OwnPpSpent { .. } => return None,
         };
-        Some(PlaybackFrame { message, animation })
+        match event {
+            BattleEvent::Damage {
+                target_side,
+                remaining_hp,
+                ..
+            } => match target_side {
+                Side::One => display.own_hp = *remaining_hp,
+                Side::Two => display.opponent_hp = *remaining_hp,
+            },
+            BattleEvent::OwnSwitched { pokemon, .. } => {
+                update_own_display(display, &self.observation(), pokemon);
+            }
+            BattleEvent::OpponentSwitched { pokemon } => {
+                update_opponent_display(display, &self.observation(), pokemon);
+            }
+            _ => {}
+        }
+        Some(PlaybackFrame {
+            message,
+            animation,
+            display: display.clone(),
+        })
     }
 
     fn pokemon_name(&self, id: &battle_application::PokemonId) -> String {
@@ -261,6 +301,52 @@ impl DemoBattle {
                     .map(|battle_move| battle_move.name().to_owned())
             })
             .unwrap_or_else(|| id.as_str().to_owned())
+    }
+}
+
+fn display_from_observation(observation: &BattleObservation) -> BattleDisplayState {
+    let own = &observation.own().members()[observation.own().active_slot().index()];
+    let opponent = observation.opponent().active();
+    BattleDisplayState {
+        own_name: own.name().into(),
+        own_hp: own.current_hp(),
+        own_max_hp: own.max_hp(),
+        opponent_name: opponent.name().into(),
+        opponent_hp: opponent.current_hp(),
+        opponent_max_hp: opponent.max_hp(),
+    }
+}
+
+fn update_own_display(
+    display: &mut BattleDisplayState,
+    observation: &BattleObservation,
+    id: &PokemonId,
+) {
+    if let Some(pokemon) = observation
+        .own()
+        .members()
+        .iter()
+        .find(|pokemon| pokemon.id() == id)
+    {
+        display.own_name = pokemon.name().into();
+        display.own_hp = pokemon.current_hp();
+        display.own_max_hp = pokemon.max_hp();
+    }
+}
+
+fn update_opponent_display(
+    display: &mut BattleDisplayState,
+    observation: &BattleObservation,
+    id: &PokemonId,
+) {
+    let opponent = observation.opponent();
+    let pokemon = std::iter::once(opponent.active())
+        .chain(opponent.revealed_bench().iter())
+        .find(|pokemon| pokemon.id() == id);
+    if let Some(pokemon) = pokemon {
+        display.opponent_name = pokemon.name().into();
+        display.opponent_hp = pokemon.current_hp();
+        display.opponent_max_hp = pokemon.max_hp();
     }
 }
 
@@ -411,6 +497,33 @@ mod tests {
         }
         assert!(messages.iter().any(|message| message.contains("使用了")));
         assert!(messages.iter().any(|message| message.contains("受到")));
+    }
+
+    #[test]
+    fn displayed_hp_changes_only_when_the_damage_frame_is_presented() {
+        let mut battle = DemoBattle::new().unwrap();
+        let initial_display = battle.display.clone();
+        let action = battle
+            .legal_actions()
+            .into_iter()
+            .find(|action| matches!(action, Action::UseMove(_)))
+            .unwrap();
+
+        battle.submit_player(action).unwrap();
+
+        assert_eq!(battle.display, initial_display);
+        let mut saw_staged_damage = false;
+        while battle.has_pending_playback() {
+            let previous = battle.display.clone();
+            battle.advance_playback();
+            if battle.display != previous {
+                assert!(battle.message.contains("受到"));
+                saw_staged_damage = true;
+            }
+        }
+        let final_display = super::display_from_observation(&battle.observation());
+        assert!(saw_staged_damage);
+        assert_eq!(battle.display, final_display);
     }
 
     #[test]
