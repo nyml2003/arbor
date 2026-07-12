@@ -282,6 +282,7 @@ pub enum GpuCell {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GpuImage {
     pub bounds: GridRect,
+    pub pixel_offset: PixelOffset,
     pub resource: ResourceId,
     pub tint: Rgba8,
     pub z_index: i32,
@@ -291,10 +292,16 @@ impl GpuImage {
     pub const fn new(bounds: GridRect, resource: ResourceId, tint: Rgba8, z_index: i32) -> Self {
         Self {
             bounds,
+            pixel_offset: PixelOffset::new(0, 0),
             resource,
             tint,
             z_index,
         }
+    }
+
+    pub const fn with_pixel_offset(mut self, pixel_offset: PixelOffset) -> Self {
+        self.pixel_offset = pixel_offset;
+        self
     }
 }
 

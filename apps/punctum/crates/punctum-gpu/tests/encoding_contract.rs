@@ -8,6 +8,7 @@ fn instance_encoding_matches_the_declared_vertex_stride() {
     let instance = InstanceData {
         grid_position: [1, 2],
         grid_span: [12, 13],
+        pixel_offset: [-14, 15],
         atlas_rect: [3, 4, 5, 6],
         tint: [7, 8, 9, 10],
         visible: 11,
@@ -17,8 +18,10 @@ fn instance_encoding_matches_the_declared_vertex_stride() {
     assert_eq!(bytes.len(), INSTANCE_STRIDE as usize);
     assert_eq!(&bytes[0..8], &[1, 0, 0, 0, 2, 0, 0, 0]);
     assert_eq!(&bytes[8..16], &[12, 0, 0, 0, 13, 0, 0, 0]);
-    assert_eq!(&bytes[32..36], &[7, 8, 9, 10]);
-    assert_eq!(&bytes[36..40], &[11, 0, 0, 0]);
+    assert_eq!(&bytes[16..20], &(-14_i32).to_le_bytes());
+    assert_eq!(&bytes[20..24], &15_i32.to_le_bytes());
+    assert_eq!(&bytes[40..44], &[7, 8, 9, 10]);
+    assert_eq!(&bytes[44..48], &[11, 0, 0, 0]);
 }
 
 #[test]

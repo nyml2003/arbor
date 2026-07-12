@@ -63,6 +63,7 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
         InstanceData {
             grid_position: [0, 0],
             grid_span: [1, 1],
+            pixel_offset: [0, 0],
             atlas_rect: [0, 0, 2, 2],
             tint: [255, 0, 0, 128],
             visible: 1,
@@ -73,6 +74,7 @@ fn surface_plan_resolves_resources_and_preserves_row_major_slots() {
         InstanceData {
             grid_position: [1, 0],
             grid_span: [1, 1],
+            pixel_offset: [0, 0],
             atlas_rect: [0; 4],
             tint: [0; 4],
             visible: 0,
@@ -92,7 +94,8 @@ fn composite_plan_draws_cells_then_images_in_stable_z_order() {
             ResourceId(2),
             Rgba8::new(10, 20, 30, 255),
             5,
-        ),
+        )
+        .with_pixel_offset(PixelOffset::new(-3, 4)),
         GpuImage::new(
             GridRect::new(GridPos::new(0, 0), GridSize::new(1, 2)),
             ResourceId(1),
@@ -119,6 +122,7 @@ fn composite_plan_draws_cells_then_images_in_stable_z_order() {
     assert_eq!(instances[12].atlas_rect, [0, 0, 2, 2]);
     assert_eq!(instances[13].grid_position, [2, 1]);
     assert_eq!(instances[13].grid_span, [2, 2]);
+    assert_eq!(instances[13].pixel_offset, [-3, 4]);
     assert_eq!(instances[13].atlas_rect, [2, 0, 2, 2]);
 }
 

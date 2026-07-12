@@ -4,7 +4,7 @@ use punctum_grid::{GridPos, GridRect, GridSize, Patch, PatchKind, Surface};
 
 use crate::{GpuAtlas, GpuCell, GpuClip, GpuImage, PixelRect, ResourceId, Viewport};
 
-pub const INSTANCE_STRIDE: u64 = 40;
+pub const INSTANCE_STRIDE: u64 = 48;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SubmissionMode {
@@ -16,6 +16,7 @@ pub enum SubmissionMode {
 pub struct InstanceData {
     pub grid_position: [u32; 2],
     pub grid_span: [u32; 2],
+    pub pixel_offset: [i32; 2],
     pub atlas_rect: [u32; 4],
     pub tint: [u8; 4],
     pub visible: u32,
@@ -78,6 +79,7 @@ pub fn plan_composite(
                 image.bounds.origin.row as u32,
             ],
             grid_span: [image.bounds.size.cols, image.bounds.size.rows],
+            pixel_offset: [image.pixel_offset.x, image.pixel_offset.y],
             atlas_rect: [rect.x, rect.y, rect.width, rect.height],
             tint: image.tint.to_array(),
             visible: 1,
@@ -212,6 +214,7 @@ fn plan_cell(
         GpuCell::Empty => Ok(InstanceData {
             grid_position,
             grid_span: [1, 1],
+            pixel_offset: [0, 0],
             atlas_rect: [0; 4],
             tint: [0; 4],
             visible: 0,
@@ -223,6 +226,7 @@ fn plan_cell(
             Ok(InstanceData {
                 grid_position,
                 grid_span: [1, 1],
+                pixel_offset: [0, 0],
                 atlas_rect: [rect.x, rect.y, rect.width, rect.height],
                 tint: tint.to_array(),
                 visible: 1,

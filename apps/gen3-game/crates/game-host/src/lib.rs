@@ -10,11 +10,12 @@ use battle_application::{
     PokemonType, Side, Team, TypeEffectiveness, UsedMove,
 };
 use game_ui::{
-    BattleAnimation, BattleDisplayState, BattleUiOutcome, BattleUiState, GameView, phase_message,
-    project_battle, project_world, world_command_for_key,
+    BattleAnimation, BattleDisplayState, BattleUiOutcome, BattleUiState, GameView, WorldAnimation,
+    phase_message, project_battle, project_world_presented, world_command_for_key,
 };
+use punctum_gpu::PixelOffset;
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
-use world_application::{WorldApplication, WorldError, WorldEvent, WorldObservation};
+use world_application::{Direction, WorldApplication, WorldError, WorldEvent, WorldObservation};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameScene {
@@ -26,6 +27,10 @@ pub enum GameScene {
 pub enum GameError {
     World(WorldError),
     Battle(BattleError),
+    WrongScene {
+        expected: GameScene,
+        actual: GameScene,
+    },
 }
 
 impl From<WorldError> for GameError {
@@ -66,13 +71,40 @@ impl DemoGame {
     }
 
     pub fn view(&mut self) -> GameView {
+        self.view_with_sprite_frame(0)
+    }
+
+    pub fn view_with_sprite_frame(&mut self, sprite_frame: usize) -> GameView {
+        self.view_with_animation(sprite_frame, WorldAnimation::Stand)
+    }
+
+    pub fn view_with_animation(
+        &mut self,
+        sprite_frame: usize,
+        world_animation: WorldAnimation,
+    ) -> GameView {
+        self.view_with_presentation(sprite_frame, world_animation, PixelOffset::new(0, 0))
+    }
+
+    pub fn view_with_presentation(
+        &mut self,
+        sprite_frame: usize,
+        world_animation: WorldAnimation,
+        world_pixel_offset: PixelOffset,
+    ) -> GameView {
         match self.scene {
-            GameScene::World => project_world(&self.world.observe(), &self.world_message),
+            GameScene::World => project_world_presented(
+                &self.world.observe(),
+                &self.world_message,
+                world_animation,
+                sprite_frame,
+                world_pixel_offset,
+            ),
             GameScene::Battle => self
                 .battle
                 .as_mut()
                 .expect("the battle scene owns a battle")
-                .view(),
+                .view_with_sprite_frame(sprite_frame),
         }
     }
 
@@ -82,17 +114,8 @@ impl DemoGame {
                 let Some(command) = world_command_for_key(key) else {
                     return Ok(false);
                 };
-                let outcome = self.world.submit(command);
-                self.world_message = match outcome.event() {
-                    WorldEvent::Moved { .. } => "风吹过草地。",
-                    WorldEvent::Blocked { .. } => "前面过不去。",
-                    WorldEvent::EncounterTriggered { .. } => "草丛里有动静！",
-                }
-                .into();
-                if outcome.starts_battle() {
-                    self.battle = Some(DemoBattle::new()?);
-                    self.scene = GameScene::Battle;
-                }
+                let world_application::WorldCommand::Move(direction) = command;
+                self.move_world(direction)?;
                 Ok(true)
             }
             GameScene::Battle => {
@@ -109,6 +132,30 @@ impl DemoGame {
                 battle.handle_key(key).map_err(Into::into)
             }
         }
+    }
+
+    pub fn move_world(&mut self, direction: Direction) -> Result<WorldEvent, GameError> {
+        if self.scene != GameScene::World {
+            return Err(GameError::WrongScene {
+                expected: GameScene::World,
+                actual: self.scene,
+            });
+        }
+        let outcome = self
+            .world
+            .submit(world_application::WorldCommand::Move(direction));
+        let event = outcome.event();
+        self.world_message = match event {
+            WorldEvent::Moved { .. } => "风吹过草地。",
+            WorldEvent::Blocked { .. } => "前面过不去。",
+            WorldEvent::EncounterTriggered { .. } => "草丛里有动静！",
+        }
+        .into();
+        if outcome.starts_battle() {
+            self.battle = Some(DemoBattle::new()?);
+            self.scene = GameScene::Battle;
+        }
+        Ok(event)
     }
 
     pub fn has_pending_playback(&self) -> bool {
@@ -148,11 +195,8 @@ struct PlaybackFrame {
 
 impl DemoBattle {
     pub fn new() -> Result<Self, BattleError> {
-        let application = BattleApplication::new(
-            demo_team("player", true),
-            demo_team("rival", false),
-            0xA2B3_C4D5,
-        )?;
+        let application =
+            BattleApplication::new(demo_team("player"), demo_team("rival"), 0xA2B3_C4D5)?;
         let (player, opponent) = application.perspectives();
         let display = display_from_observation(&application.observe(&player));
         Ok(Self {
@@ -176,6 +220,10 @@ impl DemoBattle {
     }
 
     pub fn view(&mut self) -> GameView {
+        self.view_with_sprite_frame(0)
+    }
+
+    pub fn view_with_sprite_frame(&mut self, sprite_frame: usize) -> GameView {
         let observation = self.observation();
         let actions = if self.is_playing() {
             Vec::new()
@@ -190,6 +238,7 @@ impl DemoBattle {
             &self.message,
             self.animation,
             &self.display,
+            sprite_frame,
         )
     }
 
@@ -484,74 +533,26 @@ fn effectiveness_message(effectiveness: TypeEffectiveness) -> &'static str {
     }
 }
 
-fn demo_team(prefix: &str, player: bool) -> Team {
-    let names = if player {
-        ["电蜥", "苔芽", "砾仔", "雾翎", "炽崽", "萤蛾"]
-    } else {
-        ["焰角兽", "荆棘芽", "潮鳍", "岩龙", "夜绒", "铁耳狐"]
-    };
-    let types = if player {
-        [
-            PokemonType::Electric,
-            PokemonType::Grass,
-            PokemonType::Rock,
-            PokemonType::Flying,
-            PokemonType::Fire,
-            PokemonType::Bug,
-        ]
-    } else {
-        [
-            PokemonType::Fire,
-            PokemonType::Grass,
-            PokemonType::Water,
-            PokemonType::Ground,
-            PokemonType::Dark,
-            PokemonType::Steel,
-        ]
-    };
-    Team::new(
-        names
-            .into_iter()
-            .zip(types)
-            .enumerate()
-            .map(|(index, (name, pokemon_type))| {
-                demo_pokemon(prefix, index, name, pokemon_type, player)
-            })
-            .collect(),
-    )
-    .expect("the fixed demo team is valid")
+fn demo_team(prefix: &str) -> Team {
+    Team::new((0..6).map(|index| demo_bulbasaur(prefix, index)).collect())
+        .expect("the fixed demo team is valid")
 }
 
-fn demo_pokemon(
-    prefix: &str,
-    index: usize,
-    name: &str,
-    pokemon_type: PokemonType,
-    player: bool,
-) -> Pokemon {
-    let move_type = if player && index == 0 {
-        PokemonType::Electric
-    } else if !player && index == 0 {
-        PokemonType::Fire
-    } else {
-        pokemon_type
-    };
+fn demo_bulbasaur(prefix: &str, index: usize) -> Pokemon {
     let moves = [
-        ("strike", "快速撞击", PokemonType::Normal, 45),
-        ("pulse", "属性脉冲", move_type, 65),
-        ("rush", "猛烈冲锋", PokemonType::Normal, 75),
-        ("focus", "聚能光束", move_type, 55),
+        ("tackle", "撞击", PokemonType::Normal, 40, 35),
+        ("vine-whip", "藤鞭", PokemonType::Grass, 45, 25),
     ]
     .into_iter()
-    .map(|(suffix, move_name, move_type, power)| {
+    .map(|(suffix, move_name, move_type, power, pp)| {
         Move::new(
             MoveId::new(format!("{prefix}-{index}-{suffix}")).unwrap(),
             move_name,
             move_type,
             power,
             Accuracy::Percent(100),
-            20,
-            20,
+            pp,
+            pp,
             0,
         )
         .unwrap()
@@ -559,13 +560,13 @@ fn demo_pokemon(
     .collect();
     Pokemon::new(
         PokemonId::new(format!("{prefix}-{index}")).unwrap(),
-        name,
+        "妙蛙种子",
         24,
-        pokemon_type,
-        None,
-        110,
-        110,
-        BattleStats::new(58, 52, 61, 54, if player { 62 } else { 55 }).unwrap(),
+        PokemonType::Grass,
+        Some(PokemonType::Poison),
+        45,
+        45,
+        BattleStats::new(49, 49, 65, 65, 45).unwrap(),
         moves,
     )
     .expect("the fixed demo creature is valid")
@@ -573,7 +574,7 @@ fn demo_pokemon(
 
 #[cfg(test)]
 mod tests {
-    use battle_application::Action;
+    use battle_application::{Accuracy, Action, BattleStats, PokemonType};
     use game_ui::{CANVAS_HEIGHT, CANVAS_WIDTH, TextRole};
     use punctum_gpu::ResourceId;
     use punctum_grid::{GridPos, GridRect, GridSize};
@@ -647,6 +648,37 @@ mod tests {
     #[test]
     fn projected_battle_view_contains_the_fixed_canvas_status_and_actions() {
         let mut battle = DemoBattle::new().unwrap();
+        let observation = battle.observation();
+        let bulbasaur = &observation.own().members()[0];
+        assert_eq!(bulbasaur.name(), "妙蛙种子");
+        assert_eq!(bulbasaur.primary_type(), PokemonType::Grass);
+        assert_eq!(bulbasaur.secondary_type(), Some(PokemonType::Poison));
+        assert_eq!(bulbasaur.max_hp(), 45);
+        assert_eq!(
+            bulbasaur.stats(),
+            BattleStats::new(49, 49, 65, 65, 45).unwrap()
+        );
+        assert_eq!(bulbasaur.moves().len(), 2);
+        assert_eq!(
+            (
+                bulbasaur.moves()[0].name(),
+                bulbasaur.moves()[0].move_type(),
+                bulbasaur.moves()[0].power(),
+                bulbasaur.moves()[0].accuracy(),
+                bulbasaur.moves()[0].max_pp(),
+            ),
+            ("撞击", PokemonType::Normal, 40, Accuracy::Percent(100), 35)
+        );
+        assert_eq!(
+            (
+                bulbasaur.moves()[1].name(),
+                bulbasaur.moves()[1].move_type(),
+                bulbasaur.moves()[1].power(),
+                bulbasaur.moves()[1].accuracy(),
+                bulbasaur.moves()[1].max_pp(),
+            ),
+            ("藤鞭", PokemonType::Grass, 45, Accuracy::Percent(100), 25)
+        );
         let view = battle.view();
 
         assert_eq!(
@@ -656,7 +688,7 @@ mod tests {
         assert!(
             view.labels()
                 .iter()
-                .any(|label| label.role == TextRole::OpponentName && label.content == "焰角兽")
+                .any(|label| label.role == TextRole::OpponentName && label.content == "妙蛙种子")
         );
         assert!(
             view.labels()
@@ -665,16 +697,30 @@ mod tests {
                 .count()
                 == 4
         );
+        assert!(
+            view.labels()
+                .iter()
+                .any(|label| label.content.starts_with("撞击"))
+        );
+        assert!(
+            view.labels()
+                .iter()
+                .any(|label| label.content.starts_with("藤鞭"))
+        );
         assert_eq!(view.images().len(), 2);
         assert_eq!(view.images()[0].resource, ResourceId(2));
         assert_eq!(
             view.images()[0].bounds,
             GridRect::new(GridPos::new(5, 10), GridSize::new(8, 8))
         );
-        assert_eq!(view.images()[1].resource, ResourceId(3));
+        assert_eq!(view.images()[1].resource, ResourceId(4));
         assert_eq!(
             view.images()[1].bounds,
             GridRect::new(GridPos::new(22, 4), GridSize::new(8, 8))
         );
+
+        let next_frame = battle.view_with_sprite_frame(1);
+        assert_eq!(next_frame.images()[0].resource, ResourceId(3));
+        assert_eq!(next_frame.images()[1].resource, ResourceId(5));
     }
 }

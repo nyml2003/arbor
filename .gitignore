@@ -6,6 +6,7 @@ out/
 .output/
 .electron-builder/
 .pnpm-store/
+assets
 
 # Rust build artifacts, including nested workspaces like apps/thorn/target/
 target/

@@ -6,7 +6,7 @@ use battle_application::{
     Action, BattleObservation, BattlePhase, MoveSlot, Pokemon, Side, TeamSlot,
 };
 use game_assets::{DecodedImage, build_atlas};
-use punctum_gpu::{GpuAtlas, GpuCell, GpuImage, ResourceId, Rgba8};
+use punctum_gpu::{GpuAtlas, GpuCell, GpuImage, PixelOffset, ResourceId, Rgba8};
 use punctum_grid::{GridPos, GridRect, GridSize, Surface};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
 use world_application::{
@@ -17,11 +17,118 @@ pub const CANVAS_WIDTH: u32 = 32;
 pub const CANVAS_HEIGHT: u32 = 24;
 
 const WHITE_RESOURCE: ResourceId = ResourceId(1);
-const PLAYER_BACK_RESOURCE: ResourceId = ResourceId(2);
-const OPPONENT_FRONT_RESOURCE: ResourceId = ResourceId(3);
+const PLAYER_BACK_FRAME_0_RESOURCE: ResourceId = ResourceId(2);
+const PLAYER_BACK_FRAME_1_RESOURCE: ResourceId = ResourceId(3);
+const OPPONENT_FRONT_FRAME_0_RESOURCE: ResourceId = ResourceId(4);
+const OPPONENT_FRONT_FRAME_1_RESOURCE: ResourceId = ResourceId(5);
+const CHARACTER_RESOURCE_START: u32 = 6;
 const WHITE_PIXEL: Rgba8 = Rgba8::new(255, 255, 255, 255);
-const PLAYER_BACK_PNG: &[u8] = include_bytes!("../../../assets/testtest/back/001.png");
-const OPPONENT_FRONT_PNG: &[u8] = include_bytes!("../../../assets/testtest/front/001.png");
+const PLAYER_BACK_FRAME_0_PNG: &[u8] =
+    include_bytes!("../../../assets/pokemons/normal/back/001_Back_0_C__frame_0.png");
+const PLAYER_BACK_FRAME_1_PNG: &[u8] =
+    include_bytes!("../../../assets/pokemons/normal/back/001_Back_0_C__frame_1.png");
+const OPPONENT_FRONT_FRAME_0_PNG: &[u8] =
+    include_bytes!("../../../assets/pokemons/normal/front/001_Front_0_C__frame_0.png");
+const OPPONENT_FRONT_FRAME_1_PNG: &[u8] =
+    include_bytes!("../../../assets/pokemons/normal/front/001_Front_0_C__frame_1.png");
+const CHARACTER_PNGS: [(&str, &[u8]); 24] = [
+    (
+        "down stand",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_stand.png"),
+    ),
+    (
+        "down walk 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_walk_2.png"),
+    ),
+    (
+        "down walk 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_walk_3.png"),
+    ),
+    (
+        "down run 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_run_1.png"),
+    ),
+    (
+        "down run 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_run_2.png"),
+    ),
+    (
+        "down run 3",
+        include_bytes!("../../../assets/characters/red/actions/group-00/down_runn_3.png"),
+    ),
+    (
+        "left stand",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_stand.png"),
+    ),
+    (
+        "left walk 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_walk_1.png"),
+    ),
+    (
+        "left walk 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_walk_2.png"),
+    ),
+    (
+        "left run 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_run_1.png"),
+    ),
+    (
+        "left run 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_run_2.png"),
+    ),
+    (
+        "left run 3",
+        include_bytes!("../../../assets/characters/red/actions/group-00/left_run_3.png"),
+    ),
+    (
+        "right stand",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_stand.png"),
+    ),
+    (
+        "right walk 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_walk_1.png"),
+    ),
+    (
+        "right walk 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_walk_2.png"),
+    ),
+    (
+        "right run 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_run_1.png"),
+    ),
+    (
+        "right run 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_run_2.png"),
+    ),
+    (
+        "right run 3",
+        include_bytes!("../../../assets/characters/red/actions/group-00/right_run_3.png"),
+    ),
+    (
+        "up stand",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_stand.png"),
+    ),
+    (
+        "up walk 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_walk_1.png"),
+    ),
+    (
+        "up walk 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_walk_2.png"),
+    ),
+    (
+        "up run 1",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_run_1.png"),
+    ),
+    (
+        "up run 2",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_run_2.png"),
+    ),
+    (
+        "up run 3",
+        include_bytes!("../../../assets/characters/red/actions/group-00/up_run_3.png"),
+    ),
+];
 
 const SKY: Rgba8 = Rgba8::new(145, 205, 210, 255);
 const DISTANT_GRASS: Rgba8 = Rgba8::new(104, 164, 112, 255);
@@ -40,8 +147,6 @@ const MAP_GRASS: Rgba8 = Rgba8::new(54, 137, 79, 255);
 const MAP_GRASS_LIGHT: Rgba8 = Rgba8::new(82, 163, 91, 255);
 const MAP_WALL: Rgba8 = Rgba8::new(100, 105, 111, 255);
 const MAP_WALL_LIGHT: Rgba8 = Rgba8::new(142, 146, 145, 255);
-const PLAYER_BODY: Rgba8 = Rgba8::new(35, 87, 115, 255);
-const PLAYER_FACE: Rgba8 = Rgba8::new(245, 210, 117, 255);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BattleAnimation {
@@ -50,6 +155,15 @@ pub enum BattleAnimation {
     Acting(Side),
     Hit(Side),
     Fainted(Side),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WorldAnimation {
+    #[default]
+    Stand,
+    Walk,
+    Run,
+    RunStopping,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -157,16 +271,34 @@ impl GameView {
 
 pub fn atlas() -> GpuAtlas {
     let white = DecodedImage::solid(WHITE_PIXEL);
-    let player_back = game_assets::decode_png(PLAYER_BACK_PNG)
-        .expect("the embedded player back sprite is a valid PNG");
-    let opponent_front = game_assets::decode_png(OPPONENT_FRONT_PNG)
-        .expect("the embedded opponent front sprite is a valid PNG");
-    build_atlas(&[
+    let player_back_frame_0 = decode_embedded_png(PLAYER_BACK_FRAME_0_PNG, "player back frame 0");
+    let player_back_frame_1 = decode_embedded_png(PLAYER_BACK_FRAME_1_PNG, "player back frame 1");
+    let opponent_front_frame_0 =
+        decode_embedded_png(OPPONENT_FRONT_FRAME_0_PNG, "opponent front frame 0");
+    let opponent_front_frame_1 =
+        decode_embedded_png(OPPONENT_FRONT_FRAME_1_PNG, "opponent front frame 1");
+    let character_images: Vec<_> = CHARACTER_PNGS
+        .iter()
+        .map(|(name, bytes)| decode_embedded_png(bytes, name))
+        .collect();
+    let mut images = vec![
         (WHITE_RESOURCE, &white),
-        (PLAYER_BACK_RESOURCE, &player_back),
-        (OPPONENT_FRONT_RESOURCE, &opponent_front),
-    ])
-    .expect("the embedded game atlas is valid")
+        (PLAYER_BACK_FRAME_0_RESOURCE, &player_back_frame_0),
+        (PLAYER_BACK_FRAME_1_RESOURCE, &player_back_frame_1),
+        (OPPONENT_FRONT_FRAME_0_RESOURCE, &opponent_front_frame_0),
+        (OPPONENT_FRONT_FRAME_1_RESOURCE, &opponent_front_frame_1),
+    ];
+    images.extend(
+        character_images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| (ResourceId(CHARACTER_RESOURCE_START + index as u32), image)),
+    );
+    build_atlas(&images).expect("the embedded game atlas is valid")
+}
+
+fn decode_embedded_png(bytes: &[u8], name: &str) -> DecodedImage {
+    game_assets::decode_png(bytes).unwrap_or_else(|error| panic!("embedded {name} PNG: {error}"))
 }
 
 pub fn project_battle(
@@ -176,6 +308,7 @@ pub fn project_battle(
     message: &str,
     animation: BattleAnimation,
     display: &BattleDisplayState,
+    sprite_frame: usize,
 ) -> GameView {
     let mut canvas = Canvas::new(SKY);
     canvas.fill(0, 8, CANVAS_WIDTH, 4, DISTANT_GRASS);
@@ -241,7 +374,7 @@ pub fn project_battle(
 
     GameView {
         surface: canvas.finish(),
-        images: battle_images(animation),
+        images: battle_images(animation, sprite_frame),
         labels,
     }
 }
@@ -261,6 +394,31 @@ pub fn world_command_for_key(key: &KeyEvent) -> Option<WorldCommand> {
 }
 
 pub fn project_world(observation: &WorldObservation, message: &str) -> GameView {
+    project_world_animated(observation, message, WorldAnimation::Stand, 0)
+}
+
+pub fn project_world_animated(
+    observation: &WorldObservation,
+    message: &str,
+    animation: WorldAnimation,
+    sprite_frame: usize,
+) -> GameView {
+    project_world_presented(
+        observation,
+        message,
+        animation,
+        sprite_frame,
+        PixelOffset::new(0, 0),
+    )
+}
+
+pub fn project_world_presented(
+    observation: &WorldObservation,
+    message: &str,
+    animation: WorldAnimation,
+    sprite_frame: usize,
+    pixel_offset: PixelOffset,
+) -> GameView {
     const TILE_SIZE: u32 = 2;
     let mut canvas = Canvas::new(MAP_GROUND);
     for y in 0..observation.height() {
@@ -277,13 +435,18 @@ pub fn project_world(observation: &WorldObservation, message: &str) -> GameView 
             );
         }
     }
-    draw_world_player(&mut canvas, observation.player(), observation.facing());
     canvas.fill(0, 20, CANVAS_WIDTH, 4, PANEL_EDGE);
     canvas.fill(1, 21, CANVAS_WIDTH - 2, 2, PANEL);
 
     GameView {
         surface: canvas.finish(),
-        images: Vec::new(),
+        images: vec![world_player_image(
+            observation.player(),
+            observation.facing(),
+            animation,
+            sprite_frame,
+            pixel_offset,
+        )],
         labels: vec![
             label(TextRole::Location, 2, 21, 10, 1, "青叶原野", TEXT),
             label(TextRole::Message, 12, 21, 18, 1, message, MUTED_TEXT),
@@ -301,17 +464,43 @@ fn draw_world_tile(canvas: &mut Canvas, col: u32, row: u32, tile: Tile) {
     canvas.set(col + 1, row, accent);
 }
 
-fn draw_world_player(canvas: &mut Canvas, position: Position, direction: WorldDirection) {
-    let col = u32::from(position.x()) * 2;
-    let row = u32::from(position.y()) * 2;
-    canvas.fill(col, row, 2, 2, PLAYER_BODY);
-    let (face_x, face_y) = match direction {
-        WorldDirection::Up => (col, row),
-        WorldDirection::Down => (col + 1, row + 1),
-        WorldDirection::Left => (col, row + 1),
-        WorldDirection::Right => (col + 1, row),
+fn world_player_image(
+    position: Position,
+    direction: WorldDirection,
+    animation: WorldAnimation,
+    sprite_frame: usize,
+    pixel_offset: PixelOffset,
+) -> GpuImage {
+    GpuImage::new(
+        GridRect::new(
+            GridPos::new(i32::from(position.x()) * 2, i32::from(position.y()) * 2),
+            GridSize::new(2, 2),
+        ),
+        world_character_resource(direction, animation, sprite_frame),
+        Rgba8::new(255, 255, 255, 255),
+        20,
+    )
+    .with_pixel_offset(pixel_offset)
+}
+
+const fn world_character_resource(
+    direction: WorldDirection,
+    animation: WorldAnimation,
+    sprite_frame: usize,
+) -> ResourceId {
+    let direction_index = match direction {
+        WorldDirection::Down => 0,
+        WorldDirection::Left => 1,
+        WorldDirection::Right => 2,
+        WorldDirection::Up => 3,
     };
-    canvas.set(face_x, face_y, PLAYER_FACE);
+    let frame_offset = match animation {
+        WorldAnimation::Stand => 0,
+        WorldAnimation::Walk => 1 + sprite_frame % 2,
+        WorldAnimation::Run => 4 + sprite_frame % 2,
+        WorldAnimation::RunStopping => 3,
+    };
+    ResourceId(CHARACTER_RESOURCE_START + direction_index * 6 + frame_offset as u32)
 }
 
 fn action_label(action: Action, observation: &BattleObservation, own: &Pokemon) -> String {
@@ -351,7 +540,7 @@ fn draw_action_panel(canvas: &mut Canvas, action_count: usize, selected: usize) 
     }
 }
 
-fn battle_images(animation: BattleAnimation) -> Vec<GpuImage> {
+fn battle_images(animation: BattleAnimation, sprite_frame: usize) -> Vec<GpuImage> {
     let player_origin = if animation == BattleAnimation::Acting(Side::One) {
         GridPos::new(6, 9)
     } else {
@@ -366,17 +555,33 @@ fn battle_images(animation: BattleAnimation) -> Vec<GpuImage> {
     vec![
         GpuImage::new(
             GridRect::new(player_origin, GridSize::new(8, 8)),
-            PLAYER_BACK_RESOURCE,
+            player_back_resource(sprite_frame),
             creature_tint(animation, Side::One),
             10,
         ),
         GpuImage::new(
             GridRect::new(opponent_origin, GridSize::new(8, 8)),
-            OPPONENT_FRONT_RESOURCE,
+            opponent_front_resource(sprite_frame),
             creature_tint(animation, Side::Two),
             10,
         ),
     ]
+}
+
+const fn player_back_resource(sprite_frame: usize) -> ResourceId {
+    if sprite_frame.is_multiple_of(2) {
+        PLAYER_BACK_FRAME_0_RESOURCE
+    } else {
+        PLAYER_BACK_FRAME_1_RESOURCE
+    }
+}
+
+const fn opponent_front_resource(sprite_frame: usize) -> ResourceId {
+    if sprite_frame.is_multiple_of(2) {
+        OPPONENT_FRONT_FRAME_0_RESOURCE
+    } else {
+        OPPONENT_FRONT_FRAME_1_RESOURCE
+    }
 }
 
 fn creature_tint(animation: BattleAnimation, side: Side) -> Rgba8 {
@@ -479,11 +684,13 @@ pub fn phase_message(phase: BattlePhase) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use punctum_gpu::ResourceId;
     use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
     use world_application::{Direction, Position, WorldApplication, WorldCommand};
 
     use super::{
-        BattleUiOutcome, BattleUiState, TextRole, move_action, project_world, world_command_for_key,
+        BattleUiOutcome, BattleUiState, TextRole, WorldAnimation, move_action, project_world,
+        world_character_resource, world_command_for_key,
     };
 
     fn key(name: NamedKey) -> KeyEvent {
@@ -525,6 +732,19 @@ mod tests {
             view.labels().iter().any(|label| {
                 label.role == TextRole::Location && label.content == "青叶原野"
             })
+        );
+        assert_eq!(view.images().len(), 1);
+        assert_eq!(
+            view.images()[0].resource,
+            world_character_resource(Direction::Down, WorldAnimation::Stand, 0)
+        );
+        assert_eq!(
+            world_character_resource(Direction::Up, WorldAnimation::Run, 2),
+            ResourceId(28)
+        );
+        assert_eq!(
+            world_character_resource(Direction::Up, WorldAnimation::RunStopping, 99),
+            ResourceId(27)
         );
     }
 }
