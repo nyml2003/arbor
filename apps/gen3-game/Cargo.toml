@@ -6,6 +6,8 @@ members = [
     "crates/game-e2e",
     "crates/game-host",
     "crates/game-ui",
+    "crates/world-application",
+    "crates/world-domain",
 ]
 resolver = "2"
 
@@ -16,6 +18,7 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 battle-domain = { path = "crates/battle-domain" }
+world-domain = { path = "crates/world-domain" }
 punctum-gpu = { path = "../punctum/crates/punctum-gpu" }
 punctum-grid = { path = "../punctum/crates/punctum-grid" }
 punctum-input = { path = "../punctum/crates/punctum-input" }

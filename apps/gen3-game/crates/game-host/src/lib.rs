@@ -6,14 +6,127 @@ use std::collections::VecDeque;
 
 use battle_application::{
     Accuracy, Action, BattleApplication, BattleError, BattleEvent, BattleObservation,
-    BattleOutcome, BattlePerspective, BattleStats, Move, MoveId, Pokemon, PokemonId, PokemonType,
-    Side, Team, TypeEffectiveness, UsedMove,
+    BattleOutcome, BattlePerspective, BattlePhase, BattleStats, Move, MoveId, Pokemon, PokemonId,
+    PokemonType, Side, Team, TypeEffectiveness, UsedMove,
 };
 use game_ui::{
-    BattleAnimation, BattleDisplayState, BattleUiOutcome, BattleUiState, BattleView, phase_message,
-    project_battle,
+    BattleAnimation, BattleDisplayState, BattleUiOutcome, BattleUiState, GameView, phase_message,
+    project_battle, project_world, world_command_for_key,
 };
-use punctum_input::KeyEvent;
+use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
+use world_application::{WorldApplication, WorldError, WorldEvent, WorldObservation};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameScene {
+    World,
+    Battle,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GameError {
+    World(WorldError),
+    Battle(BattleError),
+}
+
+impl From<WorldError> for GameError {
+    fn from(error: WorldError) -> Self {
+        Self::World(error)
+    }
+}
+
+impl From<BattleError> for GameError {
+    fn from(error: BattleError) -> Self {
+        Self::Battle(error)
+    }
+}
+
+pub struct DemoGame {
+    world: WorldApplication,
+    battle: Option<DemoBattle>,
+    scene: GameScene,
+    world_message: String,
+}
+
+impl DemoGame {
+    pub fn new() -> Result<Self, GameError> {
+        Ok(Self {
+            world: WorldApplication::demo()?,
+            battle: None,
+            scene: GameScene::World,
+            world_message: "风吹过草地。".into(),
+        })
+    }
+
+    pub const fn scene(&self) -> GameScene {
+        self.scene
+    }
+
+    pub fn world_observation(&self) -> WorldObservation {
+        self.world.observe()
+    }
+
+    pub fn view(&mut self) -> GameView {
+        match self.scene {
+            GameScene::World => project_world(&self.world.observe(), &self.world_message),
+            GameScene::Battle => self
+                .battle
+                .as_mut()
+                .expect("the battle scene owns a battle")
+                .view(),
+        }
+    }
+
+    pub fn handle_key(&mut self, key: &KeyEvent) -> Result<bool, GameError> {
+        match self.scene {
+            GameScene::World => {
+                let Some(command) = world_command_for_key(key) else {
+                    return Ok(false);
+                };
+                let outcome = self.world.submit(command);
+                self.world_message = match outcome.event() {
+                    WorldEvent::Moved { .. } => "风吹过草地。",
+                    WorldEvent::Blocked { .. } => "前面过不去。",
+                    WorldEvent::EncounterTriggered { .. } => "草丛里有动静！",
+                }
+                .into();
+                if outcome.starts_battle() {
+                    self.battle = Some(DemoBattle::new()?);
+                    self.scene = GameScene::Battle;
+                }
+                Ok(true)
+            }
+            GameScene::Battle => {
+                let battle = self
+                    .battle
+                    .as_mut()
+                    .expect("the battle scene owns a battle");
+                if battle.is_finished() && !battle.is_playing() && is_enter_press(key) {
+                    self.battle = None;
+                    self.scene = GameScene::World;
+                    self.world_message = "战斗结束，回到了原野。".into();
+                    return Ok(true);
+                }
+                battle.handle_key(key).map_err(Into::into)
+            }
+        }
+    }
+
+    pub fn has_pending_playback(&self) -> bool {
+        self.battle
+            .as_ref()
+            .is_some_and(DemoBattle::has_pending_playback)
+    }
+
+    pub fn advance_playback(&mut self) -> bool {
+        self.battle
+            .as_mut()
+            .is_some_and(DemoBattle::advance_playback)
+    }
+}
+
+fn is_enter_press(key: &KeyEvent) -> bool {
+    key.phase == KeyPhase::Press && key.logical == LogicalKey::Named(NamedKey::Enter)
+}
 
 pub struct DemoBattle {
     application: BattleApplication,
@@ -62,7 +175,7 @@ impl DemoBattle {
         self.application.legal_actions(&self.player)
     }
 
-    pub fn view(&mut self) -> BattleView {
+    pub fn view(&mut self) -> GameView {
         let observation = self.observation();
         let actions = if self.is_playing() {
             Vec::new()
@@ -123,6 +236,10 @@ impl DemoBattle {
         self.animation = frame.animation;
         self.display = frame.display;
         true
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self.observation().phase(), BattlePhase::Finished(_))
     }
 
     fn is_playing(&self) -> bool {

@@ -8,6 +8,9 @@ use battle_application::{
 use punctum_gpu::{GpuAtlas, GpuCell, GpuResource, PixelRect, PixelSize, ResourceId, Rgba8};
 use punctum_grid::{GridSize, Surface};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
+use world_application::{
+    Direction as WorldDirection, Position, Tile, WorldCommand, WorldObservation,
+};
 
 pub const CANVAS_WIDTH: u32 = 32;
 pub const CANVAS_HEIGHT: u32 = 24;
@@ -33,6 +36,14 @@ const TEXT: Rgba8 = Rgba8::new(244, 246, 239, 255);
 const MUTED_TEXT: Rgba8 = Rgba8::new(182, 194, 194, 255);
 const FAINTED_DARK: Rgba8 = Rgba8::new(68, 72, 78, 255);
 const FAINTED_LIGHT: Rgba8 = Rgba8::new(120, 124, 128, 255);
+const MAP_GROUND: Rgba8 = Rgba8::new(138, 187, 116, 255);
+const MAP_GROUND_LIGHT: Rgba8 = Rgba8::new(157, 202, 132, 255);
+const MAP_GRASS: Rgba8 = Rgba8::new(54, 137, 79, 255);
+const MAP_GRASS_LIGHT: Rgba8 = Rgba8::new(82, 163, 91, 255);
+const MAP_WALL: Rgba8 = Rgba8::new(100, 105, 111, 255);
+const MAP_WALL_LIGHT: Rgba8 = Rgba8::new(142, 146, 145, 255);
+const PLAYER_BODY: Rgba8 = Rgba8::new(35, 87, 115, 255);
+const PLAYER_FACE: Rgba8 = Rgba8::new(245, 210, 117, 255);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BattleAnimation {
@@ -105,6 +116,7 @@ pub enum BattleUiOutcome {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextRole {
+    Location,
     OpponentName,
     OpponentHp,
     PlayerName,
@@ -125,12 +137,12 @@ pub struct TextLabel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BattleView {
+pub struct GameView {
     surface: Surface<GpuCell>,
     labels: Vec<TextLabel>,
 }
 
-impl BattleView {
+impl GameView {
     pub const fn surface(&self) -> &Surface<GpuCell> {
         &self.surface
     }
@@ -156,7 +168,7 @@ pub fn project_battle(
     message: &str,
     animation: BattleAnimation,
     display: &BattleDisplayState,
-) -> BattleView {
+) -> GameView {
     let mut canvas = Canvas::new(SKY);
     canvas.fill(0, 8, CANVAS_WIDTH, 4, DISTANT_GRASS);
     canvas.fill(0, 12, CANVAS_WIDTH, 5, GROUND);
@@ -221,10 +233,77 @@ pub fn project_battle(
     }
     labels.push(label(TextRole::Message, 2, 22, 28, 1, message, MUTED_TEXT));
 
-    BattleView {
+    GameView {
         surface: canvas.finish(),
         labels,
     }
+}
+
+pub fn world_command_for_key(key: &KeyEvent) -> Option<WorldCommand> {
+    if key.phase == KeyPhase::Release {
+        return None;
+    }
+    let direction = match key.logical {
+        LogicalKey::Named(NamedKey::ArrowUp) => WorldDirection::Up,
+        LogicalKey::Named(NamedKey::ArrowDown) => WorldDirection::Down,
+        LogicalKey::Named(NamedKey::ArrowLeft) => WorldDirection::Left,
+        LogicalKey::Named(NamedKey::ArrowRight) => WorldDirection::Right,
+        _ => return None,
+    };
+    Some(WorldCommand::Move(direction))
+}
+
+pub fn project_world(observation: &WorldObservation, message: &str) -> GameView {
+    const TILE_SIZE: u32 = 2;
+    let mut canvas = Canvas::new(MAP_GROUND);
+    for y in 0..observation.height() {
+        for x in 0..observation.width() {
+            let position = Position::new(x, y);
+            let tile = observation
+                .tile(position)
+                .expect("observed map coordinates are in bounds");
+            draw_world_tile(
+                &mut canvas,
+                u32::from(x) * TILE_SIZE,
+                u32::from(y) * TILE_SIZE,
+                tile,
+            );
+        }
+    }
+    draw_world_player(&mut canvas, observation.player(), observation.facing());
+    canvas.fill(0, 20, CANVAS_WIDTH, 4, PANEL_EDGE);
+    canvas.fill(1, 21, CANVAS_WIDTH - 2, 2, PANEL);
+
+    GameView {
+        surface: canvas.finish(),
+        labels: vec![
+            label(TextRole::Location, 2, 21, 10, 1, "青叶原野", TEXT),
+            label(TextRole::Message, 12, 21, 18, 1, message, MUTED_TEXT),
+        ],
+    }
+}
+
+fn draw_world_tile(canvas: &mut Canvas, col: u32, row: u32, tile: Tile) {
+    let (base, accent) = match tile {
+        Tile::Ground => (MAP_GROUND, MAP_GROUND_LIGHT),
+        Tile::Grass => (MAP_GRASS, MAP_GRASS_LIGHT),
+        Tile::Wall => (MAP_WALL, MAP_WALL_LIGHT),
+    };
+    canvas.fill(col, row, 2, 2, base);
+    canvas.set(col + 1, row, accent);
+}
+
+fn draw_world_player(canvas: &mut Canvas, position: Position, direction: WorldDirection) {
+    let col = u32::from(position.x()) * 2;
+    let row = u32::from(position.y()) * 2;
+    canvas.fill(col, row, 2, 2, PLAYER_BODY);
+    let (face_x, face_y) = match direction {
+        WorldDirection::Up => (col, row),
+        WorldDirection::Down => (col + 1, row + 1),
+        WorldDirection::Left => (col, row + 1),
+        WorldDirection::Right => (col + 1, row),
+    };
+    canvas.set(face_x, face_y, PLAYER_FACE);
 }
 
 fn action_label(action: Action, observation: &BattleObservation, own: &Pokemon) -> String {
@@ -412,8 +491,11 @@ pub fn phase_message(phase: BattlePhase) -> &'static str {
 #[cfg(test)]
 mod tests {
     use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
+    use world_application::{Direction, Position, WorldApplication, WorldCommand};
 
-    use super::{BattleUiOutcome, BattleUiState, move_action};
+    use super::{
+        BattleUiOutcome, BattleUiState, TextRole, move_action, project_world, world_command_for_key,
+    };
 
     fn key(name: NamedKey) -> KeyEvent {
         KeyEvent {
@@ -437,6 +519,23 @@ mod tests {
         assert_eq!(
             ui.handle_key(&key(NamedKey::Enter), &actions),
             BattleUiOutcome::Submit(actions[2])
+        );
+    }
+
+    #[test]
+    fn world_projection_and_keyboard_input_share_the_integer_grid() {
+        let world = WorldApplication::demo().unwrap();
+        let view = project_world(&world.observe(), "风吹过草地。");
+
+        assert_eq!(
+            world_command_for_key(&key(NamedKey::ArrowRight)),
+            Some(WorldCommand::Move(Direction::Right))
+        );
+        assert_eq!(world.observe().player(), Position::new(3, 6));
+        assert!(
+            view.labels().iter().any(|label| {
+                label.role == TextRole::Location && label.content == "青叶原野"
+            })
         );
     }
 }

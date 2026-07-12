@@ -10,6 +10,7 @@ battle-application = { path = "../battle-application" }
 punctum-gpu = { workspace = true }
 punctum-grid = { workspace = true }
 punctum-input = { workspace = true }
+world-application = { path = "../world-application" }
 
 [lib]
 path = "src/lib.rs"

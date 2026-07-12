@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use game_host::DemoBattle;
+use game_host::DemoGame;
 use game_ui::{CANVAS_HEIGHT, CANVAS_WIDTH, atlas};
 use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_surface};
 use punctum_wgpu::{GpuRuntime, PresentOutcome, WinitKeyEventSnapshot, normalize_key_event};
@@ -22,8 +22,8 @@ use winit::{
 
 const CLEAR_COLOR: Rgba8 = Rgba8::new(14, 18, 24, 255);
 
-struct CreatureBattleApp {
-    battle: DemoBattle,
+struct CreatureGameApp {
+    game: DemoGame,
     atlas: GpuAtlas,
     text_renderer: BattleTextRenderer,
     modifiers: ModifiersState,
@@ -32,11 +32,11 @@ struct CreatureBattleApp {
     runtime: Option<GpuRuntime<'static>>,
 }
 
-impl CreatureBattleApp {
+impl CreatureGameApp {
     fn new() -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            battle: DemoBattle::new()
-                .map_err(|error| std::io::Error::other(format!("demo battle: {error:?}")))?,
+            game: DemoGame::new()
+                .map_err(|error| std::io::Error::other(format!("demo game: {error:?}")))?,
             atlas: atlas(),
             text_renderer: BattleTextRenderer::new(),
             modifiers: ModifiersState::empty(),
@@ -50,7 +50,7 @@ impl CreatureBattleApp {
         let window = Arc::new(
             event_loop.create_window(
                 Window::default_attributes()
-                    .with_title("Arbor 精灵对战")
+                    .with_title("Arbor 精灵世界")
                     .with_inner_size(LogicalSize::new(960.0, 720.0)),
             )?,
         );
@@ -73,7 +73,7 @@ impl CreatureBattleApp {
         let (Some(window), Some(runtime)) = (&self.window, &mut self.runtime) else {
             return;
         };
-        let view = self.battle.view();
+        let view = self.game.view();
         let surface_size = runtime.surface_size();
         let viewport = battle_viewport(surface_size);
         let plan = match plan_surface(
@@ -85,7 +85,7 @@ impl CreatureBattleApp {
         ) {
             Ok(plan) => plan,
             Err(error) => {
-                eprintln!("battle GPU planning failed: {error}");
+                eprintln!("game GPU planning failed: {error}");
                 event_loop.exit();
                 return;
             }
@@ -102,7 +102,7 @@ impl CreatureBattleApp {
             },
         );
         if let Err(error) = text_result {
-            eprintln!("battle text rendering failed: {error}");
+            eprintln!("game text rendering failed: {error}");
             event_loop.exit();
             return;
         }
@@ -119,7 +119,7 @@ impl CreatureBattleApp {
                 | PresentOutcome::SkippedOccluded,
             ) => {}
             Err(error) => {
-                eprintln!("battle presentation failed: {error}");
+                eprintln!("game presentation failed: {error}");
                 event_loop.exit();
             }
         }
@@ -140,15 +140,15 @@ impl CreatureBattleApp {
             event.state,
             event.repeat,
         ));
-        match self.battle.handle_key(&key) {
+        match self.game.handle_key(&key) {
             Ok(true) => {
-                if self.battle.has_pending_playback() {
+                if self.game.has_pending_playback() {
                     self.next_playback = Some(Instant::now() + Duration::from_millis(600));
                 }
                 self.request_redraw();
             }
             Ok(false) => {}
-            Err(error) => eprintln!("battle command rejected: {error:?}"),
+            Err(error) => eprintln!("game command rejected: {error:?}"),
         }
     }
 
@@ -159,12 +159,12 @@ impl CreatureBattleApp {
     }
 }
 
-impl ApplicationHandler for CreatureBattleApp {
+impl ApplicationHandler for CreatureGameApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none()
             && let Err(error) = self.initialize(event_loop)
         {
-            eprintln!("battle initialization failed: {error}");
+            eprintln!("game initialization failed: {error}");
             event_loop.exit();
         }
     }
@@ -196,10 +196,10 @@ impl ApplicationHandler for CreatureBattleApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         if self.next_playback.is_some_and(|deadline| now >= deadline) {
-            self.battle.advance_playback();
+            self.game.advance_playback();
             self.request_redraw();
             self.next_playback = self
-                .battle
+                .game
                 .has_pending_playback()
                 .then_some(now + Duration::from_millis(600));
         }
@@ -234,7 +234,7 @@ fn pixel_size(size: PhysicalSize<u32>) -> PixelSize {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new()?;
-    let mut app = CreatureBattleApp::new()?;
+    let mut app = CreatureGameApp::new()?;
     event_loop.run_app(&mut app)?;
     Ok(())
 }

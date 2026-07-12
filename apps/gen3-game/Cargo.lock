@@ -557,6 +557,8 @@ version = "0.0.0"
 dependencies = [
  "battle-application",
  "game-host",
+ "punctum-input",
+ "world-application",
 ]
 
 [[package]]
@@ -573,6 +575,7 @@ dependencies = [
  "punctum-wgpu",
  "wgpu",
  "winit",
+ "world-application",
 ]
 
 [[package]]
@@ -583,6 +586,7 @@ dependencies = [
  "punctum-gpu",
  "punctum-grid",
  "punctum-input",
+ "world-application",
 ]
 
 [[package]]
@@ -2749,6 +2753,17 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "world-application"
+version = "0.0.0"
+dependencies = [
+ "world-domain",
+]
+
+[[package]]
+name = "world-domain"
+version = "0.0.0"
 
 [[package]]
 name = "x11-dl"

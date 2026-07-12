@@ -16,6 +16,7 @@ punctum-input = { workspace = true }
 punctum-wgpu = { path = "../../../punctum/crates/punctum-wgpu" }
 wgpu = "30.0.0"
 winit = "0.30.13"
+world-application = { path = "../world-application" }
 
 [lib]
 path = "src/lib.rs"
