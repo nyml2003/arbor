@@ -14,6 +14,8 @@ Punctum 是仓库内复用的离散网格 UI 基础。Poke Game 和 TUI AI Chate
 - `punctum-crossterm` 提供 Crossterm 输入转换、presenter、raw-mode session 和终端 IO。
 - `punctum-gpu` 保留 atlas、viewport、cell、submission planning、instance encoding 和 uniform encoding，不依赖 winit、wgpu 或 `punctum-input`。
 - `punctum-wgpu` 提供 winit 输入转换、wgpu runtime、shader、pipeline、surface 和 device 操作。
+- `punctum-ui` 提供 backend-neutral 的整数 constraints、measure、layout、paint、clip 和 resize，以及 `Text`、`Row`、`Column`、`Border`、`Padding`、`Spacer`、`Align` 和 `SurfaceView`。
+- `punctum-ui` 的 measure 保存 backend text-layout 结果。paint 复用该结果，不重新布局文本。主题、字体和边框外观由 backend `PaintTarget` 解释。
 - `punctum-terminal` 和 `punctum-gpu` 的 line、function 和 region coverage 为 100%。平台 crate 使用合同测试、Clippy 和 headless smoke，不设置 coverage 百分比。
 - 当前先在 Windows 11、Windows Terminal 和本机 GPU 上跑通，不建设 CI。
 
@@ -27,8 +29,8 @@ cargo run --manifest-path apps/tetris/Cargo.toml --example terminal --locked
 
 ## 下一步
 
-1. 在 `B2` 接通 Tetris GPU 入口，并完成 Terminal/GPU 双后端本地验收。
-2. 双后端验收通过后，建立 provisional UI foundation。
+1. 使用 `punctum-ui` 组合 Tetris Terminal/GPU 页面。
+2. 增加 provisional focus、event dispatch 和 `Button`，但不把产品状态写入 UI core。
 3. Game 使用并收窄 provisional API 后，再评估稳定公共合同。TUI AI Chater 当前暂停。
 
 Tetris 是 proof example。它的规则和状态不进入 Punctum 内核，也不能单独触发 widget、focus、layout 或 routing 抽取。
@@ -42,10 +44,11 @@ cargo llvm-cov -p punctum-grid --all-targets --locked --manifest-path apps/punct
 cargo llvm-cov -p punctum-input --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo llvm-cov -p punctum-terminal --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo llvm-cov -p punctum-gpu --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+cargo llvm-cov -p punctum-ui --all-targets --locked --manifest-path apps/punctum/Cargo.toml --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 cargo test -p punctum-crossterm --all-targets --locked --manifest-path apps/punctum/Cargo.toml
 cargo test -p punctum-wgpu --all-targets --locked --manifest-path apps/punctum/Cargo.toml
 cargo test -p punctum-wgpu --locked --manifest-path apps/punctum/Cargo.toml runtime::tests::headless_pipeline_smoke -- --ignored --exact --nocapture
 python packages/arbor-projects/run.py verify tetris
 ```
 
-详细边界、wave 和门禁见[第一期架构计划](../../workspace/manage/punctum-ramus-architecture-plan.md)。技术决策记录见 [`peps/`](peps/README.md)。
+详细边界、wave 和门禁见[第一期架构计划](../../workspace/manage/punctum-ramus-architecture-plan.md)。

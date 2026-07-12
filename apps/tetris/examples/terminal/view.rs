@@ -80,12 +80,16 @@ fn write_label(
 }
 
 fn terminal_cell(cell: TetrisCell, game_over: bool) -> TerminalCell {
-    let color = match cell {
-        TetrisCell::Empty => TerminalColor::Black,
-        TetrisCell::Border if game_over => TerminalColor::Red,
-        TetrisCell::Border => TerminalColor::Gray,
-        TetrisCell::Tetromino(kind) => piece_color(kind),
-    };
+    match cell {
+        TetrisCell::Empty => blank_cell(TerminalColor::Black),
+        TetrisCell::Border if game_over => blank_cell(TerminalColor::Red),
+        TetrisCell::Border => blank_cell(TerminalColor::Gray),
+        TetrisCell::Locked(kind) | TetrisCell::Active(kind) => blank_cell(piece_color(kind)),
+        TetrisCell::Ghost(kind) => TerminalCell::new('░', piece_color(kind), TerminalColor::Black),
+    }
+}
+
+fn blank_cell(color: TerminalColor) -> TerminalCell {
     TerminalCell::new(' ', color, color)
 }
 
@@ -158,6 +162,18 @@ mod tests {
             surface.get(GridPos::new(2, 20)).unwrap().background(),
             TerminalColor::Black
         );
+    }
+
+    #[test]
+    fn terminal_surface_draws_the_ghost_as_a_weaker_piece_colored_character() {
+        let state = TetrisState::new(vec![PieceKind::T]).unwrap();
+
+        let surface = terminal_surface(&state);
+        let ghost = surface.get(GridPos::new(10, 20)).unwrap();
+
+        assert_eq!(ghost.grapheme(), Some("░"));
+        assert_eq!(ghost.foreground(), TerminalColor::Magenta);
+        assert_eq!(ghost.background(), TerminalColor::Black);
     }
 
     #[test]

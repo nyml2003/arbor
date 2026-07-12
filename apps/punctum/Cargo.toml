@@ -5,6 +5,7 @@ members = [
     "crates/punctum-grid",
     "crates/punctum-input",
     "crates/punctum-terminal",
+    "crates/punctum-ui",
     "crates/punctum-wgpu",
 ]
 resolver = "2"
@@ -19,3 +20,4 @@ punctum-grid = { path = "crates/punctum-grid" }
 punctum-input = { path = "crates/punctum-input" }
 punctum-terminal = { path = "crates/punctum-terminal" }
 punctum-gpu = { path = "crates/punctum-gpu" }
+punctum-ui = { path = "crates/punctum-ui" }

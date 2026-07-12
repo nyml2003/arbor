@@ -11,6 +11,7 @@ use punctum_tetris::{
 const WHITE_RESOURCE: ResourceId = ResourceId(1);
 const WHITE_PIXEL: [u8; 4] = [255; 4];
 const BORDER_COLOR: Rgba8 = Rgba8::new(92, 102, 112, 255);
+const GHOST_ALPHA: u8 = 64;
 
 pub fn atlas() -> GpuAtlas {
     GpuAtlas::new(
@@ -25,7 +26,8 @@ pub fn project_cell(cell: TetrisCell) -> GpuCell {
     match cell {
         TetrisCell::Empty => GpuCell::Empty,
         TetrisCell::Border => sprite(BORDER_COLOR),
-        TetrisCell::Tetromino(kind) => sprite(piece_color(kind)),
+        TetrisCell::Locked(kind) | TetrisCell::Active(kind) => sprite(piece_color(kind)),
+        TetrisCell::Ghost(kind) => sprite(ghost_color(kind)),
     }
 }
 
@@ -100,6 +102,11 @@ const fn piece_color(kind: PieceKind) -> Rgba8 {
     }
 }
 
+const fn ghost_color(kind: PieceKind) -> Rgba8 {
+    let color = piece_color(kind);
+    Rgba8::new(color.red, color.green, color.blue, GHOST_ALPHA)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -138,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_border_and_all_tetrominoes_have_stable_projection() {
+    fn empty_border_and_all_tetromino_layers_have_stable_projection() {
         assert_eq!(project_cell(TetrisCell::Empty), GpuCell::Empty);
 
         let border = project_cell(TetrisCell::Border);
@@ -152,7 +159,7 @@ mod tests {
         assert_eq!(sprite_tint(border).alpha, 255);
 
         let colors = PieceKind::ALL.map(|kind| {
-            let cell = project_cell(TetrisCell::Tetromino(kind));
+            let cell = project_cell(TetrisCell::Active(kind));
             assert!(matches!(
                 cell,
                 GpuCell::Sprite {
@@ -170,6 +177,20 @@ mod tests {
                 .len(),
             7
         );
+    }
+
+    #[test]
+    fn ghost_projection_uses_the_piece_color_with_low_alpha() {
+        for kind in PieceKind::ALL {
+            let active = sprite_tint(project_cell(TetrisCell::Active(kind)));
+            let ghost = sprite_tint(project_cell(TetrisCell::Ghost(kind)));
+
+            assert_eq!(ghost.red, active.red);
+            assert_eq!(ghost.green, active.green);
+            assert_eq!(ghost.blue, active.blue);
+            assert!(ghost.alpha > 0);
+            assert!(ghost.alpha < active.alpha);
+        }
     }
 
     #[test]

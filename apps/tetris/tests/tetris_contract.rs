@@ -2,7 +2,7 @@ use punctum_grid::{GridPos, GridSize};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
 use punctum_tetris::{
     BOARD_HEIGHT, BOARD_WIDTH, PieceKind, Rotation, TetrisCell, TetrisCommand, TetrisError,
-    TetrisState, command_for_key, paint, transition,
+    TetrisState, command_for_key, ghost_piece, paint, transition,
 };
 
 fn state(sequence: &[PieceKind]) -> TetrisState {
@@ -130,6 +130,81 @@ fn hard_drop_locks_at_the_lowest_available_row() {
 }
 
 #[test]
+fn ghost_piece_projects_to_the_empty_board_floor_without_mutating_state() {
+    let state = state(&[PieceKind::O]);
+    let before = state.clone();
+
+    let ghost = ghost_piece(&state).unwrap();
+
+    assert_eq!(ghost.kind(), PieceKind::O);
+    assert_eq!(ghost.col(), 4);
+    assert_eq!(ghost.row(), 18);
+    assert_eq!(state, before);
+}
+
+#[test]
+fn ghost_piece_stops_on_top_of_locked_cells() {
+    let state = transition(&state(&[PieceKind::O]), TetrisCommand::HardDrop);
+
+    let ghost = ghost_piece(&state).unwrap();
+
+    assert_eq!(ghost.col(), 4);
+    assert_eq!(ghost.row(), 16);
+}
+
+#[test]
+fn ghost_piece_respects_the_board_edge_after_horizontal_movement() {
+    let state = apply(state(&[PieceKind::I]), TetrisCommand::MoveLeft, 4);
+
+    let ghost = ghost_piece(&state).unwrap();
+
+    assert_eq!(ghost.col(), 0);
+    assert_eq!(ghost.row(), 19);
+}
+
+#[test]
+fn ghost_piece_uses_the_active_piece_rotation() {
+    let state = transition(&state(&[PieceKind::I]), TetrisCommand::RotateClockwise);
+
+    let ghost = ghost_piece(&state).unwrap();
+
+    assert_eq!(ghost.rotation(), Rotation::Right);
+    assert_eq!(ghost.col(), 3);
+    assert_eq!(ghost.row(), 16);
+}
+
+#[test]
+fn ghost_piece_is_hidden_when_the_active_piece_is_already_landed() {
+    let state = apply(state(&[PieceKind::O]), TetrisCommand::SoftDrop, 18);
+
+    assert_eq!(state.active_piece().unwrap().row(), 18);
+    assert_eq!(ghost_piece(&state), None);
+}
+
+#[test]
+fn ghost_piece_is_hidden_after_game_over() {
+    let game_over = apply(state(&[PieceKind::O]), TetrisCommand::HardDrop, 10);
+
+    assert!(game_over.is_game_over());
+    assert_eq!(ghost_piece(&game_over), None);
+}
+
+#[test]
+fn hard_drop_locks_exactly_the_cells_shown_by_the_ghost_piece() {
+    let before = transition(&state(&[PieceKind::T]), TetrisCommand::RotateClockwise);
+    let ghost_cells = projected_cells(&paint(&before), |cell| {
+        matches!(cell, TetrisCell::Ghost(PieceKind::T))
+    });
+
+    let after = transition(&before, TetrisCommand::HardDrop);
+    let locked_cells = projected_cells(&paint(&after), |cell| {
+        matches!(cell, TetrisCell::Locked(PieceKind::T))
+    });
+
+    assert_eq!(locked_cells, ghost_cells);
+}
+
+#[test]
 fn locked_cell_returns_none_outside_the_board() {
     let state = state(&[PieceKind::O]);
 
@@ -217,7 +292,11 @@ fn paint_returns_a_bordered_punctum_surface() {
     assert_eq!(surface.get(GridPos::new(1, 20)), Ok(&TetrisCell::Empty));
     assert_eq!(
         surface.get(GridPos::new(4, 1)),
-        Ok(&TetrisCell::Tetromino(PieceKind::T))
+        Ok(&TetrisCell::Active(PieceKind::T))
+    );
+    assert_eq!(
+        surface.get(GridPos::new(5, 20)),
+        Ok(&TetrisCell::Ghost(PieceKind::T))
     );
 }
 
@@ -231,11 +310,11 @@ fn paint_contains_locked_and_active_pieces() {
 
     assert_eq!(
         surface.get(GridPos::new(5, 19)),
-        Ok(&TetrisCell::Tetromino(PieceKind::O))
+        Ok(&TetrisCell::Locked(PieceKind::O))
     );
     assert_eq!(
         surface.get(GridPos::new(4, 1)),
-        Ok(&TetrisCell::Tetromino(PieceKind::I))
+        Ok(&TetrisCell::Active(PieceKind::I))
     );
 }
 
@@ -248,8 +327,20 @@ fn paint_handles_a_game_over_state_without_an_active_piece() {
     assert_eq!(surface.size(), GridSize::new(12, 22));
     assert_eq!(
         surface.get(GridPos::new(5, 1)),
-        Ok(&TetrisCell::Tetromino(PieceKind::O))
+        Ok(&TetrisCell::Locked(PieceKind::O))
     );
+}
+
+fn projected_cells(
+    surface: &punctum_grid::Surface<TetrisCell>,
+    predicate: impl Fn(TetrisCell) -> bool,
+) -> Vec<GridPos> {
+    (0..surface.size().rows)
+        .flat_map(|row| {
+            (0..surface.size().cols).map(move |col| GridPos::new(col as i32, row as i32))
+        })
+        .filter(|&position| predicate(*surface.get(position).unwrap()))
+        .collect()
 }
 
 #[test]

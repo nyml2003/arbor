@@ -1404,6 +1404,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "punctum-ui"
+version = "0.0.0"
+dependencies = [
+ "punctum-grid",
+]
+
+[[package]]
 name = "punctum-wgpu"
 version = "0.0.0"
 dependencies = [

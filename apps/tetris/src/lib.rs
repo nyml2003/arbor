@@ -93,7 +93,9 @@ pub enum TetrisCommand {
 pub enum TetrisCell {
     Empty,
     Border,
-    Tetromino(PieceKind),
+    Locked(PieceKind),
+    Ghost(PieceKind),
+    Active(PieceKind),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -230,14 +232,19 @@ impl TetrisState {
     }
 
     fn hard_drop(&mut self) {
-        let mut dropped = self
+        let active = self
             .active
             .expect("a running game always has an active piece");
+        let dropped = self.landing_piece(active);
+        self.active = Some(dropped);
+        self.lock_active();
+    }
+
+    fn landing_piece(&self, mut dropped: ActivePiece) -> ActivePiece {
         while self.can_place(dropped.translated(0, 1)) {
             dropped = dropped.translated(0, 1);
         }
-        self.active = Some(dropped);
-        self.lock_active();
+        dropped
     }
 
     fn lock_active(&mut self) {
@@ -335,6 +342,12 @@ pub fn transition(state: &TetrisState, command: TetrisCommand) -> TetrisState {
     next
 }
 
+pub fn ghost_piece(state: &TetrisState) -> Option<ActivePiece> {
+    let active = state.active?;
+    let landing = state.landing_piece(active);
+    (landing != active).then_some(landing)
+}
+
 pub fn paint(state: &TetrisState) -> Surface<TetrisCell> {
     let mut cells = Vec::with_capacity((SURFACE_WIDTH * SURFACE_HEIGHT) as usize);
     for row in 0..SURFACE_HEIGHT {
@@ -345,21 +358,29 @@ pub fn paint(state: &TetrisState) -> Surface<TetrisCell> {
                 } else {
                     state
                         .locked_cell(col - 1, row - 1)
-                        .map_or(TetrisCell::Empty, TetrisCell::Tetromino)
+                        .map_or(TetrisCell::Empty, TetrisCell::Locked)
                 };
             cells.push(cell);
         }
     }
 
+    if let Some(ghost) = ghost_piece(state) {
+        paint_piece(&mut cells, ghost, TetrisCell::Ghost(ghost.kind));
+    }
+
     if let Some(active) = state.active {
-        for (col, row) in occupied_cells(active) {
-            let surface_index = ((row as u32 + 1) * SURFACE_WIDTH + col as u32 + 1) as usize;
-            cells[surface_index] = TetrisCell::Tetromino(active.kind);
-        }
+        paint_piece(&mut cells, active, TetrisCell::Active(active.kind));
     }
 
     Surface::from_cells(GridSize::new(SURFACE_WIDTH, SURFACE_HEIGHT), cells)
         .expect("fixed Tetris surface dimensions are valid")
+}
+
+fn paint_piece(cells: &mut [TetrisCell], piece: ActivePiece, cell: TetrisCell) {
+    for (col, row) in occupied_cells(piece) {
+        let surface_index = ((row as u32 + 1) * SURFACE_WIDTH + col as u32 + 1) as usize;
+        cells[surface_index] = cell;
+    }
 }
 
 pub fn command_for_key(event: &KeyEvent) -> Option<TetrisCommand> {
