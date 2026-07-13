@@ -1146,7 +1146,7 @@ fn speed_orders_equal_priority_moves() {
 
 #[test]
 fn switch_resolves_before_move_and_move_hits_new_active() {
-    let mut battle = basic_battle(99, 80, 60);
+    let mut battle = basic_battle(99, 1, 100);
     let old_id = battle.active(Side::One).id().clone();
     let new_id = battle.team(Side::One).member(team_slot(1)).id().clone();
     let events = submit_turn(

@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+use map_project::{Collision, MapEventKind, MapProject};
 pub use world_domain::{
     Direction, Position, Tile, WorldCommand, WorldError, WorldEvent, WorldOutcome,
 };
@@ -79,6 +80,22 @@ impl WorldApplication {
         Ok(Self::new(world))
     }
 
+    pub fn from_map_project(project: &MapProject) -> Result<Self, WorldError> {
+        let tiles = project
+            .collision_cells
+            .iter()
+            .zip(&project.event_cells)
+            .map(|(collision, event)| match (collision, event) {
+                (Collision::Blocked, _) => Tile::Wall,
+                (Collision::Walkable, Some(MapEventKind::Encounter)) => Tile::Grass,
+                (Collision::Walkable, None) => Tile::Ground,
+            })
+            .collect();
+        let map = TileMap::new(project.width, project.height, tiles)?;
+        let spawn = Position::new(project.player_spawn.x(), project.player_spawn.y());
+        World::new(map, spawn, Direction::Down).map(Self::new)
+    }
+
     pub fn observe(&self) -> WorldObservation {
         WorldObservation {
             width: self.world.map().width(),
@@ -89,6 +106,10 @@ impl WorldApplication {
         }
     }
 
+    pub const fn player(&self) -> Position {
+        self.world.player()
+    }
+
     pub fn submit(&mut self, command: WorldCommand) -> WorldOutcome {
         self.world.submit(command)
     }
@@ -96,6 +117,11 @@ impl WorldApplication {
 
 #[cfg(test)]
 mod tests {
+    use map_project::{
+        AtomicTileId, Collision, CompositeTile, CompositeTileId, MapEventKind, MapProject,
+        MapProjectId, TilePosition,
+    };
+
     use super::{Direction, Position, Tile, WorldApplication, WorldCommand};
 
     #[test]
@@ -117,6 +143,28 @@ mod tests {
         );
         assert!(
             application
+                .submit(WorldCommand::Move(Direction::Right))
+                .starts_battle()
+        );
+    }
+
+    #[test]
+    fn independent_collision_and_event_layers_drive_world_rules() {
+        let mut project = MapProject::blank(
+            MapProjectId::new("world").unwrap(),
+            3,
+            2,
+            Some(CompositeTile::new(
+                CompositeTileId::new("base").unwrap(),
+                vec![AtomicTileId::new("tile").unwrap()],
+            )),
+        );
+        project.player_spawn = TilePosition::new(0, 0);
+        project.event_cells[1] = Some(MapEventKind::Encounter);
+        project.collision_cells[2] = Collision::Blocked;
+        let mut world = WorldApplication::from_map_project(&project).unwrap();
+        assert!(
+            world
                 .submit(WorldCommand::Move(Direction::Right))
                 .starts_battle()
         );

@@ -163,8 +163,41 @@ fn legal_actions_delegate_to_the_same_domain_rules_for_each_side() {
 
     assert!(one.contains(&Action::UseMove(move_slot(0))));
     assert!(two.contains(&Action::UseMove(move_slot(0))));
-    assert_eq!(one.len(), TEAM_SIZE);
-    assert_eq!(two.len(), TEAM_SIZE);
+    assert!(one.contains(&Action::Run));
+    assert!(two.contains(&Action::Run));
+    assert_eq!(one.len(), TEAM_SIZE + 1);
+    assert_eq!(two.len(), TEAM_SIZE + 1);
+}
+
+#[test]
+fn run_finishes_the_battle_before_the_opponent_can_act() {
+    let (mut application, one, two) = application();
+
+    let first = application.submit(&one, Action::Run).unwrap();
+    let second = application
+        .submit(&two, Action::UseMove(move_slot(0)))
+        .unwrap();
+
+    assert!(first.is_waiting_for_opponent());
+    assert_eq!(
+        second.phase(),
+        BattlePhase::Finished(BattleOutcome::Escaped(Side::One))
+    );
+    assert!(second.events().iter().any(|event| matches!(
+        event,
+        BattleEvent::BattleFinished {
+            outcome: ObservedBattleOutcome::Escaped(Participant::Opponent)
+        }
+    )));
+    assert!(!second.events().iter().any(|event| matches!(
+        event,
+        BattleEvent::MoveUsed {
+            participant: Participant::Own,
+            ..
+        }
+    )));
+    assert!(application.legal_actions(&one).is_empty());
+    assert!(application.legal_actions(&two).is_empty());
 }
 
 #[test]
@@ -298,14 +331,15 @@ fn switched_opponent_keeps_seen_members_revealed_and_unseen_bench_hidden() {
     assert_eq!(observation.opponent().unrevealed_count(), TEAM_SIZE - 2);
     assert!(application.event_log(&one).iter().any(|event| matches!(
         event,
-        BattleEvent::OpponentSwitched { pokemon } if pokemon.as_str() == "two-1"
+        BattleEvent::OpponentSwitched { pokemon }
+            if pokemon.id().as_str() == "two-1" && pokemon.current_hp() == 100
     )));
     assert!(application.event_log(&two).iter().any(|event| matches!(
         event,
         BattleEvent::OwnSwitched { from, to, pokemon }
             if *from == TeamSlot::new(0).unwrap()
                 && *to == TeamSlot::new(1).unwrap()
-                && pokemon.as_str() == "two-1"
+                && pokemon.id().as_str() == "two-1"
     )));
 
     application.observe(&two);
@@ -380,14 +414,17 @@ fn knockout_observation_shows_damage_and_forced_replacement_without_revealing_sk
     assert!(knocked_out.opponent().active().revealed_moves().is_empty());
     assert!(application.event_log(&one).iter().any(|event| matches!(
         event,
-        BattleEvent::Fainted { side: Side::Two, pokemon } if pokemon.as_str() == "victim"
+        BattleEvent::Fainted {
+            participant: Participant::Opponent,
+            pokemon,
+        } if pokemon.as_str() == "victim"
     )));
-    assert!(
-        application
-            .event_log(&one)
-            .iter()
-            .any(|event| matches!(event, BattleEvent::ForcedReplacement { side: Side::Two }))
-    );
+    assert!(application.event_log(&one).iter().any(|event| matches!(
+        event,
+        BattleEvent::ForcedReplacement {
+            participant: Participant::Opponent
+        }
+    )));
 
     application
         .submit(&two, Action::Switch(TeamSlot::new(1).unwrap()))
@@ -441,7 +478,7 @@ fn final_knockout_is_visible_as_a_finished_battle() {
     assert!(application.event_log(&one).iter().any(|event| matches!(
         event,
         BattleEvent::BattleFinished {
-            outcome: BattleOutcome::Winner(Side::One)
+            outcome: ObservedBattleOutcome::Winner(Participant::Own)
         }
     )));
 }
@@ -492,7 +529,7 @@ fn struggle_recoil_draw_is_visible_without_revealing_an_unexecuted_opponent_acti
     assert!(events.iter().any(|event| matches!(
         event,
         BattleEvent::MoveUsed {
-            side: Side::One,
+            participant: Participant::Own,
             used_move: UsedMove::Struggle,
             ..
         }
@@ -501,7 +538,7 @@ fn struggle_recoil_draw_is_visible_without_revealing_an_unexecuted_opponent_acti
         event,
         BattleEvent::Damage {
             source: DamageSource::Recoil {
-                side: Side::One,
+                participant: Participant::Own,
                 ..
             },
             ..
@@ -510,7 +547,7 @@ fn struggle_recoil_draw_is_visible_without_revealing_an_unexecuted_opponent_acti
     assert!(events.iter().any(|event| matches!(
         event,
         BattleEvent::BattleFinished {
-            outcome: BattleOutcome::Draw
+            outcome: ObservedBattleOutcome::Draw
         }
     )));
 }
@@ -622,7 +659,7 @@ fn miss_and_critical_events_remain_public_after_sanitizing() {
             events.iter().any(|event| matches!(
                 event,
                 BattleEvent::Missed {
-                    side: Side::One,
+                    participant: Participant::Own,
                     ..
                 }
             )),
@@ -632,7 +669,7 @@ fn miss_and_critical_events_remain_public_after_sanitizing() {
             events.iter().any(|event| matches!(
                 event,
                 BattleEvent::Critical {
-                    side: Side::One,
+                    participant: Participant::Own,
                     ..
                 }
             )),
@@ -717,4 +754,53 @@ fn identical_inputs_produce_identical_observations_and_event_logs() {
     assert_eq!(first.observe(&first_two), second.observe(&second_two));
     assert_eq!(first.event_log(&first_one), second.event_log(&second_one));
     assert_eq!(first.event_log(&first_two), second.event_log(&second_two));
+}
+
+#[test]
+fn transition_keeps_one_perspective_for_before_events_and_after() {
+    let (mut application, one, two) = application();
+    let one_checkpoint = application.checkpoint(&one);
+    let two_checkpoint = application.checkpoint(&two);
+
+    application
+        .submit(&one, Action::UseMove(move_slot(0)))
+        .unwrap();
+    application
+        .submit(&two, Action::UseMove(move_slot(0)))
+        .unwrap();
+
+    let one_transition = application.transition_since(one_checkpoint).unwrap();
+    let two_transition = application.transition_since(two_checkpoint).unwrap();
+    assert_eq!(one_transition.before().viewer(), Side::One);
+    assert_eq!(one_transition.after().viewer(), Side::One);
+    assert_eq!(two_transition.before().viewer(), Side::Two);
+    assert_eq!(two_transition.after().viewer(), Side::Two);
+    assert!(one_transition.events().iter().any(|event| matches!(
+        event,
+        BattleEvent::MoveUsed {
+            participant: Participant::Own,
+            pokemon,
+            ..
+        } if pokemon.as_str().starts_with("one-")
+    )));
+    assert!(two_transition.events().iter().any(|event| matches!(
+        event,
+        BattleEvent::MoveUsed {
+            participant: Participant::Opponent,
+            pokemon,
+            ..
+        } if pokemon.as_str().starts_with("one-")
+    )));
+}
+
+#[test]
+fn checkpoint_cannot_be_used_with_another_application() {
+    let (first, first_one, _) = application();
+    let checkpoint = first.checkpoint(&first_one);
+    let (second, _, _) = application();
+
+    assert_eq!(
+        second.transition_since(checkpoint),
+        Err(TransitionError::CheckpointOwnerMismatch)
+    );
 }

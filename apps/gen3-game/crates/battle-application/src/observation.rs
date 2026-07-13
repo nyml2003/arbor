@@ -1,11 +1,24 @@
 use battle_domain::{
-    Action, Battle, BattleEvent as DomainEvent, BattlePhase, DamageSource as DomainDamageSource,
-    Move, MoveId, MoveSlot, Pokemon, PokemonId, PokemonType, Side,
-    SubmitOutcome as DomainSubmitOutcome, TEAM_SIZE, TeamSlot, TypeEffectiveness,
-    UsedMove as DomainUsedMove,
+    Action, Battle, BattleEvent as DomainEvent, BattleOutcome as DomainBattleOutcome, BattlePhase,
+    DamageSource as DomainDamageSource, Move, MoveCategory, MoveId, MoveSlot, Pokemon, PokemonId,
+    PokemonType, Side, SubmitOutcome as DomainSubmitOutcome, TEAM_SIZE, TeamSlot,
+    TypeEffectiveness, UsedMove as DomainUsedMove,
 };
 
 use crate::Accuracy;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Participant {
+    Own,
+    Opponent,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ObservedBattleOutcome {
+    Winner(Participant),
+    Escaped(Participant),
+    Draw,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BattleObservation {
@@ -126,10 +139,52 @@ impl RevealedPokemonObservation {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevealedCombatant {
+    id: PokemonId,
+    name: String,
+    level: u8,
+    primary_type: PokemonType,
+    secondary_type: Option<PokemonType>,
+    max_hp: u32,
+    current_hp: u32,
+}
+
+impl RevealedCombatant {
+    pub fn id(&self) -> &PokemonId {
+        &self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
+    pub const fn primary_type(&self) -> PokemonType {
+        self.primary_type
+    }
+
+    pub const fn secondary_type(&self) -> Option<PokemonType> {
+        self.secondary_type
+    }
+
+    pub const fn max_hp(&self) -> u32 {
+        self.max_hp
+    }
+
+    pub const fn current_hp(&self) -> u32 {
+        self.current_hp
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevealedMoveObservation {
     id: MoveId,
     name: String,
     move_type: PokemonType,
+    category: MoveCategory,
     power: u16,
     accuracy: Accuracy,
     priority: i8,
@@ -148,6 +203,10 @@ impl RevealedMoveObservation {
         self.move_type
     }
 
+    pub const fn category(&self) -> MoveCategory {
+        self.category
+    }
+
     pub const fn power(&self) -> u16 {
         self.power
     }
@@ -163,19 +222,19 @@ impl RevealedMoveObservation {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UsedMove {
-    Move { id: MoveId },
+    Move { id: MoveId, name: String },
     Struggle,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DamageSource {
     Move {
-        side: Side,
+        participant: Participant,
         pokemon: PokemonId,
         used_move: UsedMove,
     },
     Recoil {
-        side: Side,
+        participant: Participant,
         pokemon: PokemonId,
     },
 }
@@ -192,13 +251,13 @@ pub enum BattleEvent {
     OwnSwitched {
         from: TeamSlot,
         to: TeamSlot,
-        pokemon: PokemonId,
+        pokemon: RevealedCombatant,
     },
     OpponentSwitched {
-        pokemon: PokemonId,
+        pokemon: RevealedCombatant,
     },
     MoveUsed {
-        side: Side,
+        participant: Participant,
         pokemon: PokemonId,
         used_move: UsedMove,
     },
@@ -208,38 +267,78 @@ pub enum BattleEvent {
         remaining: u8,
     },
     Missed {
-        side: Side,
-        target_side: Side,
-        target: PokemonId,
+        participant: Participant,
+        target: Participant,
+        pokemon: PokemonId,
     },
     Critical {
-        side: Side,
-        target_side: Side,
-        target: PokemonId,
+        participant: Participant,
+        target: Participant,
+        pokemon: PokemonId,
     },
     Effectiveness {
-        side: Side,
-        target_side: Side,
-        target: PokemonId,
+        participant: Participant,
+        target: Participant,
+        pokemon: PokemonId,
         effectiveness: TypeEffectiveness,
     },
     Damage {
         source: DamageSource,
-        target_side: Side,
-        target: PokemonId,
+        target: Participant,
+        pokemon: PokemonId,
         amount: u32,
         remaining_hp: u32,
     },
     Fainted {
-        side: Side,
+        participant: Participant,
         pokemon: PokemonId,
     },
     ForcedReplacement {
-        side: Side,
+        participant: Participant,
     },
     BattleFinished {
-        outcome: crate::BattleOutcome,
+        outcome: ObservedBattleOutcome,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BattleTransition {
+    before: BattleObservation,
+    events: Vec<BattleEvent>,
+    after: BattleObservation,
+}
+
+impl BattleTransition {
+    pub(crate) fn new(
+        before: BattleObservation,
+        events: Vec<BattleEvent>,
+        after: BattleObservation,
+    ) -> Self {
+        debug_assert_eq!(before.viewer(), after.viewer());
+        Self {
+            before,
+            events,
+            after,
+        }
+    }
+
+    pub const fn before(&self) -> &BattleObservation {
+        &self.before
+    }
+
+    pub fn events(&self) -> &[BattleEvent] {
+        &self.events
+    }
+
+    pub const fn after(&self) -> &BattleObservation {
+        &self.after
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransitionError {
+    CheckpointOwnerMismatch,
+    EventLogRewound,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -261,13 +360,17 @@ impl SubmitOutcome {
     pub const fn is_waiting_for_opponent(&self) -> bool {
         self.waiting_for_opponent
     }
+}
 
-    pub(crate) fn from_domain(outcome: DomainSubmitOutcome, viewer: Side) -> Self {
-        Self {
-            events: observe_events(outcome.events(), viewer),
-            phase: outcome.phase(),
-            waiting_for_opponent: outcome.is_waiting_for_opponent(),
-        }
+pub(crate) fn submit_outcome(
+    battle: &Battle,
+    outcome: DomainSubmitOutcome,
+    viewer: Side,
+) -> SubmitOutcome {
+    SubmitOutcome {
+        events: observe_events(battle, outcome.events(), viewer),
+        phase: outcome.phase(),
+        waiting_for_opponent: outcome.is_waiting_for_opponent(),
     }
 }
 
@@ -286,7 +389,11 @@ pub(crate) fn observe(battle: &Battle, viewer: Side) -> BattleObservation {
 }
 
 pub(crate) fn event_log(battle: &Battle, viewer: Side) -> Vec<BattleEvent> {
-    observe_events(battle.events(), viewer)
+    observe_events(battle, battle.events(), viewer)
+}
+
+pub(crate) fn events_since(battle: &Battle, viewer: Side, event_offset: usize) -> Vec<BattleEvent> {
+    observe_events(battle, &battle.events()[event_offset..], viewer)
 }
 
 fn opponent_observation(battle: &Battle, opponent: Side) -> OpponentSideObservation {
@@ -362,6 +469,29 @@ fn revealed_pokemon(
     }
 }
 
+fn revealed_pokemon_at(
+    battle: &Battle,
+    side: Side,
+    pokemon_id: &PokemonId,
+    current_hp: u32,
+) -> RevealedCombatant {
+    let pokemon = battle
+        .team(side)
+        .members()
+        .iter()
+        .find(|pokemon| pokemon.id() == pokemon_id)
+        .expect("a switched pokemon belongs to its team");
+    RevealedCombatant {
+        id: pokemon.id().clone(),
+        name: pokemon.name().to_owned(),
+        level: pokemon.level(),
+        primary_type: pokemon.primary_type(),
+        secondary_type: pokemon.secondary_type(),
+        max_hp: pokemon.max_hp(),
+        current_hp,
+    }
+}
+
 fn revealed_moves(battle: &Battle, side: Side, pokemon: &Pokemon) -> Vec<RevealedMoveObservation> {
     pokemon
         .moves()
@@ -392,20 +522,21 @@ fn reveal_move(battle_move: &Move) -> RevealedMoveObservation {
         id: battle_move.id().clone(),
         name: battle_move.name().to_owned(),
         move_type: battle_move.move_type(),
+        category: battle_move.category(),
         power: battle_move.power(),
         accuracy: battle_move.accuracy(),
         priority: battle_move.priority(),
     }
 }
 
-fn observe_events(events: &[DomainEvent], viewer: Side) -> Vec<BattleEvent> {
+fn observe_events(battle: &Battle, events: &[DomainEvent], viewer: Side) -> Vec<BattleEvent> {
     events
         .iter()
-        .filter_map(|event| observe_event(event, viewer))
+        .filter_map(|event| observe_event(battle, event, viewer))
         .collect()
 }
 
-fn observe_event(event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
+fn observe_event(battle: &Battle, event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
     Some(match event {
         DomainEvent::CommandAccepted { side, action } if *side == viewer => {
             BattleEvent::OwnCommandAccepted { action: *action }
@@ -417,22 +548,28 @@ fn observe_event(event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
             from,
             to,
             pokemon,
+            current_hp,
         } if *side == viewer => BattleEvent::OwnSwitched {
             from: *from,
             to: *to,
-            pokemon: pokemon.clone(),
+            pokemon: revealed_pokemon_at(battle, *side, pokemon, *current_hp),
         },
-        DomainEvent::Switched { pokemon, .. } => BattleEvent::OpponentSwitched {
-            pokemon: pokemon.clone(),
+        DomainEvent::Switched {
+            side,
+            pokemon,
+            current_hp,
+            ..
+        } => BattleEvent::OpponentSwitched {
+            pokemon: revealed_pokemon_at(battle, *side, pokemon, *current_hp),
         },
         DomainEvent::MoveUsed {
             side,
             pokemon,
             used_move,
         } => BattleEvent::MoveUsed {
-            side: *side,
+            participant: participant(*side, viewer),
             pokemon: pokemon.clone(),
-            used_move: observe_used_move(used_move),
+            used_move: observe_used_move(battle, *side, pokemon, used_move),
         },
         DomainEvent::PpSpent { side, .. } if *side != viewer => return None,
         DomainEvent::PpSpent {
@@ -450,18 +587,18 @@ fn observe_event(event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
             target_side,
             target,
         } => BattleEvent::Missed {
-            side: *side,
-            target_side: *target_side,
-            target: target.clone(),
+            participant: participant(*side, viewer),
+            target: participant(*target_side, viewer),
+            pokemon: target.clone(),
         },
         DomainEvent::Critical {
             side,
             target_side,
             target,
         } => BattleEvent::Critical {
-            side: *side,
-            target_side: *target_side,
-            target: target.clone(),
+            participant: participant(*side, viewer),
+            target: participant(*target_side, viewer),
+            pokemon: target.clone(),
         },
         DomainEvent::Effectiveness {
             side,
@@ -469,9 +606,9 @@ fn observe_event(event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
             target,
             effectiveness,
         } => BattleEvent::Effectiveness {
-            side: *side,
-            target_side: *target_side,
-            target: target.clone(),
+            participant: participant(*side, viewer),
+            target: participant(*target_side, viewer),
+            pokemon: target.clone(),
             effectiveness: *effectiveness,
         },
         DomainEvent::Damage {
@@ -481,44 +618,94 @@ fn observe_event(event: &DomainEvent, viewer: Side) -> Option<BattleEvent> {
             amount,
             remaining_hp,
         } => BattleEvent::Damage {
-            source: observe_damage_source(source),
-            target_side: *target_side,
-            target: target.clone(),
+            source: observe_damage_source(battle, source, viewer),
+            target: participant(*target_side, viewer),
+            pokemon: target.clone(),
             amount: *amount,
             remaining_hp: *remaining_hp,
         },
         DomainEvent::Fainted { side, pokemon } => BattleEvent::Fainted {
-            side: *side,
+            participant: participant(*side, viewer),
             pokemon: pokemon.clone(),
         },
-        DomainEvent::ForcedReplacement { side } => BattleEvent::ForcedReplacement { side: *side },
-        DomainEvent::BattleFinished { outcome } => {
-            BattleEvent::BattleFinished { outcome: *outcome }
-        }
+        DomainEvent::ForcedReplacement { side } => BattleEvent::ForcedReplacement {
+            participant: participant(*side, viewer),
+        },
+        DomainEvent::BattleFinished { outcome } => BattleEvent::BattleFinished {
+            outcome: observe_outcome(*outcome, viewer),
+        },
     })
 }
 
-fn observe_used_move(used_move: &DomainUsedMove) -> UsedMove {
+fn observe_used_move(
+    battle: &Battle,
+    side: Side,
+    pokemon: &PokemonId,
+    used_move: &DomainUsedMove,
+) -> UsedMove {
     match used_move {
-        DomainUsedMove::Move { id, .. } => UsedMove::Move { id: id.clone() },
+        DomainUsedMove::Move { id, .. } => {
+            let name = battle
+                .team(side)
+                .members()
+                .iter()
+                .find(|member| member.id() == pokemon)
+                .and_then(|member| {
+                    member
+                        .moves()
+                        .iter()
+                        .find(|battle_move| battle_move.id() == id)
+                })
+                .map_or_else(
+                    || id.as_str().to_owned(),
+                    |battle_move| battle_move.name().to_owned(),
+                );
+            UsedMove::Move {
+                id: id.clone(),
+                name,
+            }
+        }
         DomainUsedMove::Struggle => UsedMove::Struggle,
     }
 }
 
-fn observe_damage_source(source: &DomainDamageSource) -> DamageSource {
+fn observe_damage_source(
+    battle: &Battle,
+    source: &DomainDamageSource,
+    viewer: Side,
+) -> DamageSource {
     match source {
         DomainDamageSource::Move {
             side,
             pokemon,
             used_move,
         } => DamageSource::Move {
-            side: *side,
+            participant: participant(*side, viewer),
             pokemon: pokemon.clone(),
-            used_move: observe_used_move(used_move),
+            used_move: observe_used_move(battle, *side, pokemon, used_move),
         },
         DomainDamageSource::Recoil { side, pokemon } => DamageSource::Recoil {
-            side: *side,
+            participant: participant(*side, viewer),
             pokemon: pokemon.clone(),
         },
+    }
+}
+
+const fn participant(side: Side, viewer: Side) -> Participant {
+    match (side, viewer) {
+        (Side::One, Side::One) | (Side::Two, Side::Two) => Participant::Own,
+        (Side::One, Side::Two) | (Side::Two, Side::One) => Participant::Opponent,
+    }
+}
+
+const fn observe_outcome(outcome: DomainBattleOutcome, viewer: Side) -> ObservedBattleOutcome {
+    match outcome {
+        DomainBattleOutcome::Winner(side) => {
+            ObservedBattleOutcome::Winner(participant(side, viewer))
+        }
+        DomainBattleOutcome::Escaped(side) => {
+            ObservedBattleOutcome::Escaped(participant(side, viewer))
+        }
+        DomainBattleOutcome::Draw => ObservedBattleOutcome::Draw,
     }
 }

@@ -12,8 +12,8 @@ pub use battle::{
     DamageSource, IllegalActionReason, ReplacementSides, SubmitOutcome, UsedMove,
 };
 pub use model::{
-    Accuracy, BattleStats, MAX_MOVES, Move, MoveId, MoveSlot, Pokemon, PokemonId, PokemonType,
-    Side, TEAM_SIZE, Team, TeamSlot, ValidationError,
+    Accuracy, BattleStats, MAX_MOVES, Move, MoveCategory, MoveId, MoveSlot, Pokemon, PokemonId,
+    PokemonType, Side, TEAM_SIZE, Team, TeamSlot, ValidationError,
 };
 pub use rules::{DamageCategory, TypeEffectiveness, damage_category, type_effectiveness};
 pub use stats::{

@@ -7,6 +7,8 @@ use std::{error::Error, fmt};
 use image::ImageFormat;
 use punctum_gpu::{GpuAtlas, GpuAtlasError, GpuResource, PixelRect, PixelSize, ResourceId, Rgba8};
 
+const MAX_ATLAS_DIMENSION: u32 = 8_192;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodedImage {
     size: PixelSize,
@@ -41,20 +43,52 @@ pub fn decode_png(bytes: &[u8]) -> Result<DecodedImage, AssetError> {
 }
 
 pub fn build_atlas(images: &[(ResourceId, &DecodedImage)]) -> Result<GpuAtlas, AssetError> {
+    build_atlas_with_limit(images, MAX_ATLAS_DIMENSION)
+}
+
+fn build_atlas_with_limit(
+    images: &[(ResourceId, &DecodedImage)],
+    maximum_width: u32,
+) -> Result<GpuAtlas, AssetError> {
     if images.is_empty() {
         return Err(AssetError::EmptyImageSet);
     }
+    if maximum_width == 0 {
+        return Err(AssetError::AtlasDimensionsOverflow);
+    }
 
-    let width = images.iter().try_fold(0_u32, |width, (_, image)| {
-        width
+    let mut placements = Vec::with_capacity(images.len());
+    let mut x = 0_u32;
+    let mut y = 0_u32;
+    let mut row_height = 0_u32;
+    let mut width = 0_u32;
+    for &(id, image) in images {
+        if image.size.is_empty() {
+            return Err(AssetError::EmptyImage { id });
+        }
+        if image.size.width > maximum_width || image.size.height > MAX_ATLAS_DIMENSION {
+            return Err(AssetError::AtlasDimensionsOverflow);
+        }
+        if x > 0 && x.saturating_add(image.size.width) > maximum_width {
+            y = y
+                .checked_add(row_height)
+                .ok_or(AssetError::AtlasDimensionsOverflow)?;
+            x = 0;
+            row_height = 0;
+        }
+        placements.push((id, image, x, y));
+        x = x
             .checked_add(image.size.width)
-            .ok_or(AssetError::AtlasDimensionsOverflow)
-    })?;
-    let height = images
-        .iter()
-        .map(|(_, image)| image.size.height)
-        .max()
-        .ok_or(AssetError::EmptyImageSet)?;
+            .ok_or(AssetError::AtlasDimensionsOverflow)?;
+        row_height = row_height.max(image.size.height);
+        width = width.max(x);
+    }
+    let height = y
+        .checked_add(row_height)
+        .ok_or(AssetError::AtlasDimensionsOverflow)?;
+    if height > MAX_ATLAS_DIMENSION {
+        return Err(AssetError::AtlasDimensionsOverflow);
+    }
     let size = PixelSize::new(width, height);
     let byte_len = u64::from(width) * u64::from(height) * 4;
     if byte_len > u64::from(u32::MAX) {
@@ -64,24 +98,19 @@ pub fn build_atlas(images: &[(ResourceId, &DecodedImage)]) -> Result<GpuAtlas, A
     let mut rgba8 = vec![0; byte_len];
     let mut resources = Vec::with_capacity(images.len());
     let atlas_row_bytes = width as usize * 4;
-    let mut x = 0_u32;
 
-    for &(id, image) in images {
-        if image.size.is_empty() {
-            return Err(AssetError::EmptyImage { id });
-        }
+    for (id, image, x, y) in placements {
         let image_row_bytes = image.size.width as usize * 4;
         for row in 0..image.size.height as usize {
             let source = row * image_row_bytes;
-            let target = row * atlas_row_bytes + x as usize * 4;
+            let target = (y as usize + row) * atlas_row_bytes + x as usize * 4;
             rgba8[target..target + image_row_bytes]
                 .copy_from_slice(&image.rgba8[source..source + image_row_bytes]);
         }
         resources.push(GpuResource::new(
             id,
-            PixelRect::new(x, 0, image.size.width, image.size.height),
+            PixelRect::new(x, y, image.size.width, image.size.height),
         ));
-        x += image.size.width;
     }
 
     GpuAtlas::new(size, rgba8, &resources).map_err(AssetError::InvalidAtlas)
@@ -120,9 +149,9 @@ impl Error for AssetError {
 #[cfg(test)]
 mod tests {
     use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
-    use punctum_gpu::{PixelRect, ResourceId, Rgba8};
+    use punctum_gpu::{PixelRect, PixelSize, ResourceId, Rgba8};
 
-    use super::{DecodedImage, build_atlas, decode_png};
+    use super::{DecodedImage, build_atlas, build_atlas_with_limit, decode_png};
 
     #[test]
     fn decodes_png_pixels_as_rgba8() {
@@ -153,6 +182,36 @@ mod tests {
             Some(PixelRect::new(1, 0, 1, 1))
         );
         assert_eq!(atlas.rgba8(), &[255, 255, 255, 255, 255, 0, 0, 128]);
+    }
+
+    #[test]
+    fn wraps_images_to_new_rows_before_the_texture_limit() {
+        let white = DecodedImage::solid(Rgba8::new(255, 255, 255, 255));
+        let red = DecodedImage::solid(Rgba8::new(255, 0, 0, 255));
+        let blue = DecodedImage::solid(Rgba8::new(0, 0, 255, 255));
+        let atlas = build_atlas_with_limit(
+            &[
+                (ResourceId(1), &white),
+                (ResourceId(2), &red),
+                (ResourceId(3), &blue),
+            ],
+            2,
+        )
+        .unwrap();
+
+        assert_eq!(atlas.size(), PixelSize::new(2, 2));
+        assert_eq!(
+            atlas.resource(ResourceId(1)),
+            Some(PixelRect::new(0, 0, 1, 1))
+        );
+        assert_eq!(
+            atlas.resource(ResourceId(2)),
+            Some(PixelRect::new(1, 0, 1, 1))
+        );
+        assert_eq!(
+            atlas.resource(ResourceId(3)),
+            Some(PixelRect::new(0, 1, 1, 1))
+        );
     }
 
     #[test]

@@ -122,6 +122,37 @@ pub enum PokemonType {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MoveCategory {
+    Physical,
+    Special,
+    Status,
+}
+
+impl MoveCategory {
+    pub const fn for_gen3_type(move_type: PokemonType) -> Self {
+        match move_type {
+            PokemonType::Normal
+            | PokemonType::Fighting
+            | PokemonType::Flying
+            | PokemonType::Poison
+            | PokemonType::Ground
+            | PokemonType::Rock
+            | PokemonType::Bug
+            | PokemonType::Ghost
+            | PokemonType::Steel => Self::Physical,
+            PokemonType::Fire
+            | PokemonType::Water
+            | PokemonType::Grass
+            | PokemonType::Electric
+            | PokemonType::Psychic
+            | PokemonType::Ice
+            | PokemonType::Dragon
+            | PokemonType::Dark => Self::Special,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Accuracy {
     Percent(u8),
     AlwaysHit,
@@ -208,6 +239,7 @@ pub struct Move {
     id: MoveId,
     name: String,
     move_type: PokemonType,
+    category: MoveCategory,
     power: u16,
     accuracy: Accuracy,
     max_pp: u8,
@@ -227,10 +259,36 @@ impl Move {
         current_pp: u8,
         priority: i8,
     ) -> Result<Self, ValidationError> {
+        Self::new_with_category(
+            id,
+            name,
+            move_type,
+            MoveCategory::for_gen3_type(move_type),
+            power,
+            accuracy,
+            max_pp,
+            current_pp,
+            priority,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_category(
+        id: MoveId,
+        name: impl Into<String>,
+        move_type: PokemonType,
+        category: MoveCategory,
+        power: u16,
+        accuracy: Accuracy,
+        max_pp: u8,
+        current_pp: u8,
+        priority: i8,
+    ) -> Result<Self, ValidationError> {
         Self::from_parts(
             id,
             name.into(),
             move_type,
+            category,
             power,
             accuracy,
             max_pp,
@@ -244,6 +302,7 @@ impl Move {
         id: MoveId,
         name: String,
         move_type: PokemonType,
+        category: MoveCategory,
         power: u16,
         accuracy: Accuracy,
         max_pp: u8,
@@ -274,6 +333,7 @@ impl Move {
             id,
             name,
             move_type,
+            category,
             power,
             accuracy,
             max_pp,
@@ -292,6 +352,10 @@ impl Move {
 
     pub const fn move_type(&self) -> PokemonType {
         self.move_type
+    }
+
+    pub const fn category(&self) -> MoveCategory {
+        self.category
     }
 
     pub const fn power(&self) -> u16 {

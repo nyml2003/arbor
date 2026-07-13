@@ -2,16 +2,17 @@
 
 #![forbid(unsafe_code)]
 
-use battle_application::{
-    Action, BattleObservation, BattlePhase, MoveSlot, Pokemon, Side, TeamSlot,
+use battle_session::{
+    Action, BattleCue, BattleInteraction, BattleObservation, BattleSessionSnapshot, MoveCategory,
+    MoveSlot, ObservedBattleOutcome, Participant, Pokemon, PokemonType, TEAM_SIZE, TeamSlot,
+    TypeEffectiveness, UsedMove,
 };
 use game_assets::{AssetError, DecodedImage, build_atlas};
+use map_render::{MapCamera, MapScenePlan};
 use punctum_gpu::{GpuAtlas, GpuCell, GpuImage, PixelOffset, ResourceId, Rgba8};
 use punctum_grid::{GridPos, GridRect, GridSize, Surface};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
-use world_application::{
-    Direction as WorldDirection, Position, Tile, WorldCommand, WorldObservation,
-};
+use world_application::{Direction as WorldDirection, Position, WorldCommand, WorldObservation};
 
 pub const CANVAS_WIDTH: u32 = 32;
 pub const CANVAS_HEIGHT: u32 = 24;
@@ -19,6 +20,9 @@ pub const CANVAS_HEIGHT: u32 = 24;
 const WHITE_RESOURCE: ResourceId = ResourceId(1);
 const CHARACTER_RESOURCE_START: u32 = 6;
 const BATTLE_SPRITE_RESOURCE_START: u32 = 30;
+const POKEMON_ICON_RESOURCE_START: u32 = BATTLE_SPRITE_RESOURCE_START + TEAM_SIZE as u32 * 4;
+const TYPE_ICON_RESOURCE_START: u32 = POKEMON_ICON_RESOURCE_START + TEAM_SIZE as u32 * 2;
+const MOVE_CATEGORY_ICON_RESOURCE_START: u32 = TYPE_ICON_RESOURCE_START + 17;
 const WHITE_PIXEL: Rgba8 = Rgba8::new(255, 255, 255, 255);
 const PLAYER_BACK_FRAME_0_PNG: &[u8] =
     include_bytes!("../../../assets/pokemons/normal/back/001_Back_0_C__frame_0.png");
@@ -28,6 +32,33 @@ const OPPONENT_FRONT_FRAME_0_PNG: &[u8] =
     include_bytes!("../../../assets/pokemons/normal/front/001_Front_0_C__frame_0.png");
 const OPPONENT_FRONT_FRAME_1_PNG: &[u8] =
     include_bytes!("../../../assets/pokemons/normal/front/001_Front_0_C__frame_1.png");
+const POKEMON_ICON_FRAME_0_PNG: &[u8] = include_bytes!("../../../assets/pokemons/icons/001_0.png");
+const POKEMON_ICON_FRAME_1_PNG: &[u8] = include_bytes!("../../../assets/pokemons/icons/001_1.png");
+// icon-09 is the removed Generation III ??? type; 18-23 are contest categories.
+const TYPE_ICON_PNGS: [&[u8]; 17] = [
+    include_bytes!("../../../assets/type-icons/icon-00.png"),
+    include_bytes!("../../../assets/type-icons/icon-01.png"),
+    include_bytes!("../../../assets/type-icons/icon-02.png"),
+    include_bytes!("../../../assets/type-icons/icon-03.png"),
+    include_bytes!("../../../assets/type-icons/icon-04.png"),
+    include_bytes!("../../../assets/type-icons/icon-05.png"),
+    include_bytes!("../../../assets/type-icons/icon-06.png"),
+    include_bytes!("../../../assets/type-icons/icon-07.png"),
+    include_bytes!("../../../assets/type-icons/icon-08.png"),
+    include_bytes!("../../../assets/type-icons/icon-10.png"),
+    include_bytes!("../../../assets/type-icons/icon-11.png"),
+    include_bytes!("../../../assets/type-icons/icon-12.png"),
+    include_bytes!("../../../assets/type-icons/icon-13.png"),
+    include_bytes!("../../../assets/type-icons/icon-14.png"),
+    include_bytes!("../../../assets/type-icons/icon-15.png"),
+    include_bytes!("../../../assets/type-icons/icon-16.png"),
+    include_bytes!("../../../assets/type-icons/icon-17.png"),
+];
+const MOVE_CATEGORY_ICON_PNGS: [&[u8]; 3] = [
+    include_bytes!("../../../assets/move-category-icons/physical.png"),
+    include_bytes!("../../../assets/move-category-icons/special.png"),
+    include_bytes!("../../../assets/move-category-icons/status.png"),
+];
 const CHARACTER_PNGS: [(&str, &[u8]); 24] = [
     (
         "down stand",
@@ -135,24 +166,21 @@ const PANEL: Rgba8 = Rgba8::new(28, 34, 45, 248);
 const PANEL_EDGE: Rgba8 = Rgba8::new(218, 225, 214, 255);
 const SELECTED: Rgba8 = Rgba8::new(45, 125, 137, 255);
 const HP_GOOD: Rgba8 = Rgba8::new(74, 190, 102, 255);
+const HP_MID: Rgba8 = Rgba8::new(226, 177, 66, 255);
 const HP_LOW: Rgba8 = Rgba8::new(224, 91, 72, 255);
+const HP_TRACK: Rgba8 = Rgba8::new(68, 74, 82, 255);
 const TEXT: Rgba8 = Rgba8::new(244, 246, 239, 255);
 const MUTED_TEXT: Rgba8 = Rgba8::new(182, 194, 194, 255);
 const CONSOLE_ERROR: Rgba8 = Rgba8::new(255, 142, 126, 255);
 const MAP_GROUND: Rgba8 = Rgba8::new(138, 187, 116, 255);
-const MAP_GROUND_LIGHT: Rgba8 = Rgba8::new(157, 202, 132, 255);
-const MAP_GRASS: Rgba8 = Rgba8::new(54, 137, 79, 255);
-const MAP_GRASS_LIGHT: Rgba8 = Rgba8::new(82, 163, 91, 255);
-const MAP_WALL: Rgba8 = Rgba8::new(100, 105, 111, 255);
-const MAP_WALL_LIGHT: Rgba8 = Rgba8::new(142, 146, 145, 255);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BattleAnimation {
     #[default]
     Idle,
-    Acting(Side),
-    Hit(Side),
-    Fainted(Side),
+    Acting(Participant),
+    Hit(Participant),
+    Fainted(Participant),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -164,55 +192,193 @@ pub enum WorldAnimation {
     RunStopping,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BattleDisplayState {
-    pub own_name: String,
-    pub own_hp: u32,
-    pub own_max_hp: u32,
-    pub opponent_name: String,
-    pub opponent_hp: u32,
-    pub opponent_max_hp: u32,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BattleMenuPage {
+    #[default]
+    Main,
+    Fight,
+    Pokemon,
+    Hidden,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BattleUiState {
+    page: BattleMenuPage,
     selected_index: usize,
+    replacement_mode: bool,
+    notice: Option<&'static str>,
 }
 
 impl BattleUiState {
+    pub const fn page(self) -> BattleMenuPage {
+        self.page
+    }
+
     pub const fn selected_index(self) -> usize {
         self.selected_index
     }
 
-    pub fn reconcile(&mut self, actions: &[Action]) {
-        if actions.is_empty() {
-            self.selected_index = 0;
-        } else {
-            self.selected_index = self.selected_index.min(actions.len() - 1);
+    pub fn reset(&mut self) {
+        self.page = BattleMenuPage::Main;
+        self.selected_index = 0;
+        self.replacement_mode = false;
+        self.notice = None;
+    }
+
+    pub fn sync_interaction(&mut self, interaction: &BattleInteraction) {
+        match interaction {
+            BattleInteraction::ChooseAction(_)
+                if self.replacement_mode || self.page == BattleMenuPage::Hidden =>
+            {
+                self.reset();
+            }
+            BattleInteraction::ChooseReplacement(prompt) if !self.replacement_mode => {
+                self.page = BattleMenuPage::Pokemon;
+                self.replacement_mode = true;
+                self.notice = None;
+                self.selected_index = prompt
+                    .legal_actions()
+                    .iter()
+                    .find_map(|action| match action {
+                        Action::Switch(slot) => Some(*slot),
+                        _ => None,
+                    })
+                    .map_or(0, TeamSlot::index);
+            }
+            BattleInteraction::PlaybackLocked | BattleInteraction::Finished(_) => {
+                self.page = BattleMenuPage::Hidden;
+                self.notice = None;
+            }
+            BattleInteraction::ChooseAction(_) | BattleInteraction::ChooseReplacement(_) => {}
         }
     }
 
-    pub fn handle_key(&mut self, key: &KeyEvent, actions: &[Action]) -> BattleUiOutcome {
-        if key.phase == KeyPhase::Release || actions.is_empty() {
+    pub fn handle_key(
+        &mut self,
+        key: &KeyEvent,
+        interaction: &BattleInteraction,
+    ) -> BattleUiOutcome {
+        self.sync_interaction(interaction);
+        let Some((observation, actions)) = prompt_data(interaction) else {
+            return BattleUiOutcome::Ignored;
+        };
+        if key.phase == KeyPhase::Release {
             return BattleUiOutcome::Ignored;
         }
-        self.reconcile(actions);
+        let item_count = self.item_count(observation, actions);
+        if item_count == 0 {
+            return BattleUiOutcome::Ignored;
+        }
+        self.selected_index = self.selected_index.min(item_count - 1);
+        self.notice = None;
         match key.logical {
-            LogicalKey::Named(NamedKey::ArrowLeft) | LogicalKey::Named(NamedKey::ArrowUp) => {
-                self.selected_index = self
-                    .selected_index
-                    .checked_sub(1)
-                    .unwrap_or(actions.len() - 1);
+            LogicalKey::Named(NamedKey::ArrowLeft) => {
+                self.selected_index = (self.selected_index + item_count - 1) % item_count;
                 BattleUiOutcome::Updated
             }
-            LogicalKey::Named(NamedKey::ArrowRight) | LogicalKey::Named(NamedKey::ArrowDown) => {
-                self.selected_index = (self.selected_index + 1) % actions.len();
+            LogicalKey::Named(NamedKey::ArrowRight) => {
+                self.selected_index = (self.selected_index + 1) % item_count;
+                BattleUiOutcome::Updated
+            }
+            LogicalKey::Named(NamedKey::ArrowUp) => {
+                self.selected_index =
+                    (self.selected_index + item_count - 2 % item_count) % item_count;
+                BattleUiOutcome::Updated
+            }
+            LogicalKey::Named(NamedKey::ArrowDown) => {
+                self.selected_index = (self.selected_index + 2) % item_count;
+                BattleUiOutcome::Updated
+            }
+            LogicalKey::Named(NamedKey::Escape)
+                if self.page != BattleMenuPage::Main && !self.replacement_mode =>
+            {
+                self.reset();
                 BattleUiOutcome::Updated
             }
             LogicalKey::Named(NamedKey::Enter) if key.phase == KeyPhase::Press => {
-                BattleUiOutcome::Submit(actions[self.selected_index])
+                self.activate(observation, actions)
             }
             _ => BattleUiOutcome::Ignored,
+        }
+    }
+
+    fn item_count(self, observation: &BattleObservation, actions: &[Action]) -> usize {
+        match self.page {
+            BattleMenuPage::Main => 4,
+            BattleMenuPage::Fight => {
+                if actions.contains(&Action::Struggle) {
+                    1
+                } else {
+                    active_pokemon(observation).moves().len()
+                }
+            }
+            BattleMenuPage::Pokemon => observation.own().members().len(),
+            BattleMenuPage::Hidden => 0,
+        }
+    }
+
+    fn activate(&mut self, observation: &BattleObservation, actions: &[Action]) -> BattleUiOutcome {
+        match self.page {
+            BattleMenuPage::Main => match self.selected_index {
+                0 => {
+                    self.page = BattleMenuPage::Fight;
+                    self.selected_index = 0;
+                    BattleUiOutcome::Updated
+                }
+                1 => {
+                    self.page = BattleMenuPage::Pokemon;
+                    self.selected_index = observation.own().active_slot().index();
+                    BattleUiOutcome::Updated
+                }
+                2 => {
+                    self.notice = Some("包包现在还不能使用。");
+                    BattleUiOutcome::Updated
+                }
+                3 => actions
+                    .iter()
+                    .copied()
+                    .find(|action| *action == Action::Run)
+                    .map_or_else(
+                        || {
+                            self.notice = Some("现在无法逃走。");
+                            BattleUiOutcome::Updated
+                        },
+                        BattleUiOutcome::Submit,
+                    ),
+                _ => BattleUiOutcome::Ignored,
+            },
+            BattleMenuPage::Fight => {
+                let action = if actions.contains(&Action::Struggle) {
+                    Action::Struggle
+                } else {
+                    Action::UseMove(
+                        MoveSlot::new(self.selected_index)
+                            .expect("visible move indexes stay within the move limit"),
+                    )
+                };
+                if actions.contains(&action) {
+                    BattleUiOutcome::Submit(action)
+                } else {
+                    self.notice = Some("这个招式的 PP 已用完。");
+                    BattleUiOutcome::Updated
+                }
+            }
+            BattleMenuPage::Pokemon => {
+                let action = Action::Switch(
+                    TeamSlot::new(self.selected_index)
+                        .expect("team page indexes stay within the team limit"),
+                );
+                if actions.contains(&action) {
+                    BattleUiOutcome::Submit(action)
+                } else if observation.own().active_slot().index() == self.selected_index {
+                    self.notice = Some("这只宝可梦正在战斗。");
+                    BattleUiOutcome::Updated
+                } else {
+                    self.notice = Some("这只宝可梦已经无法战斗。");
+                    BattleUiOutcome::Updated
+                }
+            }
+            BattleMenuPage::Hidden => BattleUiOutcome::Ignored,
         }
     }
 }
@@ -224,14 +390,33 @@ pub enum BattleUiOutcome {
     Ignored,
 }
 
+fn prompt_data(interaction: &BattleInteraction) -> Option<(&BattleObservation, &[Action])> {
+    match interaction {
+        BattleInteraction::ChooseAction(prompt) => {
+            Some((prompt.observation(), prompt.legal_actions()))
+        }
+        BattleInteraction::ChooseReplacement(prompt) => {
+            Some((prompt.observation(), prompt.legal_actions()))
+        }
+        BattleInteraction::PlaybackLocked | BattleInteraction::Finished(_) => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextRole {
     Location,
     OpponentName,
+    OpponentDetail,
     OpponentHp,
     PlayerName,
+    PlayerDetail,
     PlayerHp,
     Action(usize),
+    ActionDetail(usize),
+    PageTitle,
+    TeamMember(usize),
+    TeamMemberHp(usize),
+    TeamMemberType(usize),
     Message,
     ConsoleQuery,
     ConsoleItem(usize),
@@ -267,6 +452,18 @@ impl GameView {
 
     pub fn images(&self) -> &[GpuImage] {
         &self.images
+    }
+
+    pub fn replace_world_background(&mut self, scene: &MapScenePlan, camera: MapCamera) {
+        assert_eq!(self.surface.size(), scene.base().size());
+        self.surface = scene.base().clone();
+        for image in &mut self.images {
+            image.bounds.origin.col -= camera.col * 2;
+            image.bounds.origin.row -= camera.row * 2;
+        }
+        let mut images = scene.tile_images().to_vec();
+        images.append(&mut self.images);
+        self.images = images;
     }
 }
 
@@ -394,23 +591,62 @@ pub fn atlas() -> GpuAtlas {
         decode_embedded_png(OPPONENT_FRONT_FRAME_0_PNG, "opponent front frame 0");
     let opponent_front_frame_1 =
         decode_embedded_png(OPPONENT_FRONT_FRAME_1_PNG, "opponent front frame 1");
+    let pokemon_icon_frame_0 =
+        decode_embedded_png(POKEMON_ICON_FRAME_0_PNG, "pokemon icon frame 0");
+    let pokemon_icon_frame_1 =
+        decode_embedded_png(POKEMON_ICON_FRAME_1_PNG, "pokemon icon frame 1");
     let mut battle_images = Vec::new();
-    for slot in 0..battle_application::TEAM_SIZE {
+    let mut pokemon_icon_images = Vec::new();
+    for slot in 0..TEAM_SIZE {
         battle_images.push((player_back_resource(slot, 0), &player_back_frame_0));
         battle_images.push((player_back_resource(slot, 1), &player_back_frame_1));
         battle_images.push((opponent_front_resource(slot, 0), &opponent_front_frame_0));
         battle_images.push((opponent_front_resource(slot, 1), &opponent_front_frame_1));
+        pokemon_icon_images.push((pokemon_icon_resource(slot, 0), &pokemon_icon_frame_0));
+        pokemon_icon_images.push((pokemon_icon_resource(slot, 1), &pokemon_icon_frame_1));
     }
-    atlas_with_battle_sprites(&battle_images).expect("the embedded game atlas is valid")
+    atlas_with_battle_map_and_pokemon_icons(&battle_images, &pokemon_icon_images, &[])
+        .expect("the embedded game atlas is valid")
 }
 
 pub fn atlas_with_battle_sprites(
     battle_images: &[(ResourceId, &DecodedImage)],
 ) -> Result<GpuAtlas, AssetError> {
+    atlas_with_battle_and_map_sprites(battle_images, &[])
+}
+
+pub fn atlas_with_battle_and_map_sprites(
+    battle_images: &[(ResourceId, &DecodedImage)],
+    map_images: &[(ResourceId, &DecodedImage)],
+) -> Result<GpuAtlas, AssetError> {
+    atlas_with_battle_map_and_pokemon_icons(battle_images, &[], map_images)
+}
+
+pub fn atlas_with_battle_map_and_pokemon_icons(
+    battle_images: &[(ResourceId, &DecodedImage)],
+    pokemon_icon_images: &[(ResourceId, &DecodedImage)],
+    map_images: &[(ResourceId, &DecodedImage)],
+) -> Result<GpuAtlas, AssetError> {
     let white = DecodedImage::solid(WHITE_PIXEL);
     let character_images: Vec<_> = CHARACTER_PNGS
         .iter()
         .map(|(name, bytes)| decode_embedded_png(bytes, name))
+        .collect();
+    let type_icon_images: Vec<_> = TYPE_ICON_PNGS
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| {
+            game_assets::decode_png(bytes)
+                .unwrap_or_else(|error| panic!("embedded type icon {index} PNG: {error}"))
+        })
+        .collect();
+    let move_category_icon_images: Vec<_> = MOVE_CATEGORY_ICON_PNGS
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| {
+            game_assets::decode_png(bytes)
+                .unwrap_or_else(|error| panic!("embedded move category icon {index} PNG: {error}"))
+        })
         .collect();
     let mut images = vec![(WHITE_RESOURCE, &white)];
     images.extend(
@@ -420,6 +656,25 @@ pub fn atlas_with_battle_sprites(
             .map(|(index, image)| (ResourceId(CHARACTER_RESOURCE_START + index as u32), image)),
     );
     images.extend_from_slice(battle_images);
+    images.extend_from_slice(pokemon_icon_images);
+    images.extend(
+        type_icon_images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| (ResourceId(TYPE_ICON_RESOURCE_START + index as u32), image)),
+    );
+    images.extend(
+        move_category_icon_images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| {
+                (
+                    ResourceId(MOVE_CATEGORY_ICON_RESOURCE_START + index as u32),
+                    image,
+                )
+            }),
+    );
+    images.extend_from_slice(map_images);
     build_atlas(&images)
 }
 
@@ -427,82 +682,345 @@ fn decode_embedded_png(bytes: &[u8], name: &str) -> DecodedImage {
     game_assets::decode_png(bytes).unwrap_or_else(|error| panic!("embedded {name} PNG: {error}"))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn project_battle(
-    observation: &BattleObservation,
-    actions: &[Action],
+    snapshot: &BattleSessionSnapshot,
     ui: BattleUiState,
-    message: &str,
-    animation: BattleAnimation,
-    display: &BattleDisplayState,
     sprites: BattleSpriteResources,
     sprite_frame: usize,
 ) -> GameView {
+    let prompt = prompt_data(snapshot.interaction());
+    let message = ui
+        .notice
+        .map(str::to_owned)
+        .unwrap_or_else(|| battle_message(snapshot));
+    if ui.page == BattleMenuPage::Pokemon
+        && let Some((observation, _)) = prompt
+    {
+        return project_pokemon_page(observation, ui, &message, sprite_frame);
+    }
+
+    let scene = snapshot.scene();
+    let own = scene.own();
+    let opponent = scene.opponent();
     let mut canvas = Canvas::new(SKY);
     canvas.fill(0, 8, CANVAS_WIDTH, 4, DISTANT_GRASS);
     canvas.fill(0, 12, CANVAS_WIDTH, 5, GROUND);
     canvas.ellipse(20, 7, 10, 3, PLATFORM);
     canvas.ellipse(2, 13, 13, 3, PLATFORM);
 
-    let own = observation.own().members()[observation.own().active_slot().index()].clone();
-    draw_status_panel(
-        &mut canvas,
-        1,
-        1,
-        display.opponent_hp,
-        display.opponent_max_hp,
-    );
-    draw_status_panel(&mut canvas, 18, 11, display.own_hp, display.own_max_hp);
-    draw_action_panel(&mut canvas, actions.len(), ui.selected_index);
+    draw_status_panel(&mut canvas, 1, 1, opponent.current_hp(), opponent.max_hp());
+    draw_status_panel(&mut canvas, 16, 11, own.current_hp(), own.max_hp());
+    let actions = prompt.map_or(&[][..], |(_, actions)| actions);
+    let observation = prompt.map(|(observation, _)| observation);
+    let action_count = match ui.page {
+        BattleMenuPage::Main => 4,
+        BattleMenuPage::Fight => {
+            if actions.contains(&Action::Struggle) {
+                1
+            } else {
+                observation.map_or(0, |observation| active_pokemon(observation).moves().len())
+            }
+        }
+        BattleMenuPage::Pokemon | BattleMenuPage::Hidden => 0,
+    };
+    draw_action_panel(&mut canvas, action_count, ui.selected_index);
+    let mut images = battle_images(battle_animation(snapshot.cue()), sprites, sprite_frame);
+    images.extend(type_icon_images(
+        9,
+        3,
+        opponent.primary_type(),
+        opponent.secondary_type(),
+    ));
+    images.extend(type_icon_images(
+        24,
+        13,
+        own.primary_type(),
+        own.secondary_type(),
+    ));
 
     let mut labels = vec![
+        label(TextRole::OpponentName, 2, 2, 10, 1, opponent.name(), TEXT),
         label(
-            TextRole::OpponentName,
+            TextRole::OpponentDetail,
             2,
-            2,
-            12,
+            3,
+            13,
             1,
-            &display.opponent_name,
-            TEXT,
+            &format!("Lv.{}", opponent.level()),
+            MUTED_TEXT,
         ),
         label(
             TextRole::OpponentHp,
             2,
-            3,
-            12,
+            4,
+            13,
             1,
-            &format!("生命 {}/{}", display.opponent_hp, display.opponent_max_hp),
+            &format!("HP {}/{}", opponent.current_hp(), opponent.max_hp()),
             MUTED_TEXT,
         ),
-        label(TextRole::PlayerName, 19, 12, 12, 1, &display.own_name, TEXT),
+        label(TextRole::PlayerName, 17, 12, 10, 1, own.name(), TEXT),
+        label(
+            TextRole::PlayerDetail,
+            17,
+            13,
+            13,
+            1,
+            &format!("Lv.{}", own.level()),
+            MUTED_TEXT,
+        ),
         label(
             TextRole::PlayerHp,
-            19,
+            17,
+            14,
             13,
-            12,
             1,
-            &format!("生命 {}/{}", display.own_hp, display.own_max_hp),
+            &format!("HP {}/{}", own.current_hp(), own.max_hp()),
             MUTED_TEXT,
         ),
     ];
-    for (index, action) in actions.iter().copied().enumerate().take(4) {
-        let col = 2 + (index as u32 % 2) * 15;
-        let row = 18 + (index as u32 / 2) * 2;
-        labels.push(label(
-            TextRole::Action(index),
-            col,
-            row,
-            13,
-            1,
-            &action_label(action, observation, &own),
-            TEXT,
-        ));
+    match ui.page {
+        BattleMenuPage::Main => {
+            for (index, content) in ["战斗", "宝可梦", "包包", "逃走"].into_iter().enumerate()
+            {
+                let col = 2 + (index as u32 % 2) * 15;
+                let row = 18 + (index as u32 / 2) * 2;
+                labels.push(label(
+                    TextRole::Action(index),
+                    col,
+                    row,
+                    13,
+                    1,
+                    content,
+                    TEXT,
+                ));
+            }
+        }
+        BattleMenuPage::Fight if actions.contains(&Action::Struggle) => {
+            labels.push(label(TextRole::Action(0), 2, 18, 13, 1, "挣扎", TEXT));
+            images.push(type_icon_image(2, 19, PokemonType::Normal));
+            images.push(move_category_icon_image(4, 19, MoveCategory::Physical));
+            labels.push(label(
+                TextRole::ActionDetail(0),
+                7,
+                19,
+                8,
+                1,
+                "威50 PP--",
+                MUTED_TEXT,
+            ));
+        }
+        BattleMenuPage::Fight => {
+            let moves = observation
+                .map(active_pokemon)
+                .map_or(&[][..], |pokemon| pokemon.moves());
+            for (index, battle_move) in moves.iter().enumerate().take(4) {
+                let col = 2 + (index as u32 % 2) * 15;
+                let row = 18 + (index as u32 / 2) * 2;
+                labels.push(label(
+                    TextRole::Action(index),
+                    col,
+                    row,
+                    13,
+                    1,
+                    battle_move.name(),
+                    TEXT,
+                ));
+                images.push(type_icon_image(col, row + 1, battle_move.move_type()));
+                images.push(move_category_icon_image(
+                    col + 2,
+                    row + 1,
+                    battle_move.category(),
+                ));
+                labels.push(label(
+                    TextRole::ActionDetail(index),
+                    col + 5,
+                    row + 1,
+                    8,
+                    1,
+                    &format!(
+                        "威{} PP{}/{}",
+                        battle_move.power(),
+                        battle_move.current_pp(),
+                        battle_move.max_pp()
+                    ),
+                    MUTED_TEXT,
+                ));
+            }
+        }
+        BattleMenuPage::Pokemon | BattleMenuPage::Hidden => {}
     }
-    labels.push(label(TextRole::Message, 2, 22, 28, 1, message, MUTED_TEXT));
+    labels.push(label(TextRole::Message, 2, 22, 28, 1, &message, MUTED_TEXT));
 
     GameView {
         surface: canvas.finish(),
-        images: battle_images(animation, sprites, sprite_frame),
+        images,
+        labels,
+    }
+}
+
+fn battle_animation(cue: Option<&BattleCue>) -> BattleAnimation {
+    match cue {
+        Some(BattleCue::MoveUsed { participant, .. }) => BattleAnimation::Acting(*participant),
+        Some(BattleCue::DamageApplied { participant, .. })
+        | Some(BattleCue::Critical { participant }) => BattleAnimation::Hit(*participant),
+        Some(BattleCue::Fainted { participant }) => BattleAnimation::Fainted(*participant),
+        _ => BattleAnimation::Idle,
+    }
+}
+
+fn battle_message(snapshot: &BattleSessionSnapshot) -> String {
+    let scene = snapshot.scene();
+    match snapshot.cue() {
+        Some(BattleCue::TurnStarted { turn }) => format!("第 {turn} 回合"),
+        Some(BattleCue::Switched { participant }) => {
+            format!("{} 上场了。", combatant_name(scene, *participant))
+        }
+        Some(BattleCue::MoveUsed {
+            participant,
+            used_move,
+        }) => format!(
+            "{} 使用了 {}！",
+            combatant_name(scene, *participant),
+            used_move_name(used_move)
+        ),
+        Some(BattleCue::DamageApplied {
+            participant,
+            amount,
+        }) => format!(
+            "{} 受到 {} 点伤害。",
+            combatant_name(scene, *participant),
+            amount
+        ),
+        Some(BattleCue::Missed { .. }) => "攻击没有命中。".into(),
+        Some(BattleCue::Critical { .. }) => "会心一击！".into(),
+        Some(BattleCue::Effectiveness { effectiveness, .. }) => {
+            effectiveness_message(*effectiveness).into()
+        }
+        Some(BattleCue::Fainted { participant }) => {
+            format!("{} 倒下了。", combatant_name(scene, *participant))
+        }
+        Some(BattleCue::ReplacementRequired { .. }) => "请选择下一只宝可梦".into(),
+        Some(BattleCue::BattleFinished { outcome }) => outcome_message(*outcome).into(),
+        None => match snapshot.interaction() {
+            BattleInteraction::ChooseAction(_) => "请选择行动".into(),
+            BattleInteraction::ChooseReplacement(_) => "请选择下一只宝可梦".into(),
+            BattleInteraction::PlaybackLocked => String::new(),
+            BattleInteraction::Finished(prompt) => outcome_message(prompt.outcome()).into(),
+        },
+    }
+}
+
+fn combatant_name(scene: &battle_session::BattleScene, participant: Participant) -> &str {
+    match participant {
+        Participant::Own => scene.own().name(),
+        Participant::Opponent => scene.opponent().name(),
+    }
+}
+
+fn used_move_name(used_move: &UsedMove) -> &str {
+    match used_move {
+        UsedMove::Move { name, .. } => name,
+        UsedMove::Struggle => "挣扎",
+    }
+}
+
+fn outcome_message(outcome: ObservedBattleOutcome) -> &'static str {
+    match outcome {
+        ObservedBattleOutcome::Winner(Participant::Own) => "你赢了！",
+        ObservedBattleOutcome::Winner(Participant::Opponent) => "对手赢了。",
+        ObservedBattleOutcome::Escaped(Participant::Own) => "成功逃走了！",
+        ObservedBattleOutcome::Escaped(Participant::Opponent) => "对手逃走了。",
+        ObservedBattleOutcome::Draw => "战斗平局。",
+    }
+}
+
+fn effectiveness_message(effectiveness: TypeEffectiveness) -> &'static str {
+    match effectiveness {
+        TypeEffectiveness::Immune => "没有效果。",
+        TypeEffectiveness::Quarter | TypeEffectiveness::Half => "效果不太好……",
+        TypeEffectiveness::Normal => "命中了。",
+        TypeEffectiveness::Double | TypeEffectiveness::Quadruple => "效果绝佳！",
+    }
+}
+
+fn project_pokemon_page(
+    observation: &BattleObservation,
+    ui: BattleUiState,
+    message: &str,
+    sprite_frame: usize,
+) -> GameView {
+    let mut canvas = Canvas::new(PANEL);
+    canvas.fill(0, 0, CANVAS_WIDTH, 2, PANEL_EDGE);
+    canvas.fill(1, 1, CANVAS_WIDTH - 2, 1, SELECTED);
+    let mut labels = vec![label(TextRole::PageTitle, 2, 1, 28, 1, "宝可梦", TEXT)];
+    let mut images = Vec::with_capacity(observation.own().members().len() * 3);
+    for (index, pokemon) in observation.own().members().iter().enumerate() {
+        let col = 1 + (index as u32 % 2) * 15;
+        let row = 3 + (index as u32 / 2) * 6;
+        let selected = index == ui.selected_index;
+        draw_team_card(&mut canvas, col, row, selected, pokemon);
+        images.push(pokemon_icon_image(
+            col,
+            row,
+            index,
+            pokemon.is_fainted(),
+            sprite_frame,
+        ));
+        images.extend(type_icon_images(
+            col + 9,
+            row + 2,
+            pokemon.primary_type(),
+            pokemon.secondary_type(),
+        ));
+        let active = index == observation.own().active_slot().index();
+        labels.push(label(
+            TextRole::TeamMember(index),
+            col + 4,
+            row + 1,
+            9,
+            1,
+            &if active {
+                format!("{} 上场", pokemon.name())
+            } else {
+                pokemon.name().to_owned()
+            },
+            if pokemon.is_fainted() {
+                MUTED_TEXT
+            } else {
+                TEXT
+            },
+        ));
+        labels.push(label(
+            TextRole::TeamMemberType(index),
+            col + 4,
+            row + 2,
+            9,
+            1,
+            &format!("Lv.{}", pokemon.level()),
+            MUTED_TEXT,
+        ));
+        labels.push(label(
+            TextRole::TeamMemberHp(index),
+            col + 4,
+            row + 3,
+            9,
+            1,
+            &if pokemon.is_fainted() {
+                "无法战斗".into()
+            } else {
+                format!("HP {}/{}", pokemon.current_hp(), pokemon.max_hp())
+            },
+            if pokemon.is_fainted() {
+                HP_LOW
+            } else {
+                MUTED_TEXT
+            },
+        ));
+    }
+    labels.push(label(TextRole::Message, 2, 22, 28, 1, message, MUTED_TEXT));
+    GameView {
+        surface: canvas.finish(),
+        images,
         labels,
     }
 }
@@ -521,53 +1039,26 @@ pub fn world_command_for_key(key: &KeyEvent) -> Option<WorldCommand> {
     Some(WorldCommand::Move(direction))
 }
 
-pub fn project_world(observation: &WorldObservation, message: &str) -> GameView {
-    project_world_animated(observation, message, WorldAnimation::Stand, 0)
+pub fn project_world(observation: &WorldObservation) -> GameView {
+    project_world_animated(observation, WorldAnimation::Stand, 0)
 }
 
 pub fn project_world_animated(
     observation: &WorldObservation,
-    message: &str,
     animation: WorldAnimation,
     sprite_frame: usize,
 ) -> GameView {
-    project_world_presented(
-        observation,
-        message,
-        animation,
-        sprite_frame,
-        PixelOffset::new(0, 0),
-    )
+    project_world_presented(observation, animation, sprite_frame, PixelOffset::new(0, 0))
 }
 
 pub fn project_world_presented(
     observation: &WorldObservation,
-    message: &str,
     animation: WorldAnimation,
     sprite_frame: usize,
     pixel_offset: PixelOffset,
 ) -> GameView {
-    const TILE_SIZE: u32 = 2;
-    let mut canvas = Canvas::new(MAP_GROUND);
-    for y in 0..observation.height() {
-        for x in 0..observation.width() {
-            let position = Position::new(x, y);
-            let tile = observation
-                .tile(position)
-                .expect("observed map coordinates are in bounds");
-            draw_world_tile(
-                &mut canvas,
-                u32::from(x) * TILE_SIZE,
-                u32::from(y) * TILE_SIZE,
-                tile,
-            );
-        }
-    }
-    canvas.fill(0, 20, CANVAS_WIDTH, 4, PANEL_EDGE);
-    canvas.fill(1, 21, CANVAS_WIDTH - 2, 2, PANEL);
-
     GameView {
-        surface: canvas.finish(),
+        surface: Canvas::new(MAP_GROUND).finish(),
         images: vec![world_player_image(
             observation.player(),
             observation.facing(),
@@ -575,21 +1066,8 @@ pub fn project_world_presented(
             sprite_frame,
             pixel_offset,
         )],
-        labels: vec![
-            label(TextRole::Location, 2, 21, 10, 1, "青叶原野", TEXT),
-            label(TextRole::Message, 12, 21, 18, 1, message, MUTED_TEXT),
-        ],
+        labels: Vec::new(),
     }
-}
-
-fn draw_world_tile(canvas: &mut Canvas, col: u32, row: u32, tile: Tile) {
-    let (base, accent) = match tile {
-        Tile::Ground => (MAP_GROUND, MAP_GROUND_LIGHT),
-        Tile::Grass => (MAP_GRASS, MAP_GRASS_LIGHT),
-        Tile::Wall => (MAP_WALL, MAP_WALL_LIGHT),
-    };
-    canvas.fill(col, row, 2, 2, base);
-    canvas.set(col + 1, row, accent);
 }
 
 fn world_player_image(
@@ -639,29 +1117,14 @@ const fn world_character_resource(
     ResourceId(CHARACTER_RESOURCE_START + direction_index * 6 + frame_offset as u32)
 }
 
-fn action_label(action: Action, observation: &BattleObservation, own: &Pokemon) -> String {
-    match action {
-        Action::UseMove(slot) => own.moves().get(slot.index()).map_or_else(
-            || "未知招式".into(),
-            |battle_move| battle_move.name().into(),
-        ),
-        Action::Switch(slot) => {
-            format!("换上 {}", observation.own().members()[slot.index()].name())
-        }
-        Action::Struggle => "挣扎".into(),
-    }
+fn active_pokemon(observation: &BattleObservation) -> &Pokemon {
+    &observation.own().members()[observation.own().active_slot().index()]
 }
 
 fn draw_status_panel(canvas: &mut Canvas, col: u32, row: u32, hp: u32, max_hp: u32) {
-    canvas.fill(col, row, 13, 4, PANEL_EDGE);
-    canvas.fill(col + 1, row + 1, 11, 2, PANEL);
-    let bar_width = hp.saturating_mul(10).checked_div(max_hp).unwrap_or(0);
-    let color = if hp.saturating_mul(4) <= max_hp {
-        HP_LOW
-    } else {
-        HP_GOOD
-    };
-    canvas.fill(col + 1, row + 3, bar_width, 1, color);
+    canvas.fill(col, row, 15, 5, PANEL_EDGE);
+    canvas.fill(col + 1, row + 1, 13, 3, PANEL);
+    draw_hp_bar(canvas, col + 1, row + 4, 13, hp, max_hp);
 }
 
 fn draw_action_panel(canvas: &mut Canvas, action_count: usize, selected: usize) {
@@ -674,6 +1137,123 @@ fn draw_action_panel(canvas: &mut Canvas, action_count: usize, selected: usize) 
             canvas.fill(col, row, 15, 2, SELECTED);
         }
     }
+}
+
+fn draw_team_card(canvas: &mut Canvas, col: u32, row: u32, selected: bool, pokemon: &Pokemon) {
+    canvas.fill(
+        col,
+        row,
+        14,
+        6,
+        if selected { SELECTED } else { PANEL_EDGE },
+    );
+    canvas.fill(col + 1, row + 1, 12, 4, PANEL);
+    draw_hp_bar(
+        canvas,
+        col + 4,
+        row + 4,
+        9,
+        pokemon.current_hp(),
+        pokemon.max_hp(),
+    );
+}
+
+fn pokemon_icon_image(
+    col: u32,
+    row: u32,
+    slot: usize,
+    fainted: bool,
+    sprite_frame: usize,
+) -> GpuImage {
+    GpuImage::new(
+        GridRect::new(
+            GridPos::new((col + 1) as i32, (row + 1) as i32),
+            GridSize::new(3, 3),
+        ),
+        pokemon_icon_resource(slot, sprite_frame),
+        if fainted {
+            Rgba8::new(112, 112, 112, 255)
+        } else {
+            Rgba8::new(255, 255, 255, 255)
+        },
+        10,
+    )
+}
+
+fn draw_hp_bar(canvas: &mut Canvas, col: u32, row: u32, width: u32, hp: u32, max_hp: u32) {
+    canvas.fill(col, row, width, 1, HP_TRACK);
+    let filled = hp.saturating_mul(width).checked_div(max_hp).unwrap_or(0);
+    let color = if hp.saturating_mul(4) <= max_hp {
+        HP_LOW
+    } else if hp.saturating_mul(2) <= max_hp {
+        HP_MID
+    } else {
+        HP_GOOD
+    };
+    canvas.fill(col, row, filled.min(width), 1, color);
+}
+
+fn type_icon_images(
+    col: u32,
+    row: u32,
+    primary: PokemonType,
+    secondary: Option<PokemonType>,
+) -> Vec<GpuImage> {
+    let mut images = vec![type_icon_image(col, row, primary)];
+    if let Some(secondary) = secondary {
+        images.push(type_icon_image(col + 2, row, secondary));
+    }
+    images
+}
+
+fn type_icon_image(col: u32, row: u32, pokemon_type: PokemonType) -> GpuImage {
+    GpuImage::new(
+        GridRect::new(GridPos::new(col as i32, row as i32), GridSize::new(2, 1)),
+        type_icon_resource(pokemon_type),
+        Rgba8::new(255, 255, 255, 255),
+        20,
+    )
+}
+
+const fn type_icon_resource(pokemon_type: PokemonType) -> ResourceId {
+    let index = match pokemon_type {
+        PokemonType::Normal => 0,
+        PokemonType::Fighting => 1,
+        PokemonType::Flying => 2,
+        PokemonType::Poison => 3,
+        PokemonType::Ground => 4,
+        PokemonType::Rock => 5,
+        PokemonType::Bug => 6,
+        PokemonType::Ghost => 7,
+        PokemonType::Steel => 8,
+        PokemonType::Fire => 9,
+        PokemonType::Water => 10,
+        PokemonType::Grass => 11,
+        PokemonType::Electric => 12,
+        PokemonType::Psychic => 13,
+        PokemonType::Ice => 14,
+        PokemonType::Dragon => 15,
+        PokemonType::Dark => 16,
+    };
+    ResourceId(TYPE_ICON_RESOURCE_START + index)
+}
+
+fn move_category_icon_image(col: u32, row: u32, category: MoveCategory) -> GpuImage {
+    GpuImage::new(
+        GridRect::new(GridPos::new(col as i32, row as i32), GridSize::new(2, 1)),
+        move_category_icon_resource(category),
+        Rgba8::new(255, 255, 255, 255),
+        20,
+    )
+}
+
+const fn move_category_icon_resource(category: MoveCategory) -> ResourceId {
+    let index = match category {
+        MoveCategory::Physical => 0,
+        MoveCategory::Special => 1,
+        MoveCategory::Status => 2,
+    };
+    ResourceId(MOVE_CATEGORY_ICON_RESOURCE_START + index)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -703,11 +1283,12 @@ pub const fn player_back_resource(slot: usize, frame: usize) -> ResourceId {
 
 pub const fn opponent_front_resource(slot: usize, frame: usize) -> ResourceId {
     ResourceId(
-        BATTLE_SPRITE_RESOURCE_START
-            + battle_application::TEAM_SIZE as u32 * 2
-            + slot as u32 * 2
-            + (frame % 2) as u32,
+        BATTLE_SPRITE_RESOURCE_START + TEAM_SIZE as u32 * 2 + slot as u32 * 2 + (frame % 2) as u32,
     )
+}
+
+pub const fn pokemon_icon_resource(slot: usize, frame: usize) -> ResourceId {
+    ResourceId(POKEMON_ICON_RESOURCE_START + slot as u32 * 2 + (frame % 2) as u32)
 }
 
 fn battle_images(
@@ -715,12 +1296,12 @@ fn battle_images(
     sprites: BattleSpriteResources,
     sprite_frame: usize,
 ) -> Vec<GpuImage> {
-    let player_origin = if animation == BattleAnimation::Acting(Side::One) {
+    let player_origin = if animation == BattleAnimation::Acting(Participant::Own) {
         GridPos::new(6, 9)
     } else {
         GridPos::new(5, 10)
     };
-    let opponent_origin = if animation == BattleAnimation::Acting(Side::Two) {
+    let opponent_origin = if animation == BattleAnimation::Acting(Participant::Opponent) {
         GridPos::new(21, 5)
     } else {
         GridPos::new(22, 4)
@@ -730,22 +1311,22 @@ fn battle_images(
         GpuImage::new(
             GridRect::new(player_origin, GridSize::new(8, 8)),
             sprites.own[sprite_frame % 2],
-            creature_tint(animation, Side::One),
+            creature_tint(animation, Participant::Own),
             10,
         ),
         GpuImage::new(
             GridRect::new(opponent_origin, GridSize::new(8, 8)),
             sprites.opponent[sprite_frame % 2],
-            creature_tint(animation, Side::Two),
+            creature_tint(animation, Participant::Opponent),
             10,
         ),
     ]
 }
 
-fn creature_tint(animation: BattleAnimation, side: Side) -> Rgba8 {
+fn creature_tint(animation: BattleAnimation, participant: Participant) -> Rgba8 {
     match animation {
-        BattleAnimation::Hit(target) if target == side => Rgba8::new(255, 112, 112, 255),
-        BattleAnimation::Fainted(target) if target == side => Rgba8::new(112, 112, 112, 255),
+        BattleAnimation::Hit(target) if target == participant => Rgba8::new(255, 112, 112, 255),
+        BattleAnimation::Fainted(target) if target == participant => Rgba8::new(112, 112, 112, 255),
         _ => Rgba8::new(255, 255, 255, 255),
     }
 }
@@ -832,24 +1413,25 @@ pub fn switch_action(index: usize) -> Action {
     Action::Switch(TeamSlot::new(index).expect("demo team indexes stay in range"))
 }
 
-pub fn phase_message(phase: BattlePhase) -> &'static str {
-    match phase {
-        BattlePhase::Turn => "请选择行动",
-        BattlePhase::ForcedReplacement(_) => "请选择下一只精灵",
-        BattlePhase::Finished(_) => "战斗结束",
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use battle_application::{
+        Accuracy, BattleApplication, BattleStats, Move, MoveCategory, MoveId, Pokemon, PokemonId,
+        PokemonType, TEAM_SIZE, Team,
+    };
+    use battle_session::{
+        Action, BattleCoordinator, BattleObservation, BattleSession, BattleSessionSnapshot,
+        OpponentPolicy,
+    };
     use punctum_gpu::ResourceId;
-    use punctum_grid::GridPos;
+    use punctum_grid::{GridPos, GridSize};
     use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
     use world_application::{Direction, Position, WorldApplication, WorldCommand};
 
     use super::{
-        BattleUiOutcome, BattleUiState, CommandConsoleView, TextRole, WorldAnimation, move_action,
-        overlay_command_console, project_world, world_character_resource, world_command_for_key,
+        BattleMenuPage, BattleSpriteResources, BattleUiOutcome, BattleUiState, CommandConsoleView,
+        TextRole, WorldAnimation, move_action, overlay_command_console, project_battle,
+        project_world, switch_action, world_character_resource, world_command_for_key,
     };
 
     fn key(name: NamedKey) -> KeyEvent {
@@ -861,37 +1443,266 @@ mod tests {
         }
     }
 
+    struct FirstActionPolicy;
+
+    impl OpponentPolicy for FirstActionPolicy {
+        fn choose_action(
+            &mut self,
+            _observation: &BattleObservation,
+            legal_actions: &[Action],
+        ) -> Option<Action> {
+            legal_actions.first().copied()
+        }
+    }
+
+    fn battle_fixture() -> BattleSessionSnapshot {
+        fn team(prefix: &str, move_type: PokemonType) -> Team {
+            let members = (0..TEAM_SIZE)
+                .map(|index| {
+                    let battle_move = Move::new(
+                        MoveId::new(format!("{prefix}-move-{index}")).unwrap(),
+                        if index == 0 { "撞击" } else { "电光一闪" },
+                        move_type,
+                        40,
+                        Accuracy::AlwaysHit,
+                        35,
+                        35,
+                        0,
+                    )
+                    .unwrap();
+                    Pokemon::new(
+                        PokemonId::new(format!("{prefix}-{index}")).unwrap(),
+                        format!("{prefix}{index}"),
+                        24,
+                        move_type,
+                        (index == 0).then_some(PokemonType::Poison),
+                        80 + index as u32,
+                        80 + index as u32,
+                        BattleStats::new(50, 50, 50, 50, 50).unwrap(),
+                        vec![battle_move],
+                    )
+                    .unwrap()
+                })
+                .collect();
+            Team::new(members).unwrap()
+        }
+
+        let application = BattleApplication::new(
+            team("己方", PokemonType::Grass),
+            team("对手", PokemonType::Fire),
+            42,
+        )
+        .unwrap();
+        BattleSession::new(BattleCoordinator::new(application, FirstActionPolicy)).snapshot()
+    }
+
     #[test]
-    fn keyboard_focus_wraps_and_enter_submits_the_selected_legal_action() {
-        let actions = [move_action(0), move_action(1), move_action(2)];
+    fn main_menu_routes_to_fight_pokemon_bag_and_run() {
+        let snapshot = battle_fixture();
+        let interaction = snapshot.interaction();
         let mut ui = BattleUiState::default();
 
         assert_eq!(
-            ui.handle_key(&key(NamedKey::ArrowLeft), &actions),
+            ui.handle_key(&key(NamedKey::Enter), interaction),
             BattleUiOutcome::Updated
         );
-        assert_eq!(ui.selected_index(), 2);
+        assert_eq!(ui.page(), BattleMenuPage::Fight);
         assert_eq!(
-            ui.handle_key(&key(NamedKey::Enter), &actions),
-            BattleUiOutcome::Submit(actions[2])
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Submit(move_action(0))
         );
+
+        ui.reset();
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::ArrowRight), interaction),
+            BattleUiOutcome::Updated
+        );
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Updated
+        );
+        assert_eq!(ui.page(), BattleMenuPage::Pokemon);
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Updated
+        );
+        ui.handle_key(&key(NamedKey::ArrowRight), interaction);
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Submit(switch_action(1))
+        );
+
+        ui.reset();
+        ui.handle_key(&key(NamedKey::ArrowRight), interaction);
+        ui.handle_key(&key(NamedKey::ArrowRight), interaction);
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Updated
+        );
+        assert_eq!(ui.page(), BattleMenuPage::Main);
+
+        ui.reset();
+        ui.handle_key(&key(NamedKey::ArrowLeft), interaction);
+        assert_eq!(ui.selected_index(), 3);
+        assert_eq!(
+            ui.handle_key(&key(NamedKey::Enter), interaction),
+            BattleUiOutcome::Submit(Action::Run)
+        );
+    }
+
+    #[test]
+    fn battle_projection_shows_status_and_move_details() {
+        let snapshot = battle_fixture();
+        let mut ui = BattleUiState::default();
+        let main = project_battle(&snapshot, ui, BattleSpriteResources::for_slots(0, 0), 0);
+        let commands = main
+            .labels()
+            .iter()
+            .filter(|label| matches!(label.role, TextRole::Action(_)))
+            .map(|label| label.content.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(commands, ["战斗", "宝可梦", "包包", "逃走"]);
+        assert!(
+            main.labels()
+                .iter()
+                .any(|label| { label.role == TextRole::PlayerDetail && label.content == "Lv.24" })
+        );
+        assert!(
+            main.images()
+                .iter()
+                .any(|image| image.resource == super::type_icon_resource(PokemonType::Grass))
+        );
+        assert!(
+            main.images()
+                .iter()
+                .any(|image| image.resource == super::type_icon_resource(PokemonType::Poison))
+        );
+        assert!(
+            main.labels()
+                .iter()
+                .any(|label| { label.role == TextRole::PlayerHp && label.content == "HP 80/80" })
+        );
+
+        ui.handle_key(&key(NamedKey::Enter), snapshot.interaction());
+        let fight = project_battle(&snapshot, ui, BattleSpriteResources::for_slots(0, 0), 0);
+        assert!(fight.labels().iter().any(|label| {
+            label.role == TextRole::ActionDetail(0) && label.content == "威40 PP35/35"
+        }));
+        assert!(fight.images().iter().any(|image| {
+            image.resource == super::type_icon_resource(PokemonType::Grass)
+                && image.bounds.origin == GridPos::new(2, 19)
+        }));
+        assert!(fight.images().iter().any(|image| {
+            image.resource == super::move_category_icon_resource(MoveCategory::Special)
+                && image.bounds.origin == GridPos::new(4, 19)
+        }));
+    }
+
+    #[test]
+    fn pokemon_selection_uses_animated_team_icons() {
+        let snapshot = battle_fixture();
+        let mut ui = BattleUiState::default();
+        ui.handle_key(&key(NamedKey::ArrowRight), snapshot.interaction());
+        ui.handle_key(&key(NamedKey::Enter), snapshot.interaction());
+
+        let view = project_battle(&snapshot, ui, BattleSpriteResources::for_slots(0, 0), 0);
+
+        assert!(
+            view.labels()
+                .iter()
+                .any(|label| { label.role == TextRole::PageTitle && label.content == "宝可梦" })
+        );
+        assert_eq!(
+            view.labels()
+                .iter()
+                .filter(|label| matches!(label.role, TextRole::TeamMember(_)))
+                .count(),
+            TEAM_SIZE
+        );
+        assert_eq!(view.images().len(), TEAM_SIZE * 2 + 1);
+        for slot in 0..TEAM_SIZE {
+            assert!(
+                view.images()
+                    .iter()
+                    .any(|image| image.resource == super::pokemon_icon_resource(slot, 0))
+            );
+        }
+        assert!(view.images().iter().any(|image| {
+            image.resource == super::type_icon_resource(PokemonType::Poison)
+                && image.bounds.origin == GridPos::new(12, 5)
+        }));
+
+        let animated = project_battle(&snapshot, ui, BattleSpriteResources::for_slots(0, 0), 1);
+        assert!(
+            animated
+                .images()
+                .iter()
+                .any(|image| image.resource == super::pokemon_icon_resource(0, 1))
+        );
+        assert!(view.images().iter().any(|image| {
+            image.resource == super::pokemon_icon_resource(0, 0)
+                && image.bounds.origin == GridPos::new(2, 4)
+        }));
+    }
+
+    #[test]
+    fn type_icons_are_embedded_in_battle_type_order() {
+        let atlas = super::atlas();
+        let types = [
+            PokemonType::Normal,
+            PokemonType::Fighting,
+            PokemonType::Flying,
+            PokemonType::Poison,
+            PokemonType::Ground,
+            PokemonType::Rock,
+            PokemonType::Bug,
+            PokemonType::Ghost,
+            PokemonType::Steel,
+            PokemonType::Fire,
+            PokemonType::Water,
+            PokemonType::Grass,
+            PokemonType::Electric,
+            PokemonType::Psychic,
+            PokemonType::Ice,
+            PokemonType::Dragon,
+            PokemonType::Dark,
+        ];
+        for pokemon_type in types {
+            assert!(
+                atlas
+                    .resource(super::type_icon_resource(pokemon_type))
+                    .is_some()
+            );
+        }
+        assert_eq!(
+            super::type_icon_resource(PokemonType::Fire),
+            ResourceId(super::TYPE_ICON_RESOURCE_START + 9)
+        );
+        for category in [
+            MoveCategory::Physical,
+            MoveCategory::Special,
+            MoveCategory::Status,
+        ] {
+            assert!(
+                atlas
+                    .resource(super::move_category_icon_resource(category))
+                    .is_some()
+            );
+        }
     }
 
     #[test]
     fn world_projection_and_keyboard_input_share_the_integer_grid() {
         let world = WorldApplication::demo().unwrap();
-        let view = project_world(&world.observe(), "风吹过草地。");
+        let view = project_world(&world.observe());
 
         assert_eq!(
             world_command_for_key(&key(NamedKey::ArrowRight)),
             Some(WorldCommand::Move(Direction::Right))
         );
         assert_eq!(world.observe().player(), Position::new(3, 6));
-        assert!(
-            view.labels().iter().any(|label| {
-                label.role == TextRole::Location && label.content == "青叶原野"
-            })
-        );
+        assert!(view.labels().is_empty());
+        assert_eq!(view.surface().size(), GridSize::new(32, 24));
         assert_eq!(view.images().len(), 1);
         assert_eq!(
             view.images()[0].resource,
@@ -934,7 +1745,7 @@ mod tests {
     #[test]
     fn command_console_overlays_grid_background_and_keeps_text_as_labels() {
         let world = WorldApplication::demo().unwrap();
-        let mut view = project_world(&world.observe(), "风吹过草地。");
+        let mut view = project_world(&world.observe());
         overlay_command_console(
             &mut view,
             &CommandConsoleView {

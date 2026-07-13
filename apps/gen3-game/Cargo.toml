@@ -3,12 +3,16 @@ members = [
     "crates/battle-application",
     "crates/battle-domain",
     "crates/battle-ramus-adapter",
+    "crates/battle-session",
     "crates/game-e2e",
     "crates/game-assets",
     "crates/game-data",
     "crates/game-data-import",
     "crates/game-host",
     "crates/game-ui",
+    "crates/map-editor",
+    "crates/map-project",
+    "crates/map-render",
     "crates/world-application",
     "crates/world-domain",
 ]
@@ -20,7 +24,11 @@ license = "MIT"
 rust-version = "1.88"
 
 [workspace.dependencies]
+battle-application = { path = "crates/battle-application" }
 battle-domain = { path = "crates/battle-domain" }
+battle-session = { path = "crates/battle-session" }
+map-project = { path = "crates/map-project" }
+map-render = { path = "crates/map-render" }
 world-domain = { path = "crates/world-domain" }
 punctum-gpu = { path = "../punctum/crates/punctum-gpu" }
 punctum-grid = { path = "../punctum/crates/punctum-grid" }

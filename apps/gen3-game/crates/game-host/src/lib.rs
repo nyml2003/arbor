@@ -5,7 +5,6 @@
 mod roster;
 
 use std::{
-    collections::VecDeque,
     sync::{
         OnceLock,
         atomic::{AtomicU64, Ordering},
@@ -13,15 +12,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use battle_application::{
-    Action, BattleApplication, BattleError, BattleEvent, BattleObservation, BattleOutcome,
-    BattlePerspective, BattlePhase, PokemonId, Side, TypeEffectiveness, UsedMove,
-};
+use battle_application::{Action, BattleApplication, BattleError, BattleObservation, PokemonId};
+use battle_session::{BattleCoordinator, BattleSession, OpponentPolicy, SessionError};
 use game_data::{CurrentDataSet, DataLoadError};
 use game_ui::{
-    BattleAnimation, BattleDisplayState, BattleSpriteResources, BattleUiOutcome, BattleUiState,
-    GameView, WorldAnimation, phase_message, project_battle, project_world_presented,
-    world_command_for_key,
+    BattleSpriteResources, BattleUiOutcome, BattleUiState, GameView, WorldAnimation,
+    project_battle, project_world_presented, world_command_for_key,
 };
 use punctum_gpu::PixelOffset;
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
@@ -40,7 +36,7 @@ pub enum GameScene {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameError {
     World(WorldError),
-    Battle(BattleError),
+    Battle(SessionError),
     Setup(DemoSetupError),
     PlayerActionUnavailable,
     WrongScene {
@@ -55,8 +51,8 @@ impl From<WorldError> for GameError {
     }
 }
 
-impl From<BattleError> for GameError {
-    fn from(error: BattleError) -> Self {
+impl From<SessionError> for GameError {
+    fn from(error: SessionError) -> Self {
         Self::Battle(error)
     }
 }
@@ -96,7 +92,6 @@ pub struct DemoGame {
     world: WorldApplication,
     battle: Option<DemoBattle>,
     scene: GameScene,
-    world_message: String,
     roster_seed: u64,
 }
 
@@ -109,13 +104,20 @@ impl DemoGame {
         Self::new_with_seed(random_roster_seed())
     }
 
+    pub fn new_random_with_world(world: WorldApplication) -> Result<Self, GameError> {
+        Self::with_world_and_seed(world, random_roster_seed())
+    }
+
     pub fn new_with_seed(roster_seed: u64) -> Result<Self, GameError> {
+        Self::with_world_and_seed(WorldApplication::demo()?, roster_seed)
+    }
+
+    fn with_world_and_seed(world: WorldApplication, roster_seed: u64) -> Result<Self, GameError> {
         roster::demo_teams(demo_data()?, roster_seed).map_err(DemoSetupError::from)?;
         Ok(Self {
-            world: WorldApplication::demo()?,
+            world,
             battle: None,
             scene: GameScene::World,
-            world_message: "风吹过草地。".into(),
             roster_seed,
         })
     }
@@ -132,6 +134,10 @@ impl DemoGame {
 
     pub fn world_observation(&self) -> WorldObservation {
         self.world.observe()
+    }
+
+    pub const fn world_position(&self) -> world_application::Position {
+        self.world.player()
     }
 
     pub fn view(&mut self) -> GameView {
@@ -159,7 +165,6 @@ impl DemoGame {
         match self.scene {
             GameScene::World => project_world_presented(
                 &self.world.observe(),
-                &self.world_message,
                 world_animation,
                 sprite_frame,
                 world_pixel_offset,
@@ -189,10 +194,9 @@ impl DemoGame {
                     .battle
                     .as_mut()
                     .expect("the battle scene owns a battle");
-                if battle.is_finished() && !battle.is_playing() && is_enter_press(key) {
+                if battle.is_finished() && is_enter_press(key) {
                     self.battle = None;
                     self.scene = GameScene::World;
-                    self.world_message = "战斗结束，回到了原野。".into();
                     return Ok(true);
                 }
                 battle.handle_key(key).map_err(Into::into)
@@ -211,13 +215,6 @@ impl DemoGame {
             .world
             .submit(world_application::WorldCommand::Move(direction));
         let event = outcome.event();
-        self.world_message = match event {
-            WorldEvent::Turned { .. } => "风吹过草地。",
-            WorldEvent::Moved { .. } => "风吹过草地。",
-            WorldEvent::Blocked { .. } => "前面过不去。",
-            WorldEvent::EncounterTriggered { .. } => "草丛里有动静！",
-        }
-        .into();
         if outcome.starts_battle() {
             self.battle = Some(DemoBattle::new_with_seed(self.roster_seed)?);
             self.scene = GameScene::Battle;
@@ -289,22 +286,26 @@ fn is_enter_press(key: &KeyEvent) -> bool {
 }
 
 pub struct DemoBattle {
-    application: BattleApplication,
-    player: BattlePerspective,
-    opponent: BattlePerspective,
+    session: BattleSession<DemoOpponentPolicy>,
     ui: BattleUiState,
-    message: String,
-    animation: BattleAnimation,
-    display: BattleDisplayState,
-    playback: VecDeque<PlaybackFrame>,
+    own_sprite_ids: Vec<PokemonId>,
     opponent_sprite_ids: Vec<PokemonId>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct PlaybackFrame {
-    message: String,
-    animation: BattleAnimation,
-    display: BattleDisplayState,
+struct DemoOpponentPolicy;
+
+impl OpponentPolicy for DemoOpponentPolicy {
+    fn choose_action(
+        &mut self,
+        _observation: &BattleObservation,
+        legal_actions: &[Action],
+    ) -> Option<Action> {
+        legal_actions
+            .iter()
+            .copied()
+            .find(|action| matches!(action, Action::UseMove(_)))
+            .or_else(|| legal_actions.first().copied())
+    }
 }
 
 impl DemoBattle {
@@ -315,6 +316,11 @@ impl DemoBattle {
     fn new_with_seed(roster_seed: u64) -> Result<Self, DemoSetupError> {
         let data = demo_data()?;
         let (player_team, opponent_team) = roster::demo_teams(data, roster_seed)?;
+        let own_sprite_ids = player_team
+            .members()
+            .iter()
+            .map(|pokemon| pokemon.id().clone())
+            .collect();
         let opponent_sprite_ids = opponent_team
             .members()
             .iter()
@@ -322,27 +328,21 @@ impl DemoBattle {
             .collect();
         let application =
             BattleApplication::new(player_team, opponent_team, roster_seed ^ 0xA2B3_C4D5)?;
-        let (player, opponent) = application.perspectives();
-        let display = display_from_observation(&application.observe(&player));
+        let session = BattleSession::new(BattleCoordinator::new(application, DemoOpponentPolicy));
         Ok(Self {
-            application,
-            player,
-            opponent,
+            session,
             ui: BattleUiState::default(),
-            message: "请选择行动".into(),
-            animation: BattleAnimation::Idle,
-            display,
-            playback: VecDeque::new(),
+            own_sprite_ids,
             opponent_sprite_ids,
         })
     }
 
     pub fn observation(&self) -> BattleObservation {
-        self.application.observe(&self.player)
+        self.session.settled_observation()
     }
 
     pub fn legal_actions(&self) -> Vec<Action> {
-        self.application.legal_actions(&self.player)
+        self.session.legal_actions().to_vec()
     }
 
     pub fn view(&mut self) -> GameView {
@@ -350,39 +350,29 @@ impl DemoBattle {
     }
 
     pub fn view_with_sprite_frame(&mut self, sprite_frame: usize) -> GameView {
-        let observation = self.observation();
-        let actions = if self.is_playing() {
-            Vec::new()
-        } else {
-            self.legal_actions()
-        };
-        self.ui.reconcile(&actions);
+        let snapshot = self.session.snapshot();
+        self.ui.sync_interaction(snapshot.interaction());
+        let own_slot = self
+            .own_sprite_ids
+            .iter()
+            .position(|id| id == snapshot.scene().own().id())
+            .expect("the displayed player pokemon belongs to the generated roster");
         let opponent_slot = self
             .opponent_sprite_ids
             .iter()
-            .position(|id| id == observation.opponent().active().id())
-            .expect("the active opponent belongs to the generated roster");
+            .position(|id| id == snapshot.scene().opponent().id())
+            .expect("the displayed opponent belongs to the generated roster");
         project_battle(
-            &observation,
-            &actions,
+            &snapshot,
             self.ui,
-            &self.message,
-            self.animation,
-            &self.display,
-            BattleSpriteResources::for_slots(
-                observation.own().active_slot().index(),
-                opponent_slot,
-            ),
+            BattleSpriteResources::for_slots(own_slot, opponent_slot),
             sprite_frame,
         )
     }
 
-    pub fn handle_key(&mut self, key: &KeyEvent) -> Result<bool, BattleError> {
-        if self.is_playing() {
-            return Ok(false);
-        }
-        let actions = self.legal_actions();
-        match self.ui.handle_key(key, &actions) {
+    pub fn handle_key(&mut self, key: &KeyEvent) -> Result<bool, SessionError> {
+        let snapshot = self.session.snapshot();
+        match self.ui.handle_key(key, snapshot.interaction()) {
             BattleUiOutcome::Updated => Ok(true),
             BattleUiOutcome::Submit(action) => {
                 self.submit_player(action)?;
@@ -392,279 +382,24 @@ impl DemoBattle {
         }
     }
 
-    pub fn submit_player(&mut self, action: Action) -> Result<(), BattleError> {
-        self.display = display_from_observation(&self.observation());
-        self.playback.clear();
-        self.animation = BattleAnimation::Idle;
-        let mut events = Vec::new();
-        let outcome = self.application.submit(&self.player, action)?;
-        events.extend_from_slice(outcome.events());
-        if outcome.is_waiting_for_opponent() {
-            events.extend(self.submit_opponent()?);
-        }
-        events.extend(self.resolve_opponent_replacement()?);
-        self.start_playback(&events);
-        self.ui.reconcile(&self.legal_actions());
-        Ok(())
+    pub fn submit_player(&mut self, action: Action) -> Result<(), SessionError> {
+        self.session.submit(action)
     }
 
     pub fn has_pending_playback(&self) -> bool {
-        !self.playback.is_empty()
+        self.session.has_pending_playback()
     }
 
     pub fn advance_playback(&mut self) -> bool {
-        let Some(frame) = self.playback.pop_front() else {
-            return false;
-        };
-        self.message = frame.message;
-        self.animation = frame.animation;
-        self.display = frame.display;
-        true
+        self.session.advance()
     }
 
     pub fn is_finished(&self) -> bool {
-        matches!(self.observation().phase(), BattlePhase::Finished(_))
+        self.session.is_finished()
     }
 
     fn is_playing(&self) -> bool {
-        self.has_pending_playback() || self.animation != BattleAnimation::Idle
-    }
-
-    fn submit_opponent(&mut self) -> Result<Vec<BattleEvent>, BattleError> {
-        let Some(action) = choose_opponent_action(self.application.legal_actions(&self.opponent))
-        else {
-            return Ok(Vec::new());
-        };
-        let outcome = self.application.submit(&self.opponent, action)?;
-        Ok(outcome.events().to_vec())
-    }
-
-    fn resolve_opponent_replacement(&mut self) -> Result<Vec<BattleEvent>, BattleError> {
-        let mut events = Vec::new();
-        loop {
-            let phase = self.application.observe(&self.opponent).phase();
-            if !phase.requires_replacement(Side::Two) || phase.requires_replacement(Side::One) {
-                return Ok(events);
-            }
-            events.extend(self.submit_opponent()?);
-        }
-    }
-
-    fn start_playback(&mut self, events: &[BattleEvent]) {
-        let mut display = self.display.clone();
-        let mut frames = events
-            .iter()
-            .filter_map(|event| self.event_frame(event, &mut display))
-            .collect::<VecDeque<_>>();
-        frames.push_back(PlaybackFrame {
-            message: phase_message(self.observation().phase()).into(),
-            animation: BattleAnimation::Idle,
-            display: display_from_observation(&self.observation()),
-        });
-        if let Some(frame) = frames.pop_front() {
-            self.message = frame.message;
-            self.animation = frame.animation;
-            self.display = frame.display;
-        }
-        self.playback = frames;
-    }
-
-    fn event_frame(
-        &self,
-        event: &BattleEvent,
-        display: &mut BattleDisplayState,
-    ) -> Option<PlaybackFrame> {
-        let (message, animation) = match event {
-            BattleEvent::TurnStarted { turn } => (format!("第 {turn} 回合"), BattleAnimation::Idle),
-            BattleEvent::MoveUsed {
-                side,
-                pokemon,
-                used_move,
-            } => (
-                format!(
-                    "{} 使用了 {}！",
-                    self.pokemon_name(pokemon),
-                    self.move_name(used_move),
-                ),
-                BattleAnimation::Acting(*side),
-            ),
-            BattleEvent::Damage {
-                target_side,
-                target,
-                amount,
-                ..
-            } => (
-                format!("{} 受到 {} 点伤害。", self.pokemon_name(target), amount),
-                BattleAnimation::Hit(*target_side),
-            ),
-            BattleEvent::Missed { .. } => ("攻击没有命中。".into(), BattleAnimation::Idle),
-            BattleEvent::Critical { target_side, .. } => {
-                ("会心一击！".into(), BattleAnimation::Hit(*target_side))
-            }
-            BattleEvent::Effectiveness { effectiveness, .. } => (
-                effectiveness_message(*effectiveness).into(),
-                BattleAnimation::Idle,
-            ),
-            BattleEvent::Fainted { side, pokemon } => (
-                format!("{} 倒下了。", self.pokemon_name(pokemon)),
-                BattleAnimation::Fainted(*side),
-            ),
-            BattleEvent::ForcedReplacement { .. } => {
-                ("请选择下一只精灵".into(), BattleAnimation::Idle)
-            }
-            BattleEvent::OwnSwitched { pokemon, .. }
-            | BattleEvent::OpponentSwitched { pokemon } => (
-                format!("{} 上场了。", self.pokemon_name(pokemon)),
-                BattleAnimation::Idle,
-            ),
-            BattleEvent::BattleFinished { outcome } => (
-                match outcome {
-                    BattleOutcome::Winner(Side::One) => "你赢了！",
-                    BattleOutcome::Winner(Side::Two) => "对手赢了。",
-                    BattleOutcome::Draw => "战斗平局。",
-                }
-                .into(),
-                BattleAnimation::Idle,
-            ),
-            BattleEvent::OwnCommandAccepted { .. }
-            | BattleEvent::OpponentCommandCommitted
-            | BattleEvent::OwnPpSpent { .. } => return None,
-        };
-        match event {
-            BattleEvent::Damage {
-                target_side,
-                remaining_hp,
-                ..
-            } => match target_side {
-                Side::One => display.own_hp = *remaining_hp,
-                Side::Two => display.opponent_hp = *remaining_hp,
-            },
-            BattleEvent::OwnSwitched { pokemon, .. } => {
-                update_own_display(display, &self.observation(), pokemon);
-            }
-            BattleEvent::OpponentSwitched { pokemon } => {
-                update_opponent_display(display, &self.observation(), pokemon);
-            }
-            _ => {}
-        }
-        Some(PlaybackFrame {
-            message,
-            animation,
-            display: display.clone(),
-        })
-    }
-
-    fn pokemon_name(&self, id: &battle_application::PokemonId) -> String {
-        let observation = self.observation();
-        observation
-            .own()
-            .members()
-            .iter()
-            .find(|pokemon| pokemon.id() == id)
-            .map(|pokemon| pokemon.name().to_owned())
-            .or_else(|| {
-                let opponent = observation.opponent();
-                opponent
-                    .active()
-                    .id()
-                    .eq(id)
-                    .then(|| opponent.active().name().to_owned())
-                    .or_else(|| {
-                        opponent
-                            .revealed_bench()
-                            .iter()
-                            .find(|pokemon| pokemon.id() == id)
-                            .map(|pokemon| pokemon.name().to_owned())
-                    })
-            })
-            .unwrap_or_else(|| id.as_str().to_owned())
-    }
-
-    fn move_name(&self, used_move: &UsedMove) -> String {
-        let UsedMove::Move { id } = used_move else {
-            return "挣扎".into();
-        };
-        let observation = self.observation();
-        observation
-            .own()
-            .members()
-            .iter()
-            .flat_map(|pokemon| pokemon.moves())
-            .find(|battle_move| battle_move.id() == id)
-            .map(|battle_move| battle_move.name().to_owned())
-            .or_else(|| {
-                let opponent = observation.opponent();
-                opponent
-                    .active()
-                    .revealed_moves()
-                    .iter()
-                    .find(|battle_move| battle_move.id() == id)
-                    .map(|battle_move| battle_move.name().to_owned())
-            })
-            .unwrap_or_else(|| id.as_str().to_owned())
-    }
-}
-
-fn display_from_observation(observation: &BattleObservation) -> BattleDisplayState {
-    let own = &observation.own().members()[observation.own().active_slot().index()];
-    let opponent = observation.opponent().active();
-    BattleDisplayState {
-        own_name: own.name().into(),
-        own_hp: own.current_hp(),
-        own_max_hp: own.max_hp(),
-        opponent_name: opponent.name().into(),
-        opponent_hp: opponent.current_hp(),
-        opponent_max_hp: opponent.max_hp(),
-    }
-}
-
-fn update_own_display(
-    display: &mut BattleDisplayState,
-    observation: &BattleObservation,
-    id: &PokemonId,
-) {
-    if let Some(pokemon) = observation
-        .own()
-        .members()
-        .iter()
-        .find(|pokemon| pokemon.id() == id)
-    {
-        display.own_name = pokemon.name().into();
-        display.own_hp = pokemon.current_hp();
-        display.own_max_hp = pokemon.max_hp();
-    }
-}
-
-fn update_opponent_display(
-    display: &mut BattleDisplayState,
-    observation: &BattleObservation,
-    id: &PokemonId,
-) {
-    let opponent = observation.opponent();
-    let pokemon = std::iter::once(opponent.active())
-        .chain(opponent.revealed_bench().iter())
-        .find(|pokemon| pokemon.id() == id);
-    if let Some(pokemon) = pokemon {
-        display.opponent_name = pokemon.name().into();
-        display.opponent_hp = pokemon.current_hp();
-        display.opponent_max_hp = pokemon.max_hp();
-    }
-}
-
-fn choose_opponent_action(actions: Vec<Action>) -> Option<Action> {
-    actions
-        .iter()
-        .copied()
-        .find(|action| matches!(action, Action::UseMove(_)))
-        .or_else(|| actions.first().copied())
-}
-
-fn effectiveness_message(effectiveness: TypeEffectiveness) -> &'static str {
-    match effectiveness {
-        TypeEffectiveness::Immune => "没有效果。",
-        TypeEffectiveness::Quarter | TypeEffectiveness::Half => "效果不太好……",
-        TypeEffectiveness::Normal => "命中了。",
-        TypeEffectiveness::Double | TypeEffectiveness::Quadruple => "效果绝佳！",
+        self.session.has_pending_playback()
     }
 }
 
@@ -737,7 +472,7 @@ mod tests {
     #[test]
     fn displayed_hp_changes_only_when_the_damage_frame_is_presented() {
         let mut battle = DemoBattle::new().unwrap();
-        let initial_display = battle.display.clone();
+        let initial_scene = battle.session.snapshot().scene().clone();
         let action = battle
             .legal_actions()
             .into_iter()
@@ -746,12 +481,19 @@ mod tests {
 
         battle.submit_player(action).unwrap();
 
-        assert_eq!(battle.display, initial_display);
+        assert_eq!(battle.session.snapshot().scene(), &initial_scene);
         while battle.has_pending_playback() {
             battle.advance_playback();
         }
-        let final_display = super::display_from_observation(&battle.observation());
-        assert_eq!(battle.display, final_display);
+        let observation = battle.observation();
+        let active = &observation.own().members()[observation.own().active_slot().index()];
+        let final_scene = battle.session.snapshot();
+        assert_eq!(final_scene.scene().own().id(), active.id());
+        assert_eq!(final_scene.scene().own().current_hp(), active.current_hp());
+        assert_eq!(
+            final_scene.scene().opponent().current_hp(),
+            observation.opponent().active().current_hp()
+        );
     }
 
     #[test]
@@ -779,11 +521,15 @@ mod tests {
                 .count()
                 == 4
         );
-        assert!(view.labels().iter().any(|label| {
-            matches!(label.role, TextRole::Action(_))
-                && label.content.starts_with(active.moves()[0].name())
-        }));
-        assert_eq!(view.images().len(), 2);
+        assert_eq!(
+            view.labels()
+                .iter()
+                .filter(|label| matches!(label.role, TextRole::Action(_)))
+                .map(|label| label.content.as_str())
+                .collect::<Vec<_>>(),
+            ["战斗", "宝可梦", "包包", "逃走"]
+        );
+        assert!((4..=6).contains(&view.images().len()));
         assert_eq!(view.images()[0].resource, player_back_resource(0, 0));
         assert_eq!(
             view.images()[0].bounds,
@@ -804,8 +550,9 @@ mod tests {
     }
 
     #[test]
-    fn switching_the_active_pokemon_switches_the_back_sprite_resource() {
+    fn switching_the_active_pokemon_changes_identity_and_sprite_on_the_same_frame() {
         let mut battle = DemoBattle::new().unwrap();
+        let previous_id = battle.session.snapshot().scene().own().id().clone();
         let action = battle
             .legal_actions()
             .into_iter()
@@ -814,13 +561,183 @@ mod tests {
         let Action::Switch(slot) = action else {
             unreachable!("the selected action is a switch")
         };
+        let before = battle.observation();
+        let entry_hp = before.own().members()[slot.index()].current_hp();
+        let replacement_name = before.own().members()[slot.index()].name().to_owned();
+        let opponent_name = before.opponent().active().name().to_owned();
 
         battle.submit_player(action).unwrap();
-        let view = battle.view_with_sprite_frame(0);
+        let submitted = battle.view_with_sprite_frame(0);
+        assert_eq!(battle.session.snapshot().scene().own().id(), &previous_id);
+        assert_eq!(submitted.images()[0].resource, player_back_resource(0, 0));
 
-        assert_eq!(
-            view.images()[0].resource,
-            player_back_resource(slot.index(), 0)
+        let mut switched = false;
+        let mut damage_presented = false;
+        while battle.has_pending_playback() {
+            battle.advance_playback();
+            let view = battle.view_with_sprite_frame(0);
+            let displayed_name = view
+                .labels()
+                .iter()
+                .find(|label| label.role == TextRole::PlayerName)
+                .unwrap();
+            let message = view
+                .labels()
+                .iter()
+                .find(|label| label.role == TextRole::Message)
+                .unwrap();
+            let snapshot = battle.session.snapshot();
+            assert_eq!(displayed_name.content, snapshot.scene().own().name());
+            if view.images()[0].resource == player_back_resource(slot.index(), 0) {
+                assert_ne!(snapshot.scene().own().id(), &previous_id);
+                switched = true;
+                if !damage_presented && !message.content.contains("受到") {
+                    assert_eq!(snapshot.scene().own().current_hp(), entry_hp);
+                }
+            }
+            if message.content.contains("使用了") {
+                assert!(
+                    switched,
+                    "the replacement must appear before the attack: {} / displayed {} / replacement {} / opponent {}",
+                    message.content,
+                    snapshot.scene().own().name(),
+                    replacement_name,
+                    opponent_name
+                );
+                assert_eq!(snapshot.scene().own().current_hp(), entry_hp);
+            }
+            damage_presented |= message.content.contains("受到");
+        }
+        assert!(
+            switched,
+            "the switch event must update the displayed sprite"
         );
+    }
+
+    #[test]
+    fn knocked_out_opponent_keeps_its_sprite_until_the_replacement_frame() {
+        let mut battle = DemoBattle::new().unwrap();
+
+        for _ in 0..500 {
+            while battle.has_pending_playback() {
+                battle.advance_playback();
+            }
+            if battle.is_finished() {
+                break;
+            }
+            let previous_id = battle.observation().opponent().active().id().clone();
+            let previous_slot = battle
+                .opponent_sprite_ids
+                .iter()
+                .position(|id| id == &previous_id)
+                .unwrap();
+            let action = battle
+                .legal_actions()
+                .into_iter()
+                .find(|action| matches!(action, Action::UseMove(_)))
+                .or_else(|| battle.legal_actions().into_iter().next())
+                .unwrap();
+
+            battle.submit_player(action).unwrap();
+            let current_id = battle.observation().opponent().active().id().clone();
+            if current_id == previous_id {
+                continue;
+            }
+
+            let submitted = battle.view_with_sprite_frame(0);
+            assert_eq!(
+                battle.session.snapshot().scene().opponent().id(),
+                &previous_id
+            );
+            assert_eq!(
+                submitted.images()[1].resource,
+                opponent_front_resource(previous_slot, 0)
+            );
+
+            let mut replacement_presented = false;
+            while battle.has_pending_playback() {
+                battle.advance_playback();
+                let displayed_slot = battle
+                    .opponent_sprite_ids
+                    .iter()
+                    .position(|id| id == battle.session.snapshot().scene().opponent().id())
+                    .unwrap();
+                let view = battle.view_with_sprite_frame(0);
+                let displayed_name = view
+                    .labels()
+                    .iter()
+                    .find(|label| label.role == TextRole::OpponentName)
+                    .unwrap();
+                let snapshot = battle.session.snapshot();
+                assert_eq!(displayed_name.content, snapshot.scene().opponent().name());
+                assert_eq!(
+                    view.images()[1].resource,
+                    opponent_front_resource(displayed_slot, 0)
+                );
+                replacement_presented |= snapshot.scene().opponent().id() == &current_id;
+            }
+            assert!(replacement_presented);
+            return;
+        }
+
+        panic!("the deterministic demo battle must present an opponent replacement");
+    }
+
+    #[test]
+    fn faint_playback_finishes_before_the_forced_replacement_page_opens() {
+        let mut battle = DemoBattle::new().unwrap();
+
+        for _ in 0..500 {
+            while battle.has_pending_playback() {
+                battle.advance_playback();
+            }
+            if battle.is_finished() {
+                break;
+            }
+            let action = battle
+                .legal_actions()
+                .into_iter()
+                .find(|action| matches!(action, Action::UseMove(_)))
+                .or_else(|| battle.legal_actions().into_iter().next())
+                .unwrap();
+            battle.submit_player(action).unwrap();
+
+            let observation = battle.observation();
+            if !observation
+                .phase()
+                .requires_replacement(observation.viewer())
+            {
+                continue;
+            }
+
+            assert!(battle.has_pending_playback());
+            let first_frame = battle.view();
+            assert!(
+                !first_frame
+                    .labels()
+                    .iter()
+                    .any(|label| label.role == TextRole::PageTitle)
+            );
+            while battle.has_pending_playback() {
+                battle.advance_playback();
+                let still_playing = battle.has_pending_playback();
+                let view = battle.view();
+                if still_playing {
+                    assert!(
+                        !view
+                            .labels()
+                            .iter()
+                            .any(|label| label.role == TextRole::PageTitle)
+                    );
+                }
+            }
+            let replacement = battle.view();
+            assert!(replacement.labels().iter().any(|label| {
+                label.role == TextRole::PageTitle && label.content == "宝可梦"
+            }));
+            return;
+        }
+
+        panic!("the deterministic demo battle must require a player replacement");
     }
 }

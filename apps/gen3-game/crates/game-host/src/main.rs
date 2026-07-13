@@ -1,4 +1,5 @@
 mod console;
+mod map;
 mod movement;
 mod sprites;
 mod text;
@@ -14,6 +15,9 @@ use game_host::{DemoGame, GameScene};
 use game_ui::{
     CANVAS_HEIGHT, CANVAS_WIDTH, CommandConsoleView, WorldAnimation, overlay_command_console,
 };
+use map::load_map;
+use map_project::MapProject;
+use map_render::{AtomicTileCatalog, MapCamera, MapGridLayout, MapRenderInput, project_map};
 use movement::{Gait, PressedDirections, RUN_STOP_DURATION, WORLD_TICK_INTERVAL, WorldMotion};
 use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_composite};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey, PhysicalKeyCode, TextEvent};
@@ -46,6 +50,8 @@ enum HostMode {
 struct CreatureGameApp {
     mode: HostMode,
     game: DemoGame,
+    map_project: MapProject,
+    map_catalog: AtomicTileCatalog,
     console: GameConsole,
     console_state: ConsoleState,
     atlas: GpuAtlas,
@@ -67,15 +73,20 @@ struct CreatureGameApp {
 
 impl CreatureGameApp {
     fn new() -> Result<Self, Box<dyn Error>> {
-        let game = DemoGame::new_random()
+        let loaded_map = load_map()?;
+        let world = world_application::WorldApplication::from_map_project(&loaded_map.project)
+            .map_err(|error| std::io::Error::other(format!("map world: {error:?}")))?;
+        let game = DemoGame::new_random_with_world(world)
             .map_err(|error| std::io::Error::other(format!("demo game: {error:?}")))?;
         let sprite_manifest = game
             .sprite_manifest()
             .map_err(|error| std::io::Error::other(format!("demo sprite manifest: {error:?}")))?;
-        let atlas = load_battle_atlas(&sprite_manifest)?;
+        let atlas = load_battle_atlas(&sprite_manifest, &loaded_map.images)?;
         Ok(Self {
             mode: HostMode::Gameplay,
             game,
+            map_project: loaded_map.project,
+            map_catalog: loaded_map.catalog,
             console: GameConsole::new(),
             console_state: ConsoleState::default(),
             atlas,
@@ -127,9 +138,37 @@ impl CreatureGameApp {
         let viewport = battle_viewport(surface_size);
         let (world_animation, sprite_frame, world_pixel_offset) =
             self.presentation(Instant::now(), viewport.cell_size);
+        let world_scene = self.game.scene() == GameScene::World;
+        let player_pixel_offset = if world_scene {
+            PixelOffset::new(0, 0)
+        } else {
+            world_pixel_offset
+        };
         let mut view =
             self.game
-                .view_with_presentation(sprite_frame, world_animation, world_pixel_offset);
+                .view_with_presentation(sprite_frame, world_animation, player_pixel_offset);
+        if world_scene {
+            let camera = world_camera(self.game.world_position());
+            let scene = match project_map(MapRenderInput {
+                project: &self.map_project,
+                catalog: &self.map_catalog,
+                camera,
+                pixel_offset: invert_pixel_offset(world_pixel_offset),
+                viewport,
+                layout: MapGridLayout::new(
+                    punctum_grid::GridSize::new(CANVAS_WIDTH, CANVAS_HEIGHT),
+                    punctum_grid::GridSize::new(2, 2),
+                ),
+            }) {
+                Ok(scene) => scene,
+                Err(error) => {
+                    eprintln!("map projection failed: {error}");
+                    event_loop.exit();
+                    return;
+                }
+            };
+            view.replace_world_background(&scene, camera);
+        }
         if self.mode == HostMode::Console {
             overlay_command_console(&mut view, &self.console_view());
         }
@@ -154,14 +193,18 @@ impl CreatureGameApp {
         let labels = view.labels();
         let renderer = &mut self.text_renderer;
         let mut text_result = Ok(());
-        let result = runtime.present_plan_with_overlay(
-            &plan,
-            |device, queue, target, encoder, format, size| {
-                text_result = renderer.encode(
-                    labels, viewport, device, queue, target, encoder, format, size,
-                );
-            },
-        );
+        let result = if labels.is_empty() {
+            runtime.present_plan(&plan)
+        } else {
+            runtime.present_plan_with_overlay(
+                &plan,
+                |device, queue, target, encoder, format, size| {
+                    text_result = renderer.encode(
+                        labels, viewport, device, queue, target, encoder, format, size,
+                    );
+                },
+            )
+        };
         if let Err(error) = text_result {
             eprintln!("game text rendering failed: {error}");
             event_loop.exit();
@@ -658,6 +701,19 @@ fn pixel_size(size: PhysicalSize<u32>) -> PixelSize {
     PixelSize::new(size.width, size.height)
 }
 
+fn world_camera(player: world_application::Position) -> MapCamera {
+    const VIEW_COLS: u16 = 16;
+    const VIEW_ROWS: u16 = 12;
+    MapCamera::new(
+        i32::from(player.x()) - i32::from(VIEW_COLS / 2),
+        i32::from(player.y()) - i32::from(VIEW_ROWS / 2),
+    )
+}
+
+const fn invert_pixel_offset(offset: PixelOffset) -> PixelOffset {
+    PixelOffset::new(-offset.x, -offset.y)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new()?;
     let mut app = CreatureGameApp::new()?;
@@ -673,9 +729,10 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        ConsoleIntent, battle_viewport, console_intent_for_key, earliest_deadline,
-        is_console_toggle, next_sprite_frame,
+        ConsoleIntent, MapCamera, battle_viewport, console_intent_for_key, earliest_deadline,
+        invert_pixel_offset, is_console_toggle, next_sprite_frame, world_camera,
     };
+    use world_application::Position;
 
     fn key(logical: LogicalKey, physical: PhysicalKeyCode, modifiers: Modifiers) -> KeyEvent {
         KeyEvent {
@@ -695,6 +752,16 @@ mod tests {
         let wide = battle_viewport(PixelSize::new(1000, 720));
         assert_eq!(wide.cell_size, PixelSize::new(30, 30));
         assert_eq!(wide.origin, PixelOffset::new(20, 0));
+    }
+
+    #[test]
+    fn world_camera_keeps_the_player_centered_even_near_map_edges() {
+        assert_eq!(world_camera(Position::new(3, 6)), MapCamera::new(-5, 0));
+        assert_eq!(world_camera(Position::new(20, 14)), MapCamera::new(12, 8));
+        assert_eq!(
+            invert_pixel_offset(PixelOffset::new(-60, 30)),
+            PixelOffset::new(60, -30)
+        );
     }
 
     #[test]

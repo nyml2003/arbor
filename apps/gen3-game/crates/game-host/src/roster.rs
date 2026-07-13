@@ -1,10 +1,13 @@
 use std::collections::BTreeSet;
 
 use battle_application::{
-    Accuracy, MAX_MOVES, Move, MoveId, Pokemon, PokemonId, PokemonType, StatBlock,
+    Accuracy, MAX_MOVES, Move, MoveCategory, MoveId, Pokemon, PokemonId, PokemonType, StatBlock,
     StatProjectionError, TEAM_SIZE, Team, TrainingValues, ValidationError, calculate_gen3_stats,
 };
-use game_data::{CurrentDataSet, MoveId as DataMoveId, PokemonFormId, TypeId as DataTypeId};
+use game_data::{
+    CurrentDataSet, DamageClass as DataDamageClass, MoveId as DataMoveId, PokemonFormId,
+    TypeId as DataTypeId,
+};
 
 const ROSTER_SIZE: usize = TEAM_SIZE * 2;
 const DEMO_LEVEL: u8 = 50;
@@ -277,10 +280,11 @@ fn battle_move(data: &CurrentDataSet, id: DataMoveId) -> Result<Move, RosterErro
         .map(Accuracy::percent)
         .transpose()?
         .unwrap_or(Accuracy::AlwaysHit);
-    Move::new(
+    Move::new_with_category(
         MoveId::new(format!("pokeapi-move-{}", id.0))?,
         &record.display_name.localized,
         battle_type(data, record.move_type)?,
+        battle_move_category(record.damage_class),
         power,
         accuracy,
         pp,
@@ -288,6 +292,14 @@ fn battle_move(data: &CurrentDataSet, id: DataMoveId) -> Result<Move, RosterErro
         record.priority,
     )
     .map_err(Into::into)
+}
+
+const fn battle_move_category(damage_class: DataDamageClass) -> MoveCategory {
+    match damage_class {
+        DataDamageClass::Physical => MoveCategory::Physical,
+        DataDamageClass::Special => MoveCategory::Special,
+        DataDamageClass::Status => MoveCategory::Status,
+    }
 }
 
 fn battle_type(data: &CurrentDataSet, id: DataTypeId) -> Result<PokemonType, RosterError> {

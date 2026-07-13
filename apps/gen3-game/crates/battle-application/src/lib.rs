@@ -7,30 +7,43 @@ mod observation;
 pub use battle_domain::{
     Accuracy, Action, BattleError, BattleOutcome, BattlePhase, BattleStats, CalculatedStats,
     EffortValues, IllegalActionReason, IndividualValues, MAX_EFFORT_VALUE, MAX_INDIVIDUAL_VALUE,
-    MAX_MOVES, MAX_TOTAL_EFFORT_VALUE, Move, MoveId, MoveSlot, Nature, NonHpStat, Pokemon,
-    PokemonId, PokemonType, ReplacementSides, Side, StatBlock, StatName, StatProjectionError,
-    TEAM_SIZE, Team, TeamSlot, TrainingValues, TypeEffectiveness, ValidationError,
-    calculate_gen3_stats,
+    MAX_MOVES, MAX_TOTAL_EFFORT_VALUE, Move, MoveCategory, MoveId, MoveSlot, Nature, NonHpStat,
+    Pokemon, PokemonId, PokemonType, ReplacementSides, Side, StatBlock, StatName,
+    StatProjectionError, TEAM_SIZE, Team, TeamSlot, TrainingValues, TypeEffectiveness,
+    ValidationError, calculate_gen3_stats,
 };
 pub use observation::{
-    BattleEvent, BattleObservation, DamageSource, OpponentSideObservation, OwnSideObservation,
-    RevealedMoveObservation, RevealedPokemonObservation, SubmitOutcome, UsedMove,
+    BattleEvent, BattleObservation, BattleTransition, DamageSource, ObservedBattleOutcome,
+    OpponentSideObservation, OwnSideObservation, Participant, RevealedCombatant,
+    RevealedMoveObservation, RevealedPokemonObservation, SubmitOutcome, TransitionError, UsedMove,
 };
 
 use battle_domain::{Battle, BattleCommand};
+use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BattlePerspective {
     side: Side,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BattleCheckpoint {
+    owner: Arc<()>,
+    viewer: Side,
+    event_offset: usize,
+    before: BattleObservation,
+}
+
 pub struct BattleApplication {
     battle: Battle,
+    checkpoint_owner: Arc<()>,
 }
 
 impl BattleApplication {
     pub fn new(team_one: Team, team_two: Team, seed: u64) -> Result<Self, BattleError> {
         Ok(Self {
             battle: Battle::new(team_one, team_two, seed)?,
+            checkpoint_owner: Arc::new(()),
         })
     }
 
@@ -55,13 +68,38 @@ impl BattleApplication {
         action: Action,
     ) -> Result<SubmitOutcome, BattleError> {
         let viewer = perspective.side;
-        self.battle
-            .submit(BattleCommand::new(viewer, action))
-            .map(|outcome| SubmitOutcome::from_domain(outcome, viewer))
+        let outcome = self.battle.submit(BattleCommand::new(viewer, action))?;
+        Ok(observation::submit_outcome(&self.battle, outcome, viewer))
     }
 
     pub fn event_log(&self, perspective: &BattlePerspective) -> Vec<BattleEvent> {
         observation::event_log(&self.battle, perspective.side)
+    }
+
+    pub fn checkpoint(&self, perspective: &BattlePerspective) -> BattleCheckpoint {
+        BattleCheckpoint {
+            owner: Arc::clone(&self.checkpoint_owner),
+            viewer: perspective.side,
+            event_offset: self.battle.events().len(),
+            before: self.observe(perspective),
+        }
+    }
+
+    pub fn transition_since(
+        &self,
+        checkpoint: BattleCheckpoint,
+    ) -> Result<BattleTransition, TransitionError> {
+        if !Arc::ptr_eq(&checkpoint.owner, &self.checkpoint_owner) {
+            return Err(TransitionError::CheckpointOwnerMismatch);
+        }
+        if checkpoint.event_offset > self.battle.events().len() {
+            return Err(TransitionError::EventLogRewound);
+        }
+        Ok(BattleTransition::new(
+            checkpoint.before,
+            observation::events_since(&self.battle, checkpoint.viewer, checkpoint.event_offset),
+            observation::observe(&self.battle, checkpoint.viewer),
+        ))
     }
 }
 

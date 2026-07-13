@@ -6,8 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-battle-application = { path = "../battle-application" }
+battle-session = { workspace = true }
 game-assets = { path = "../game-assets" }
+map-render = { workspace = true }
 punctum-gpu = { workspace = true }
 punctum-grid = { workspace = true }
 punctum-input = { workspace = true }
@@ -15,3 +16,6 @@ world-application = { path = "../world-application" }
 
 [lib]
 path = "src/lib.rs"
+
+[dev-dependencies]
+battle-application = { workspace = true }

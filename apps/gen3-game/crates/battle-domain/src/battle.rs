@@ -9,6 +9,7 @@ use crate::{
 pub enum Action {
     UseMove(MoveSlot),
     Switch(TeamSlot),
+    Run,
     Struggle,
 }
 
@@ -27,6 +28,7 @@ impl BattleCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BattleOutcome {
     Winner(Side),
+    Escaped(Side),
     Draw,
 }
 
@@ -96,6 +98,7 @@ pub enum BattleEvent {
         from: TeamSlot,
         to: TeamSlot,
         pokemon: PokemonId,
+        current_hp: u32,
     },
     MoveUsed {
         side: Side,
@@ -285,6 +288,7 @@ impl Battle {
                     actions.push(Action::Struggle);
                 }
                 actions.extend(self.legal_switches(side));
+                actions.push(Action::Run);
                 actions
             }
         }
@@ -316,7 +320,7 @@ impl Battle {
             command,
             replacement: match command.action {
                 Action::Switch(slot) => Some(slot),
-                Action::UseMove(_) | Action::Struggle => None,
+                Action::UseMove(_) | Action::Run | Action::Struggle => None,
             },
         });
         let commands_ready = self.commands_ready();
@@ -361,6 +365,7 @@ impl Battle {
                 }
                 Action::Struggle => IllegalActionReason::StruggleNotRequired,
                 Action::Switch(_) => self.switch_error(side, action),
+                Action::Run => IllegalActionReason::WrongPhase,
             }
         };
         Err(BattleError::ActionNotLegal {
@@ -410,9 +415,13 @@ impl Battle {
             .push(BattleEvent::TurnStarted { turn: self.turn });
         let order = self.action_order(one, two);
         self.resolve_action(order[0]);
-        self.resolve_action(order[1]);
+        if !matches!(self.phase, BattlePhase::Finished(_)) {
+            self.resolve_action(order[1]);
+        }
         self.turn = self.turn.saturating_add(1);
-        self.update_phase_after_turn();
+        if !matches!(self.phase, BattlePhase::Finished(_)) {
+            self.update_phase_after_turn();
+        }
     }
 
     fn action_order(&mut self, one: BattleCommand, two: BattleCommand) -> [BattleCommand; 2] {
@@ -439,7 +448,7 @@ impl Battle {
     fn action_priority(&self, command: BattleCommand) -> i8 {
         match command.action {
             Action::UseMove(slot) => self.active(command.side).moves()[slot.index()].priority(),
-            Action::Switch(_) | Action::Struggle => 0,
+            Action::Switch(_) | Action::Run | Action::Struggle => 0,
         }
     }
 
@@ -452,18 +461,27 @@ impl Battle {
         match command.action {
             Action::Switch(to) => self.switch(command.side, to),
             Action::UseMove(slot) => self.use_regular_move(command.side, slot),
+            Action::Run => self.run(command.side),
             Action::Struggle => self.use_struggle(command.side),
         }
+    }
+
+    fn run(&mut self, side: Side) {
+        let outcome = BattleOutcome::Escaped(side);
+        self.phase = BattlePhase::Finished(outcome);
+        self.events.push(BattleEvent::BattleFinished { outcome });
     }
 
     fn switch(&mut self, side: Side, to: TeamSlot) {
         let from = self.active_slot(side);
         self.active[side_index(side)] = to;
+        let pokemon = self.active(side);
         self.events.push(BattleEvent::Switched {
             side,
             from,
             to,
-            pokemon: self.active(side).id().clone(),
+            pokemon: pokemon.id().clone(),
+            current_hp: pokemon.current_hp(),
         });
     }
 
@@ -714,6 +732,7 @@ const fn side_index(side: Side) -> usize {
 
 const fn action_class(action: Action) -> u8 {
     match action {
+        Action::Run => 2,
         Action::Switch(_) => 1,
         Action::UseMove(_) | Action::Struggle => 0,
     }
