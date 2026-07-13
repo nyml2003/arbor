@@ -818,6 +818,9 @@ mod tests {
         battle.submit_player(action).unwrap();
         let view = battle.view_with_sprite_frame(0);
 
-        assert_eq!(view.images()[0].resource, player_back_resource(slot.index(), 0));
+        assert_eq!(
+            view.images()[0].resource,
+            player_back_resource(slot.index(), 0)
+        );
     }
 }
