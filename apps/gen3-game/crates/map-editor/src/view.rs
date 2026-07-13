@@ -539,5 +539,11 @@ mod tests {
                 .iter()
                 .any(|label| label.content.starts_with("组合素材"))
         );
+        assert!(
+            frame
+                .labels
+                .iter()
+                .any(|label| label.content == "删除当前组合")
+        );
     }
 }

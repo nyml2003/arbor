@@ -277,6 +277,7 @@ fn used_opponent_move_is_revealed_without_exposing_pp() {
     assert_eq!(revealed_move.id().as_str(), "two-move-0");
     assert_eq!(revealed_move.name(), "two-move-0");
     assert_eq!(revealed_move.move_type(), PokemonType::Normal);
+    assert_eq!(revealed_move.category(), MoveCategory::Physical);
     assert_eq!(revealed_move.power(), 40);
     assert_eq!(revealed_move.accuracy(), Accuracy::AlwaysHit);
     assert_eq!(revealed_move.priority(), 0);

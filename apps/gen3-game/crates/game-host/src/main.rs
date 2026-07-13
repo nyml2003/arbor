@@ -729,8 +729,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        ConsoleIntent, MapCamera, battle_viewport, console_intent_for_key, earliest_deadline,
-        invert_pixel_offset, is_console_toggle, next_sprite_frame, world_camera,
+        ConsoleIntent, CreatureGameApp, MapCamera, battle_viewport, console_intent_for_key,
+        earliest_deadline, invert_pixel_offset, is_console_toggle, next_sprite_frame, world_camera,
     };
     use world_application::Position;
 
@@ -762,6 +762,14 @@ mod tests {
             invert_pixel_offset(PixelOffset::new(-60, 30)),
             PixelOffset::new(60, -30)
         );
+    }
+
+    #[test]
+    fn complete_game_atlas_fits_wgpu_texture_limits() {
+        let app = CreatureGameApp::new().unwrap();
+        let size = app.atlas.size();
+        assert!(size.width <= 8_192, "atlas width was {}", size.width);
+        assert!(size.height <= 8_192, "atlas height was {}", size.height);
     }
 
     #[test]

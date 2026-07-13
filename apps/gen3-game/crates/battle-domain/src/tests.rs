@@ -413,6 +413,7 @@ fn model_accessors_return_the_validated_values() {
     assert_eq!(PokemonId::new("charizard").unwrap().as_str(), "charizard");
     assert_eq!(MoveId::new("ember").unwrap().as_str(), "ember");
     assert_eq!(battle_move.name(), "Ember");
+    assert_eq!(battle_move.category(), MoveCategory::Special);
     assert_eq!(battle_move.max_pp(), 25);
     assert_eq!(pokemon.name(), "Charizard");
     assert_eq!(pokemon.max_hp(), 150);

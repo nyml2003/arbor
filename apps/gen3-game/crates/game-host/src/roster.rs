@@ -365,8 +365,8 @@ impl RosterRng {
 mod tests {
     use std::collections::BTreeSet;
 
-    use battle_application::{StatBlock, TrainingValues, calculate_gen3_stats};
-    use game_data::CurrentDataSet;
+    use battle_application::{MoveCategory, StatBlock, TrainingValues, calculate_gen3_stats};
+    use game_data::{CurrentDataSet, DamageClass};
 
     use super::{MAX_MOVES, ROSTER_SIZE, demo_teams, random_members};
 
@@ -455,6 +455,14 @@ mod tests {
             .unwrap();
             assert_eq!(pokemon.max_hp(), expected.max_hp());
             assert_eq!(pokemon.stats(), expected.battle());
+            for (move_id, battle_move) in member.move_ids.iter().zip(pokemon.moves()) {
+                let expected = match data.move_by_id(*move_id).unwrap().damage_class {
+                    DamageClass::Physical => MoveCategory::Physical,
+                    DamageClass::Special => MoveCategory::Special,
+                    DamageClass::Status => MoveCategory::Status,
+                };
+                assert_eq!(battle_move.category(), expected);
+            }
         }
     }
 }

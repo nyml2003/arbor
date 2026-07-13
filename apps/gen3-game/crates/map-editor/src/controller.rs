@@ -268,4 +268,15 @@ mod tests {
             Some(EditorIntent::SelectMaterial(5))
         );
     }
+
+    #[test]
+    fn delete_material_button_produces_delete_intent() {
+        let model = model();
+        let button = layout::workbench().delete_material;
+
+        assert_eq!(
+            click_intent(button.origin, &model),
+            Some(EditorIntent::DeleteMaterial)
+        );
+    }
 }
