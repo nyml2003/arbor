@@ -5,6 +5,7 @@
 mod battle;
 mod model;
 mod rules;
+mod stats;
 
 pub use battle::{
     Action, Battle, BattleCommand, BattleError, BattleEvent, BattleOutcome, BattlePhase,
@@ -15,6 +16,11 @@ pub use model::{
     Side, TEAM_SIZE, Team, TeamSlot, ValidationError,
 };
 pub use rules::{DamageCategory, TypeEffectiveness, damage_category, type_effectiveness};
+pub use stats::{
+    CalculatedStats, EffortValues, IndividualValues, MAX_EFFORT_VALUE, MAX_INDIVIDUAL_VALUE,
+    MAX_TOTAL_EFFORT_VALUE, Nature, NonHpStat, StatBlock, StatName, StatProjectionError,
+    TrainingValues, calculate_gen3_stats,
+};
 
 #[cfg(test)]
 mod tests;

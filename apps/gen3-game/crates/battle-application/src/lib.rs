@@ -5,9 +5,12 @@
 mod observation;
 
 pub use battle_domain::{
-    Accuracy, Action, BattleError, BattleOutcome, BattlePhase, BattleStats, IllegalActionReason,
-    MAX_MOVES, Move, MoveId, MoveSlot, Pokemon, PokemonId, PokemonType, ReplacementSides, Side,
-    TEAM_SIZE, Team, TeamSlot, TypeEffectiveness, ValidationError,
+    Accuracy, Action, BattleError, BattleOutcome, BattlePhase, BattleStats, CalculatedStats,
+    EffortValues, IllegalActionReason, IndividualValues, MAX_EFFORT_VALUE, MAX_INDIVIDUAL_VALUE,
+    MAX_MOVES, MAX_TOTAL_EFFORT_VALUE, Move, MoveId, MoveSlot, Nature, NonHpStat, Pokemon,
+    PokemonId, PokemonType, ReplacementSides, Side, StatBlock, StatName, StatProjectionError,
+    TEAM_SIZE, Team, TeamSlot, TrainingValues, TypeEffectiveness, ValidationError,
+    calculate_gen3_stats,
 };
 pub use observation::{
     BattleEvent, BattleObservation, DamageSource, OpponentSideObservation, OwnSideObservation,

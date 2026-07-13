@@ -104,7 +104,6 @@ fn creation_rejects_a_team_without_a_conscious_pokemon() {
     let fainted_members = team("fainted", 80)
         .members()
         .iter()
-        .cloned()
         .map(|pokemon| {
             Pokemon::new(
                 pokemon.id().clone(),

@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use battle_application::{
-    Accuracy, BattleStats, MAX_MOVES, Move, MoveId, Pokemon, PokemonId, PokemonType, TEAM_SIZE,
-    Team, ValidationError,
+    Accuracy, MAX_MOVES, Move, MoveId, Pokemon, PokemonId, PokemonType, StatBlock,
+    StatProjectionError, TEAM_SIZE, Team, TrainingValues, ValidationError, calculate_gen3_stats,
 };
 use game_data::{CurrentDataSet, MoveId as DataMoveId, PokemonFormId, TypeId as DataTypeId};
 
@@ -35,6 +35,7 @@ pub enum RosterError {
     MissingMovePower(DataMoveId),
     MissingMovePp(DataMoveId),
     InvalidBattleModel(ValidationError),
+    InvalidTraining(StatProjectionError),
 }
 
 impl From<ValidationError> for RosterError {
@@ -43,11 +44,18 @@ impl From<ValidationError> for RosterError {
     }
 }
 
+impl From<StatProjectionError> for RosterError {
+    fn from(error: StatProjectionError) -> Self {
+        Self::InvalidTraining(error)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RosterMember {
     pokemon_form_id: PokemonFormId,
     level: u8,
     move_ids: Vec<DataMoveId>,
+    training: TrainingValues,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,6 +149,7 @@ fn random_members(data: &CurrentDataSet, seed: u64) -> Result<Vec<RosterMember>,
                 pokemon_form_id: pokemon.pokemon_form_id,
                 level: DEMO_LEVEL,
                 move_ids: pokemon.move_ids,
+                training: TrainingValues::perfect_untrained(),
             })
         })
         .collect()
@@ -151,6 +160,8 @@ fn compatible_move_ids(data: &CurrentDataSet, pokemon: PokemonFormId) -> Vec<Dat
         .into_iter()
         .flatten()
         .filter_map(|entry| {
+            data.can_learn_at_level(pokemon, entry.move_id, DEMO_LEVEL)
+                .then_some(())?;
             let battle_move = data.move_by_id(entry.move_id)?;
             battle_move.power.filter(|power| *power > 0)?;
             battle_move.pp.filter(|pp| *pp > 0)?;
@@ -221,7 +232,7 @@ fn build_pokemon(
         .iter()
         .copied()
         .map(|id| {
-            if !data.can_learn(member.pokemon_form_id, id) {
+            if !data.can_learn_at_level(member.pokemon_form_id, id, member.level) {
                 return Err(RosterError::MoveNotLearnable {
                     pokemon: member.pokemon_form_id,
                     battle_move: id,
@@ -231,21 +242,27 @@ fn build_pokemon(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let stats = record.base_stats;
+    let calculated = calculate_gen3_stats(
+        StatBlock::new(
+            stats.hp,
+            stats.attack,
+            stats.defense,
+            stats.special_attack,
+            stats.special_defense,
+            stats.speed,
+        ),
+        member.level,
+        member.training,
+    )?;
     Pokemon::new(
         PokemonId::new(format!("{prefix}-form-{}", member.pokemon_form_id.0))?,
         &record.display_name.localized,
         member.level,
         primary_type,
         secondary_type,
-        u32::from(stats.hp),
-        u32::from(stats.hp),
-        BattleStats::new(
-            stats.attack,
-            stats.defense,
-            stats.special_attack,
-            stats.special_defense,
-            stats.speed,
-        )?,
+        calculated.max_hp(),
+        calculated.max_hp(),
+        calculated.battle(),
         moves,
     )
     .map_err(Into::into)
@@ -336,6 +353,7 @@ impl RosterRng {
 mod tests {
     use std::collections::BTreeSet;
 
+    use battle_application::{StatBlock, TrainingValues, calculate_gen3_stats};
     use game_data::CurrentDataSet;
 
     use super::{MAX_MOVES, ROSTER_SIZE, demo_teams, random_members};
@@ -371,6 +389,7 @@ mod tests {
                     .iter()
                     .all(|move_id| data.can_learn(member.pokemon_form_id, *move_id))
             );
+            assert_eq!(member.training, TrainingValues::perfect_untrained());
         }
     }
 
@@ -388,19 +407,42 @@ mod tests {
     #[test]
     fn generated_members_build_two_valid_battle_teams() {
         let data = CurrentDataSet::embedded().unwrap();
+        let roster = random_members(&data, 42).unwrap();
         let (player, opponent) = demo_teams(&data, 42).unwrap();
-        let mut members = player.members().iter().chain(opponent.members());
+        let battle_members = player.members().iter().chain(opponent.members());
 
         assert_eq!(player.members().len(), 6);
         assert_eq!(opponent.members().len(), 6);
         assert_eq!(
-            members
+            battle_members
                 .clone()
                 .map(|pokemon| pokemon.name())
                 .collect::<BTreeSet<_>>()
                 .len(),
             ROSTER_SIZE
         );
-        assert!(members.all(|pokemon| pokemon.moves().len() == MAX_MOVES));
+        assert!(
+            battle_members
+                .clone()
+                .all(|pokemon| pokemon.moves().len() == MAX_MOVES)
+        );
+        for (member, pokemon) in roster.iter().zip(battle_members) {
+            let base = data.pokemon(member.pokemon_form_id).unwrap().base_stats;
+            let expected = calculate_gen3_stats(
+                StatBlock::new(
+                    base.hp,
+                    base.attack,
+                    base.defense,
+                    base.special_attack,
+                    base.special_defense,
+                    base.speed,
+                ),
+                member.level,
+                member.training,
+            )
+            .unwrap();
+            assert_eq!(pokemon.max_hp(), expected.max_hp());
+            assert_eq!(pokemon.stats(), expected.battle());
+        }
     }
 }

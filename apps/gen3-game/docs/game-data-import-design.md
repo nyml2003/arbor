@@ -1,6 +1,6 @@
 # 游戏数据导入设计
 
-状态：导入、Emerald 学习面、离线查询和可配置演示队伍已实现
+状态：导入、Emerald 学习面、离线查询、随机演示队伍和动态精灵贴图已实现
 适用项目：`apps/gen3-game`
 数据源：PokeAPI `d638fe7791214a8d3c3282e2a3113eea7cfef288`
 
@@ -8,7 +8,9 @@
 
 当前代码可以把 `assets/pokeapi-current-data` 中的固定 CSV 快照导入为 JSON，并通过 `game-data::CurrentDataSet` 离线加载和查询。
 
-`game-assets` 仍只处理 PNG 解码和 GPU atlas。游戏数据由独立 crate 负责。`game-host` 已从 `CurrentDataSet` 查询妙蛙种子、撞击和藤鞭，再投影为对战实例。
+`game-host` 从 `CurrentDataSet` 生成演示队伍。一场对战包含 12 个不同名称的宝可梦。每只宝可梦从自己的 Emerald 学习面中随机选择四个不重复招式。当前战斗内核不支持的变化招式和属性不会进入随机池。
+
+`game-host::sprites` 根据本场队伍的形态 ID 按需加载普通色 front/back 两帧 PNG。`game-assets` 负责 PNG 解码和 GPU atlas 组装。游戏数据和图片处理保持分离。
 
 项目已新增两个 crate：
 
@@ -28,7 +30,7 @@
 - 宝可梦、招式和属性的简体中文名称。
 - 按稳定数值 ID 查询数据。
 - 按明确的 `emerald` 版本组查询学习面。
-- 校验队伍配置中的招式是否属于对应形态的学习面。
+- 校验随机队伍中的招式是否属于对应形态在当前等级可用的学习面。
 - 记录上游 commit、生成器版本和产物 schema 版本。
 
 当前不支持以下数据：
@@ -86,7 +88,7 @@ apps/gen3-game/
     data/
       current-data-set-v2.json  # 生成产物
   fixtures/
-    demo-roster-v1.json         # 可编辑的演示队伍
+    demo-roster-v1.json         # 历史固定队伍 fixture，当前运行时不读取
   crates/
     game-data/
       src/
@@ -296,7 +298,9 @@ pub struct ImportDiagnostic {
 
 当前战斗规则按第三世代属性决定物理或特殊分类，PokeAPI 当前数据则包含现代招式伤害类别。`CurrentDataSet` 保留现代数据事实。第三世代战斗投影必须明确使用第三世代规则，不能悄悄覆盖静态记录，也不能把投影结果写回数据集。
 
-当前适配代码位于 `game-host::roster`。它读取 `fixtures/demo-roster-v1.json`，校验版本组、队伍大小、招式数量和学习面，再把静态记录转换为演示对战实例。`game-data` 不依赖 `battle-domain`。后续出现第二种队伍来源时，再把适配代码拆成独立 application 或 adapter crate。
+当前适配代码位于 `game-host::roster`。它使用显式 seed 从 Emerald 的 `1..=386` 形态中生成队伍。候选宝可梦必须使用当前战斗内核支持的属性，并且至少有四个可执行招式。双方六人队伍共用一个候选池，显示名称不能重复。相同 seed 生成相同队伍和招式，生产入口使用启动时间生成 seed。
+
+`game-host::sprites` 使用同一个 roster seed 生成 sprite manifest。它只加载双方六个槽位需要的 24 张图片。玩家侧使用 back 图，对手侧使用 front 图。切换 active slot 时，投影切换到对应槽位的资源 ID。`game-data` 不依赖 `battle-domain` 或图片文件系统。
 
 ## 命令接口
 
@@ -337,11 +341,11 @@ cargo run -p game-data-import -- `
 
 `game-host` 在组合根加载 `CurrentDataSet`，并使用独立 JSON 配置构造双方队伍。
 
-完成标准：切换形态、等级和招式时只修改队伍配置；程序仍能完全离线启动。
+完成标准：同一 seed 生成相同队伍；队伍只包含有效形态、可执行招式和当前等级可学习招式；程序仍能完全离线启动。
 
-### 阶段 5：学习面与队伍配置（已完成）
+### 阶段 5：学习面与随机租借池（已完成）
 
-导入 `emerald` 学习面和学习方式。队伍配置只能选择对应形态可以学习的招式。
+导入 `emerald` 学习面和学习方式。随机租借池按 seed 选择 12 只不同名称的宝可梦，每只选择四个不重复且当前等级可学习的攻击招式。
 
 ### 阶段 6：扩展数据范围
 
@@ -368,9 +372,12 @@ cargo run -p game-data-import -- `
 
 应用接入：
 
-- 固定数据集能构造当前妙蛙种子演示队伍。
-- 队伍中的非法招式会被学习面校验拒绝。
+- 固定 seed 能重复生成相同队伍，不同 seed 会改变队伍。
+- 一场对战的 12 个宝可梦显示名称不重复。
+- 每只宝可梦有四个不重复招式，且所有招式都属于自己的 Emerald 学习面。
 - 变化招式和不支持的现代属性不能误入第三世代战斗。
+- 随机队伍的 front/back 两帧图片都能加载并进入 atlas。
+- 切换 active slot 后使用对应宝可梦的 back sprite resource。
 - 运行测试时不需要网络，也不需要原始 CSV。
 
 维护这两个 crate 时运行：

@@ -177,6 +177,25 @@ impl CurrentDataSet {
             .is_some_and(|entries| entries.iter().any(|entry| entry.move_id == battle_move))
     }
 
+    pub fn can_learn_at_level(
+        &self,
+        pokemon: PokemonFormId,
+        battle_move: MoveId,
+        level: u8,
+    ) -> bool {
+        self.learnset(pokemon).is_some_and(|entries| {
+            entries.iter().any(|entry| {
+                entry.move_id == battle_move
+                    && match entry.method {
+                        MoveLearnMethod::LevelUp => {
+                            entry.level.is_none_or(|required| required <= level)
+                        }
+                        _ => true,
+                    }
+            })
+        })
+    }
+
     pub fn pokemon_iter(&self) -> impl Iterator<Item = &PokemonRecord> {
         self.pokemon.iter()
     }
@@ -397,6 +416,8 @@ mod tests {
         );
         assert_eq!(data.move_by_id(MoveId(1)).unwrap().power, Some(40));
         assert!(data.can_learn(PokemonFormId(1), MoveId(1)));
+        assert!(data.can_learn_at_level(PokemonFormId(1), MoveId(1), 1));
+        assert!(!data.can_learn_at_level(PokemonFormId(1), MoveId(1), 0));
     }
 
     #[test]
@@ -424,5 +445,7 @@ mod tests {
         assert_eq!(data.type_iter().count(), 21);
         assert!(data.can_learn(PokemonFormId(1), MoveId(33)));
         assert!(data.can_learn(PokemonFormId(1), MoveId(22)));
+        assert!(!data.can_learn_at_level(PokemonFormId(1), MoveId(22), 9));
+        assert!(data.can_learn_at_level(PokemonFormId(1), MoveId(22), 10));
     }
 }
