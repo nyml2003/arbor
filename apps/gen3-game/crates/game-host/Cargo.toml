@@ -7,8 +7,12 @@ rust-version.workspace = true
 
 [dependencies]
 battle-application = { path = "../battle-application" }
+battle-ramus-adapter = { path = "../battle-ramus-adapter" }
+game-assets = { path = "../game-assets" }
+game-data = { path = "../game-data" }
 game-ui = { path = "../game-ui" }
 glyphon = "0.12.0"
+nucleo-matcher = "0.3.1"
 pollster = "0.4.0"
 punctum-gpu = { workspace = true }
 punctum-grid = { workspace = true }

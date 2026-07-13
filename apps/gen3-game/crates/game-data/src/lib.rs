@@ -28,6 +28,7 @@ pub struct DataSetMetadata {
     pub source_commit: String,
     pub generator_version: String,
     pub locale: String,
+    pub version_group: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -55,6 +56,25 @@ pub struct PokemonRecord {
     pub base_stats: BaseStats,
     pub types: Vec<TypeId>,
     pub display_name: LocalizedName,
+    pub learnset: Vec<LearnsetEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MoveLearnMethod {
+    LevelUp,
+    Egg,
+    Tutor,
+    Machine,
+    Other(String),
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct LearnsetEntry {
+    pub move_id: MoveId,
+    pub method: MoveLearnMethod,
+    pub level: Option<u8>,
+    pub order: Option<u16>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -119,7 +139,7 @@ impl CurrentDataSet {
 
     pub fn embedded() -> Result<Self, DataLoadError> {
         Self::from_json(include_bytes!(
-            "../../../assets/data/current-data-set-v1.json"
+            "../../../assets/data/current-data-set-v2.json"
         ))
     }
 
@@ -148,6 +168,15 @@ impl CurrentDataSet {
             .map(|index| &self.types[index])
     }
 
+    pub fn learnset(&self, id: PokemonFormId) -> Option<&[LearnsetEntry]> {
+        self.pokemon(id).map(|record| record.learnset.as_slice())
+    }
+
+    pub fn can_learn(&self, pokemon: PokemonFormId, battle_move: MoveId) -> bool {
+        self.learnset(pokemon)
+            .is_some_and(|entries| entries.iter().any(|entry| entry.move_id == battle_move))
+    }
+
     pub fn pokemon_iter(&self) -> impl Iterator<Item = &PokemonRecord> {
         self.pokemon.iter()
     }
@@ -161,9 +190,14 @@ impl CurrentDataSet {
     }
 
     fn validate(&self) -> Result<(), DataLoadError> {
-        if self.metadata.schema_version != "current-data-set-v1" {
+        if self.metadata.schema_version != "current-data-set-v2" {
             return Err(DataLoadError::UnsupportedSchema(
                 self.metadata.schema_version.clone(),
+            ));
+        }
+        if self.metadata.version_group.trim().is_empty() {
+            return Err(DataLoadError::InvalidRecord(
+                "metadata version group is empty".into(),
             ));
         }
         validate_sorted("pokemon", self.pokemon.iter().map(|record| record.id.0))?;
@@ -192,6 +226,22 @@ impl CurrentDataSet {
                     "pokemon {} references an unknown type",
                     pokemon.id.0
                 )));
+            }
+            let mut previous = None;
+            for entry in &pokemon.learnset {
+                if self.move_by_id(entry.move_id).is_none() {
+                    return Err(DataLoadError::InvalidRecord(format!(
+                        "pokemon {} learnset references unknown move {}",
+                        pokemon.id.0, entry.move_id.0
+                    )));
+                }
+                if previous.as_ref().is_some_and(|previous| entry <= previous) {
+                    return Err(DataLoadError::InvalidRecord(format!(
+                        "pokemon {} learnset is not strictly sorted",
+                        pokemon.id.0
+                    )));
+                }
+                previous = Some(entry.clone());
             }
         }
         for move_record in &self.moves {
@@ -231,7 +281,7 @@ fn validate_sorted<T: Ord + Copy>(
     Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataLoadError {
     MalformedData(String),
     UnsupportedSchema(String),
@@ -259,11 +309,12 @@ mod tests {
     fn fixture() -> Vec<u8> {
         serde_json::to_vec(&CurrentDataSet {
             metadata: super::DataSetMetadata {
-                schema_version: "current-data-set-v1".into(),
+                schema_version: "current-data-set-v2".into(),
                 source_repository: "test".into(),
                 source_commit: "test".into(),
                 generator_version: "test".into(),
                 locale: "zh-Hans".into(),
+                version_group: "emerald".into(),
             },
             pokemon: vec![super::PokemonRecord {
                 id: PokemonFormId(1),
@@ -283,6 +334,12 @@ mod tests {
                     localized: "妙蛙种子".into(),
                     english: "Bulbasaur".into(),
                 },
+                learnset: vec![super::LearnsetEntry {
+                    move_id: MoveId(1),
+                    method: super::MoveLearnMethod::LevelUp,
+                    level: Some(1),
+                    order: Some(1),
+                }],
             }],
             moves: vec![super::MoveRecord {
                 id: MoveId(1),
@@ -339,6 +396,7 @@ mod tests {
             "妙蛙种子"
         );
         assert_eq!(data.move_by_id(MoveId(1)).unwrap().power, Some(40));
+        assert!(data.can_learn(PokemonFormId(1), MoveId(1)));
     }
 
     #[test]
@@ -360,8 +418,11 @@ mod tests {
             data.metadata().source_commit,
             "d638fe7791214a8d3c3282e2a3113eea7cfef288"
         );
+        assert_eq!(data.metadata().version_group, "emerald");
         assert_eq!(data.pokemon_iter().count(), 1_351);
         assert_eq!(data.move_iter().count(), 937);
         assert_eq!(data.type_iter().count(), 21);
+        assert!(data.can_learn(PokemonFormId(1), MoveId(33)));
+        assert!(data.can_learn(PokemonFormId(1), MoveId(22)));
     }
 }

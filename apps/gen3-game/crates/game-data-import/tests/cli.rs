@@ -17,6 +17,8 @@ fn imports_the_pinned_snapshot_and_emits_queryable_data() {
             source.to_str().unwrap(),
             "--output",
             output.to_str().unwrap(),
+            "--version-group",
+            "emerald",
         ])
         .status()
         .unwrap();
@@ -26,6 +28,9 @@ fn imports_the_pinned_snapshot_and_emits_queryable_data() {
     let data = CurrentDataSet::from_json(&bytes).unwrap();
     assert_eq!(data.pokemon_iter().count(), 1_351);
     assert_eq!(data.move_iter().count(), 937);
+    assert_eq!(data.metadata().version_group, "emerald");
+    assert!(data.can_learn(PokemonFormId(1), MoveId(33)));
+    assert!(data.can_learn(PokemonFormId(1), MoveId(22)));
     assert_eq!(
         data.pokemon(PokemonFormId(1))
             .unwrap()

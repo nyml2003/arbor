@@ -1,4 +1,6 @@
+mod console;
 mod movement;
+mod sprites;
 mod text;
 
 use std::{
@@ -7,17 +9,24 @@ use std::{
     time::{Duration, Instant},
 };
 
+use console::{ConsoleIntent, ConsoleOutcome, ConsoleState, GameConsole};
 use game_host::{DemoGame, GameScene};
-use game_ui::{CANVAS_HEIGHT, CANVAS_WIDTH, WorldAnimation, atlas};
+use game_ui::{
+    CANVAS_HEIGHT, CANVAS_WIDTH, CommandConsoleView, WorldAnimation, overlay_command_console,
+};
 use movement::{Gait, PressedDirections, RUN_STOP_DURATION, WORLD_TICK_INTERVAL, WorldMotion};
 use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_composite};
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
-use punctum_wgpu::{GpuRuntime, PresentOutcome, WinitKeyEventSnapshot, normalize_key_event};
+use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey, PhysicalKeyCode, TextEvent};
+use punctum_wgpu::{
+    GpuRuntime, PresentOutcome, WinitCommittedTextSnapshot, WinitKeyEventSnapshot,
+    normalize_committed_text, normalize_key_event,
+};
+use sprites::load_battle_atlas;
 use text::BattleTextRenderer;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
-    event::WindowEvent,
+    event::{Ime, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::ModifiersState,
     window::{Window, WindowId},
@@ -28,10 +37,21 @@ const CLEAR_COLOR: Rgba8 = Rgba8::new(14, 18, 24, 255);
 const BATTLE_FRAME_INTERVAL: Duration = Duration::from_millis(300);
 const TURN_HOLD_DURATION: Duration = Duration::from_millis(90);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HostMode {
+    Gameplay,
+    Console,
+}
+
 struct CreatureGameApp {
+    mode: HostMode,
     game: DemoGame,
+    console: GameConsole,
+    console_state: ConsoleState,
     atlas: GpuAtlas,
     text_renderer: BattleTextRenderer,
+    ime_preedit: String,
+    ime_composing: bool,
     modifiers: ModifiersState,
     next_playback: Option<Instant>,
     sprite_frame: usize,
@@ -47,11 +67,21 @@ struct CreatureGameApp {
 
 impl CreatureGameApp {
     fn new() -> Result<Self, Box<dyn Error>> {
+        let game = DemoGame::new_random()
+            .map_err(|error| std::io::Error::other(format!("demo game: {error:?}")))?;
+        let sprite_manifest = game
+            .sprite_manifest()
+            .map_err(|error| std::io::Error::other(format!("demo sprite manifest: {error:?}")))?;
+        let atlas = load_battle_atlas(&sprite_manifest)?;
         Ok(Self {
-            game: DemoGame::new()
-                .map_err(|error| std::io::Error::other(format!("demo game: {error:?}")))?,
-            atlas: atlas(),
+            mode: HostMode::Gameplay,
+            game,
+            console: GameConsole::new(),
+            console_state: ConsoleState::default(),
+            atlas,
             text_renderer: BattleTextRenderer::new(),
+            ime_preedit: String::new(),
+            ime_composing: false,
             modifiers: ModifiersState::empty(),
             next_playback: None,
             sprite_frame: 0,
@@ -83,6 +113,7 @@ impl CreatureGameApp {
             &self.atlas,
             CLEAR_COLOR,
         ))?;
+        window.set_ime_allowed(false);
         window.request_redraw();
         self.window = Some(window);
         self.runtime = Some(runtime);
@@ -96,9 +127,12 @@ impl CreatureGameApp {
         let viewport = battle_viewport(surface_size);
         let (world_animation, sprite_frame, world_pixel_offset) =
             self.presentation(Instant::now(), viewport.cell_size);
-        let view =
+        let mut view =
             self.game
                 .view_with_presentation(sprite_frame, world_animation, world_pixel_offset);
+        if self.mode == HostMode::Console {
+            overlay_command_console(&mut view, &self.console_view());
+        }
         let (Some(window), Some(runtime)) = (&self.window, &mut self.runtime) else {
             return;
         };
@@ -160,6 +194,15 @@ impl CreatureGameApp {
     }
 
     fn handle_key(&mut self, event: winit::event::KeyEvent) {
+        let text = match normalize_committed_text(WinitCommittedTextSnapshot::new(
+            event.text.map(|text| text.to_string()),
+        )) {
+            Ok(text) => text,
+            Err(error) => {
+                eprintln!("ignored invalid committed text: {error}");
+                None
+            }
+        };
         let key = normalize_key_event(WinitKeyEventSnapshot::new(
             event.physical_key,
             event.logical_key,
@@ -167,6 +210,19 @@ impl CreatureGameApp {
             event.state,
             event.repeat,
         ));
+        if self.mode == HostMode::Console && self.ime_composing && !is_console_toggle(&key) {
+            return;
+        }
+        if is_console_toggle(&key) {
+            if key.phase == KeyPhase::Press {
+                self.toggle_console();
+            }
+            return;
+        }
+        if self.mode == HostMode::Console {
+            self.handle_console_input(&key, text.as_ref());
+            return;
+        }
         if self.game.scene() == GameScene::World
             && let Some(direction) = direction_for_key(&key)
         {
@@ -184,6 +240,136 @@ impl CreatureGameApp {
             }
             Ok(false) => {}
             Err(error) => eprintln!("game command rejected: {error:?}"),
+        }
+    }
+
+    fn toggle_console(&mut self) {
+        match self.mode {
+            HostMode::Gameplay => {
+                let legal_actions = self.game.legal_player_actions();
+                let outcome = self
+                    .console
+                    .handle(&mut self.console_state, ConsoleIntent::Open(legal_actions));
+                debug_assert_eq!(outcome, ConsoleOutcome::Updated);
+                self.mode = HostMode::Console;
+            }
+            HostMode::Console => {
+                let outcome = self
+                    .console
+                    .handle(&mut self.console_state, ConsoleIntent::Close);
+                debug_assert_eq!(outcome, ConsoleOutcome::Closed);
+                self.mode = HostMode::Gameplay;
+            }
+        }
+        self.sync_ime_allowed();
+        self.request_redraw();
+    }
+
+    fn handle_console_input(&mut self, key: &KeyEvent, text: Option<&TextEvent>) {
+        let intent = console_intent_for_key(key).or_else(|| {
+            (key.phase != KeyPhase::Release)
+                .then(|| text.map(|text| ConsoleIntent::InsertText(text.text().to_owned())))
+                .flatten()
+        });
+        let Some(intent) = intent else {
+            return;
+        };
+        match self.console.handle(&mut self.console_state, intent) {
+            ConsoleOutcome::ActionQueued => self.commit_console_action(),
+            ConsoleOutcome::Closed => {
+                self.mode = HostMode::Gameplay;
+                self.sync_ime_allowed();
+                self.request_redraw();
+            }
+            ConsoleOutcome::Updated | ConsoleOutcome::NoSelection | ConsoleOutcome::Failed => {
+                self.request_redraw();
+            }
+            ConsoleOutcome::Ignored => {}
+        }
+    }
+
+    fn commit_console_action(&mut self) {
+        let Some(action) = self.console.take_queued_action() else {
+            self.console
+                .execution_failed(&mut self.console_state, "Ramus 没有生成战斗 action");
+            self.request_redraw();
+            return;
+        };
+        match self.game.submit_player_action(action) {
+            Ok(()) => {
+                self.console.execution_succeeded(&mut self.console_state);
+                self.mode = HostMode::Gameplay;
+                let now = Instant::now();
+                self.sync_battle_sprite_timer(now);
+                self.next_playback = self
+                    .game
+                    .has_pending_playback()
+                    .then_some(now + Duration::from_millis(600));
+                self.sync_ime_allowed();
+            }
+            Err(error) => self.console.execution_failed(
+                &mut self.console_state,
+                format!("战斗 action 被拒绝: {error:?}"),
+            ),
+        }
+        self.request_redraw();
+    }
+
+    fn handle_ime_event(&mut self, event: Ime) {
+        match event {
+            Ime::Enabled => {}
+            Ime::Preedit(text, _) => {
+                self.ime_composing = !text.is_empty();
+                self.ime_preedit = text;
+                self.request_redraw();
+            }
+            Ime::Commit(text) => {
+                self.ime_composing = false;
+                self.ime_preedit.clear();
+                if text.is_empty() || self.mode != HostMode::Console {
+                    self.request_redraw();
+                    return;
+                }
+                let text = TextEvent::new(text).expect("non-empty IME commit is valid");
+                if self.console.handle(
+                    &mut self.console_state,
+                    ConsoleIntent::InsertText(text.text().to_owned()),
+                ) == ConsoleOutcome::Updated
+                {
+                    self.request_redraw();
+                }
+            }
+            Ime::Disabled => {
+                self.ime_composing = false;
+                self.ime_preedit.clear();
+                self.request_redraw();
+            }
+        }
+    }
+
+    fn sync_ime_allowed(&mut self) {
+        let allowed = self.mode == HostMode::Console;
+        if !allowed {
+            self.ime_composing = false;
+            self.ime_preedit.clear();
+        }
+        if let Some(window) = &self.window {
+            window.set_ime_allowed(allowed);
+        }
+    }
+
+    fn console_view(&self) -> CommandConsoleView {
+        CommandConsoleView {
+            query: self.console_state.query().to_owned(),
+            preedit: self.ime_preedit.clone(),
+            items: self
+                .console_state
+                .items()
+                .iter()
+                .map(|item| item.invocation.clone())
+                .collect(),
+            selected_index: self.console_state.selected_index(),
+            diagnostic: self.console_state.diagnostic().map(str::to_owned),
         }
     }
 
@@ -343,12 +529,17 @@ impl ApplicationHandler for CreatureGameApp {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => self.handle_key(event),
+            WindowEvent::Ime(event) => self.handle_ime_event(event),
             WindowEvent::RedrawRequested => self.redraw(event_loop),
             _ => {}
         }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.mode == HostMode::Console {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+            return;
+        }
         let now = Instant::now();
         if self.next_playback.is_some_and(|deadline| now >= deadline) {
             self.game.advance_playback();
@@ -414,6 +605,30 @@ fn direction_for_key(key: &KeyEvent) -> Option<Direction> {
     }
 }
 
+fn is_console_toggle(key: &KeyEvent) -> bool {
+    key.modifiers.control
+        && (key.physical == Some(PhysicalKeyCode::KeyP)
+            || matches!(&key.logical, LogicalKey::Character(character) if character.eq_ignore_ascii_case("p")))
+}
+
+fn console_intent_for_key(key: &KeyEvent) -> Option<ConsoleIntent> {
+    if key.phase == KeyPhase::Release {
+        return None;
+    }
+    match key.logical {
+        LogicalKey::Named(NamedKey::ArrowUp) => Some(ConsoleIntent::Previous),
+        LogicalKey::Named(NamedKey::ArrowDown) => Some(ConsoleIntent::Next),
+        LogicalKey::Named(NamedKey::Backspace) => Some(ConsoleIntent::Backspace),
+        LogicalKey::Named(NamedKey::Enter) if key.phase == KeyPhase::Press => {
+            Some(ConsoleIntent::Execute)
+        }
+        LogicalKey::Named(NamedKey::Escape) if key.phase == KeyPhase::Press => {
+            Some(ConsoleIntent::Close)
+        }
+        _ => None,
+    }
+}
+
 const fn next_sprite_frame(current: usize) -> usize {
     current.wrapping_add(1)
 }
@@ -453,10 +668,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use punctum_gpu::{PixelOffset, PixelSize};
+    use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
 
     use std::time::{Duration, Instant};
 
-    use super::{battle_viewport, earliest_deadline, next_sprite_frame};
+    use super::{
+        ConsoleIntent, battle_viewport, console_intent_for_key, earliest_deadline,
+        is_console_toggle, next_sprite_frame,
+    };
+
+    fn key(logical: LogicalKey, physical: PhysicalKeyCode, modifiers: Modifiers) -> KeyEvent {
+        KeyEvent {
+            physical: Some(physical),
+            logical,
+            modifiers,
+            phase: KeyPhase::Press,
+        }
+    }
 
     #[test]
     fn battle_viewport_uses_integer_scaling_and_centers_the_canvas() {
@@ -482,5 +710,25 @@ mod tests {
             Some(early)
         );
         assert_eq!(earliest_deadline(&[None, Some(late), None]), Some(late));
+    }
+
+    #[test]
+    fn console_toggle_and_navigation_use_canonical_input_events() {
+        let toggle = key(
+            LogicalKey::Character("p".into()),
+            PhysicalKeyCode::KeyP,
+            Modifiers {
+                control: true,
+                ..Modifiers::default()
+            },
+        );
+        assert!(is_console_toggle(&toggle));
+
+        let down = key(
+            LogicalKey::Named(NamedKey::ArrowDown),
+            PhysicalKeyCode::ArrowDown,
+            Modifiers::default(),
+        );
+        assert_eq!(console_intent_for_key(&down), Some(ConsoleIntent::Next));
     }
 }

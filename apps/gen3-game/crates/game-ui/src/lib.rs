@@ -5,7 +5,7 @@
 use battle_application::{
     Action, BattleObservation, BattlePhase, MoveSlot, Pokemon, Side, TeamSlot,
 };
-use game_assets::{DecodedImage, build_atlas};
+use game_assets::{AssetError, DecodedImage, build_atlas};
 use punctum_gpu::{GpuAtlas, GpuCell, GpuImage, PixelOffset, ResourceId, Rgba8};
 use punctum_grid::{GridPos, GridRect, GridSize, Surface};
 use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey};
@@ -17,11 +17,8 @@ pub const CANVAS_WIDTH: u32 = 32;
 pub const CANVAS_HEIGHT: u32 = 24;
 
 const WHITE_RESOURCE: ResourceId = ResourceId(1);
-const PLAYER_BACK_FRAME_0_RESOURCE: ResourceId = ResourceId(2);
-const PLAYER_BACK_FRAME_1_RESOURCE: ResourceId = ResourceId(3);
-const OPPONENT_FRONT_FRAME_0_RESOURCE: ResourceId = ResourceId(4);
-const OPPONENT_FRONT_FRAME_1_RESOURCE: ResourceId = ResourceId(5);
 const CHARACTER_RESOURCE_START: u32 = 6;
+const BATTLE_SPRITE_RESOURCE_START: u32 = 30;
 const WHITE_PIXEL: Rgba8 = Rgba8::new(255, 255, 255, 255);
 const PLAYER_BACK_FRAME_0_PNG: &[u8] =
     include_bytes!("../../../assets/pokemons/normal/back/001_Back_0_C__frame_0.png");
@@ -141,6 +138,7 @@ const HP_GOOD: Rgba8 = Rgba8::new(74, 190, 102, 255);
 const HP_LOW: Rgba8 = Rgba8::new(224, 91, 72, 255);
 const TEXT: Rgba8 = Rgba8::new(244, 246, 239, 255);
 const MUTED_TEXT: Rgba8 = Rgba8::new(182, 194, 194, 255);
+const CONSOLE_ERROR: Rgba8 = Rgba8::new(255, 142, 126, 255);
 const MAP_GROUND: Rgba8 = Rgba8::new(138, 187, 116, 255);
 const MAP_GROUND_LIGHT: Rgba8 = Rgba8::new(157, 202, 132, 255);
 const MAP_GRASS: Rgba8 = Rgba8::new(54, 137, 79, 255);
@@ -235,6 +233,9 @@ pub enum TextRole {
     PlayerHp,
     Action(usize),
     Message,
+    ConsoleQuery,
+    ConsoleItem(usize),
+    ConsoleDiagnostic,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -269,38 +270,164 @@ impl GameView {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommandConsoleView {
+    pub query: String,
+    pub preedit: String,
+    pub items: Vec<String>,
+    pub selected_index: Option<usize>,
+    pub diagnostic: Option<String>,
+}
+
+pub fn overlay_command_console(view: &mut GameView, console: &CommandConsoleView) {
+    const PANEL_COL: u32 = 1;
+    const PANEL_ROW: u32 = 4;
+    const PANEL_WIDTH: u32 = 30;
+    const PANEL_HEIGHT: u32 = 16;
+    const FIRST_ITEM_ROW: u32 = 8;
+    const MAX_ITEMS: usize = 8;
+
+    let panel = GridRect::new(
+        GridPos::new(PANEL_COL as i32, PANEL_ROW as i32),
+        GridSize::new(PANEL_WIDTH, PANEL_HEIGHT),
+    );
+    view.surface
+        .fill_rect(panel, sprite(PANEL_EDGE))
+        .expect("the fixed console panel fits the game canvas");
+    view.surface
+        .fill_rect(
+            GridRect::new(
+                GridPos::new((PANEL_COL + 1) as i32, (PANEL_ROW + 1) as i32),
+                GridSize::new(PANEL_WIDTH - 2, PANEL_HEIGHT - 2),
+            ),
+            sprite(PANEL),
+        )
+        .expect("the fixed console body fits the game canvas");
+
+    view.labels.retain(|label| {
+        label.row.saturating_add(label.height) <= PANEL_ROW
+            || label.row >= PANEL_ROW.saturating_add(PANEL_HEIGHT)
+    });
+    view.labels.push(label(
+        TextRole::ConsoleQuery,
+        3,
+        6,
+        26,
+        1,
+        &format!("> {}{}", console.query, console.preedit),
+        TEXT,
+    ));
+
+    let first_visible =
+        visible_console_start(console.items.len(), console.selected_index, MAX_ITEMS);
+    for (visible_index, (item_index, item)) in console
+        .items
+        .iter()
+        .enumerate()
+        .skip(first_visible)
+        .take(MAX_ITEMS)
+        .enumerate()
+    {
+        let row = FIRST_ITEM_ROW + visible_index as u32;
+        if console.selected_index == Some(item_index) {
+            view.surface
+                .fill_rect(
+                    GridRect::new(GridPos::new(2, row as i32), GridSize::new(28, 1)),
+                    sprite(SELECTED),
+                )
+                .expect("the fixed console selection fits the game canvas");
+        }
+        view.labels.push(label(
+            TextRole::ConsoleItem(item_index),
+            3,
+            row,
+            26,
+            1,
+            item,
+            TEXT,
+        ));
+    }
+
+    if console.items.is_empty() {
+        view.labels.push(label(
+            TextRole::ConsoleItem(0),
+            3,
+            FIRST_ITEM_ROW,
+            26,
+            1,
+            "没有匹配指令",
+            MUTED_TEXT,
+        ));
+    }
+    if let Some(diagnostic) = &console.diagnostic {
+        view.labels.push(label(
+            TextRole::ConsoleDiagnostic,
+            3,
+            18,
+            26,
+            1,
+            diagnostic,
+            CONSOLE_ERROR,
+        ));
+    }
+}
+
+fn visible_console_start(
+    item_count: usize,
+    selected_index: Option<usize>,
+    visible_count: usize,
+) -> usize {
+    if visible_count == 0 {
+        return 0;
+    }
+    selected_index
+        .map_or(0, |selected| {
+            selected.saturating_add(1).saturating_sub(visible_count)
+        })
+        .min(item_count.saturating_sub(visible_count))
+}
+
 pub fn atlas() -> GpuAtlas {
-    let white = DecodedImage::solid(WHITE_PIXEL);
     let player_back_frame_0 = decode_embedded_png(PLAYER_BACK_FRAME_0_PNG, "player back frame 0");
     let player_back_frame_1 = decode_embedded_png(PLAYER_BACK_FRAME_1_PNG, "player back frame 1");
     let opponent_front_frame_0 =
         decode_embedded_png(OPPONENT_FRONT_FRAME_0_PNG, "opponent front frame 0");
     let opponent_front_frame_1 =
         decode_embedded_png(OPPONENT_FRONT_FRAME_1_PNG, "opponent front frame 1");
+    let mut battle_images = Vec::new();
+    for slot in 0..battle_application::TEAM_SIZE {
+        battle_images.push((player_back_resource(slot, 0), &player_back_frame_0));
+        battle_images.push((player_back_resource(slot, 1), &player_back_frame_1));
+        battle_images.push((opponent_front_resource(slot, 0), &opponent_front_frame_0));
+        battle_images.push((opponent_front_resource(slot, 1), &opponent_front_frame_1));
+    }
+    atlas_with_battle_sprites(&battle_images).expect("the embedded game atlas is valid")
+}
+
+pub fn atlas_with_battle_sprites(
+    battle_images: &[(ResourceId, &DecodedImage)],
+) -> Result<GpuAtlas, AssetError> {
+    let white = DecodedImage::solid(WHITE_PIXEL);
     let character_images: Vec<_> = CHARACTER_PNGS
         .iter()
         .map(|(name, bytes)| decode_embedded_png(bytes, name))
         .collect();
-    let mut images = vec![
-        (WHITE_RESOURCE, &white),
-        (PLAYER_BACK_FRAME_0_RESOURCE, &player_back_frame_0),
-        (PLAYER_BACK_FRAME_1_RESOURCE, &player_back_frame_1),
-        (OPPONENT_FRONT_FRAME_0_RESOURCE, &opponent_front_frame_0),
-        (OPPONENT_FRONT_FRAME_1_RESOURCE, &opponent_front_frame_1),
-    ];
+    let mut images = vec![(WHITE_RESOURCE, &white)];
     images.extend(
         character_images
             .iter()
             .enumerate()
             .map(|(index, image)| (ResourceId(CHARACTER_RESOURCE_START + index as u32), image)),
     );
-    build_atlas(&images).expect("the embedded game atlas is valid")
+    images.extend_from_slice(battle_images);
+    build_atlas(&images)
 }
 
 fn decode_embedded_png(bytes: &[u8], name: &str) -> DecodedImage {
     game_assets::decode_png(bytes).unwrap_or_else(|error| panic!("embedded {name} PNG: {error}"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn project_battle(
     observation: &BattleObservation,
     actions: &[Action],
@@ -308,6 +435,7 @@ pub fn project_battle(
     message: &str,
     animation: BattleAnimation,
     display: &BattleDisplayState,
+    sprites: BattleSpriteResources,
     sprite_frame: usize,
 ) -> GameView {
     let mut canvas = Canvas::new(SKY);
@@ -374,7 +502,7 @@ pub fn project_battle(
 
     GameView {
         surface: canvas.finish(),
-        images: battle_images(animation, sprite_frame),
+        images: battle_images(animation, sprites, sprite_frame),
         labels,
     }
 }
@@ -548,7 +676,45 @@ fn draw_action_panel(canvas: &mut Canvas, action_count: usize, selected: usize) 
     }
 }
 
-fn battle_images(animation: BattleAnimation, sprite_frame: usize) -> Vec<GpuImage> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BattleSpriteResources {
+    own: [ResourceId; 2],
+    opponent: [ResourceId; 2],
+}
+
+impl BattleSpriteResources {
+    pub const fn for_slots(own_slot: usize, opponent_slot: usize) -> Self {
+        Self {
+            own: [
+                player_back_resource(own_slot, 0),
+                player_back_resource(own_slot, 1),
+            ],
+            opponent: [
+                opponent_front_resource(opponent_slot, 0),
+                opponent_front_resource(opponent_slot, 1),
+            ],
+        }
+    }
+}
+
+pub const fn player_back_resource(slot: usize, frame: usize) -> ResourceId {
+    ResourceId(BATTLE_SPRITE_RESOURCE_START + slot as u32 * 2 + (frame % 2) as u32)
+}
+
+pub const fn opponent_front_resource(slot: usize, frame: usize) -> ResourceId {
+    ResourceId(
+        BATTLE_SPRITE_RESOURCE_START
+            + battle_application::TEAM_SIZE as u32 * 2
+            + slot as u32 * 2
+            + (frame % 2) as u32,
+    )
+}
+
+fn battle_images(
+    animation: BattleAnimation,
+    sprites: BattleSpriteResources,
+    sprite_frame: usize,
+) -> Vec<GpuImage> {
     let player_origin = if animation == BattleAnimation::Acting(Side::One) {
         GridPos::new(6, 9)
     } else {
@@ -563,33 +729,17 @@ fn battle_images(animation: BattleAnimation, sprite_frame: usize) -> Vec<GpuImag
     vec![
         GpuImage::new(
             GridRect::new(player_origin, GridSize::new(8, 8)),
-            player_back_resource(sprite_frame),
+            sprites.own[sprite_frame % 2],
             creature_tint(animation, Side::One),
             10,
         ),
         GpuImage::new(
             GridRect::new(opponent_origin, GridSize::new(8, 8)),
-            opponent_front_resource(sprite_frame),
+            sprites.opponent[sprite_frame % 2],
             creature_tint(animation, Side::Two),
             10,
         ),
     ]
-}
-
-const fn player_back_resource(sprite_frame: usize) -> ResourceId {
-    if sprite_frame.is_multiple_of(2) {
-        PLAYER_BACK_FRAME_0_RESOURCE
-    } else {
-        PLAYER_BACK_FRAME_1_RESOURCE
-    }
-}
-
-const fn opponent_front_resource(sprite_frame: usize) -> ResourceId {
-    if sprite_frame.is_multiple_of(2) {
-        OPPONENT_FRONT_FRAME_0_RESOURCE
-    } else {
-        OPPONENT_FRONT_FRAME_1_RESOURCE
-    }
 }
 
 fn creature_tint(animation: BattleAnimation, side: Side) -> Rgba8 {
@@ -693,12 +843,13 @@ pub fn phase_message(phase: BattlePhase) -> &'static str {
 #[cfg(test)]
 mod tests {
     use punctum_gpu::ResourceId;
+    use punctum_grid::GridPos;
     use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
     use world_application::{Direction, Position, WorldApplication, WorldCommand};
 
     use super::{
-        BattleUiOutcome, BattleUiState, TextRole, WorldAnimation, move_action, project_world,
-        world_character_resource, world_command_for_key,
+        BattleUiOutcome, BattleUiState, CommandConsoleView, TextRole, WorldAnimation, move_action,
+        overlay_command_console, project_world, world_character_resource, world_command_for_key,
     };
 
     fn key(name: NamedKey) -> KeyEvent {
@@ -778,5 +929,36 @@ mod tests {
                 ResourceId(21)
             ]
         );
+    }
+
+    #[test]
+    fn command_console_overlays_grid_background_and_keeps_text_as_labels() {
+        let world = WorldApplication::demo().unwrap();
+        let mut view = project_world(&world.observe(), "风吹过草地。");
+        overlay_command_console(
+            &mut view,
+            &CommandConsoleView {
+                query: "move".into(),
+                preedit: "中".into(),
+                items: vec!["/battle/move/one use".into(), "/battle/move/two use".into()],
+                selected_index: Some(1),
+                diagnostic: Some("action rejected".into()),
+            },
+        );
+
+        assert!(
+            view.labels().iter().any(|label| {
+                label.role == TextRole::ConsoleQuery && label.content == "> move中"
+            })
+        );
+        assert!(view.labels().iter().any(|label| {
+            label.role == TextRole::ConsoleItem(1) && label.content == "/battle/move/two use"
+        }));
+        assert!(
+            view.labels()
+                .iter()
+                .any(|label| label.role == TextRole::ConsoleDiagnostic)
+        );
+        assert!(view.surface().get(GridPos::new(2, 9)).is_ok());
     }
 }
