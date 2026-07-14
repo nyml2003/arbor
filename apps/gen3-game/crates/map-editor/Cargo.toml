@@ -7,14 +7,14 @@ rust-version.workspace = true
 
 [dependencies]
 game-assets = { path = "../game-assets" }
-glyphon = "0.12.0"
+game-fs-assets = { path = "../game-fs-assets" }
+game-native-target = { path = "../game-native-target" }
+map-assets = { path = "../map-assets" }
+map-editor-core = { path = "../map-editor-core" }
+map-editor-view = { path = "../map-editor-view" }
 map-project = { workspace = true }
 map-render = { workspace = true }
-pollster = "0.4.0"
 punctum-gpu = { workspace = true }
-punctum-grid = { workspace = true }
-punctum-wgpu = { path = "../../../punctum/crates/punctum-wgpu" }
-wgpu = "30.0.0"
 winit = "0.30.13"
 
 [[bin]]

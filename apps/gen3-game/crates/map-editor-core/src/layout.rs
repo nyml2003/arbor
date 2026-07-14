@@ -10,14 +10,14 @@ pub const ASSET_PAGE_SIZE: usize = ASSET_COLS * ASSET_ROWS;
 pub const MATERIAL_PAGE_SIZE: usize = 5;
 
 #[derive(Clone, Copy, Debug)]
-pub struct Row {
+struct Row {
     bounds: GridRect,
     cursor: i32,
     gap: u32,
 }
 
 impl Row {
-    pub const fn new(bounds: GridRect, gap: u32) -> Self {
+    const fn new(bounds: GridRect, gap: u32) -> Self {
         Self {
             bounds,
             cursor: bounds.origin.col,
@@ -25,7 +25,7 @@ impl Row {
         }
     }
 
-    pub fn take(&mut self, width: u32) -> GridRect {
+    fn take(&mut self, width: u32) -> GridRect {
         let item = rect(
             self.cursor,
             self.bounds.origin.row,
@@ -42,14 +42,14 @@ impl Row {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Column {
+struct Column {
     bounds: GridRect,
     cursor: i32,
     gap: u32,
 }
 
 impl Column {
-    pub const fn new(bounds: GridRect, gap: u32) -> Self {
+    const fn new(bounds: GridRect, gap: u32) -> Self {
         Self {
             bounds,
             cursor: bounds.origin.row,
@@ -57,7 +57,7 @@ impl Column {
         }
     }
 
-    pub fn take(&mut self, height: u32) -> GridRect {
+    fn take(&mut self, height: u32) -> GridRect {
         let item = rect(
             self.bounds.origin.col,
             self.cursor,
@@ -72,7 +72,7 @@ impl Column {
         item
     }
 
-    pub fn skip(&mut self, height: u32) {
+    fn skip(&mut self, height: u32) {
         self.cursor += height as i32;
         assert!(
             self.cursor <= item_bottom(self.bounds),

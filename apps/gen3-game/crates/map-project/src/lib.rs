@@ -267,7 +267,7 @@ impl MapProject {
         serde_json::to_string_pretty(self).map_err(|error| MapError::Json(error.to_string()))
     }
 
-    fn apply(&mut self, command: &MapEditCommand, forward: bool) -> Result<(), MapError> {
+    fn apply(mut self, command: &MapEditCommand, forward: bool) -> Result<Self, MapError> {
         match command {
             MapEditCommand::ReplaceCells(changes) => {
                 for change in changes {
@@ -291,7 +291,7 @@ impl MapProject {
                     }
                     self.materials.push(material.clone());
                 } else {
-                    self.remove_material(&material.id)?;
+                    self = self.remove_material(&material.id)?;
                 }
             }
             MapEditCommand::ReplaceMaterial { before, after } => {
@@ -309,16 +309,16 @@ impl MapProject {
             }
             MapEditCommand::RemoveMaterial(material) => {
                 if forward {
-                    self.remove_material(&material.id)?;
+                    self = self.remove_material(&material.id)?;
                 } else {
                     self.materials.push(material.clone());
                 }
             }
         }
-        Ok(())
+        Ok(self)
     }
 
-    fn remove_material(&mut self, id: &CompositeTileId) -> Result<(), MapError> {
+    fn remove_material(mut self, id: &CompositeTileId) -> Result<Self, MapError> {
         if self
             .visual_cells
             .iter()
@@ -332,7 +332,7 @@ impl MapProject {
             .position(|material| &material.id == id)
             .ok_or_else(|| MapError::UnknownMaterial(id.clone()))?;
         self.materials.remove(index);
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -362,32 +362,32 @@ pub struct EditHistory {
 
 impl EditHistory {
     pub fn execute(
-        &mut self,
-        project: &mut MapProject,
+        mut self,
+        project: MapProject,
         command: MapEditCommand,
-    ) -> Result<(), MapError> {
-        project.apply(&command, true)?;
+    ) -> Result<(MapProject, Self), MapError> {
+        let project = project.apply(&command, true)?;
         self.undo.push(command);
         self.redo.clear();
-        Ok(())
+        Ok((project, self))
     }
 
-    pub fn undo(&mut self, project: &mut MapProject) -> Result<bool, MapError> {
+    pub fn undo(mut self, project: MapProject) -> Result<(MapProject, Self, bool), MapError> {
         let Some(command) = self.undo.pop() else {
-            return Ok(false);
+            return Ok((project, self, false));
         };
-        project.apply(&command, false)?;
+        let project = project.apply(&command, false)?;
         self.redo.push(command);
-        Ok(true)
+        Ok((project, self, true))
     }
 
-    pub fn redo(&mut self, project: &mut MapProject) -> Result<bool, MapError> {
+    pub fn redo(mut self, project: MapProject) -> Result<(MapProject, Self, bool), MapError> {
         let Some(command) = self.redo.pop() else {
-            return Ok(false);
+            return Ok((project, self, false));
         };
-        project.apply(&command, true)?;
+        let project = project.apply(&command, true)?;
         self.undo.push(command);
-        Ok(true)
+        Ok((project, self, true))
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -525,14 +525,14 @@ mod tests {
 
     #[test]
     fn undo_and_redo_restore_cell_edits() {
-        let (mut project, _) = fixture();
+        let (project, _) = fixture();
         let position = TilePosition::new(1, 1);
         let before = project.cell(position).unwrap();
         let after = MapCell::new(None, Collision::Blocked, Some(MapEventKind::Encounter));
-        let mut history = EditHistory::default();
-        history
+        let history = EditHistory::default();
+        let (project, history) = history
             .execute(
-                &mut project,
+                project,
                 MapEditCommand::ReplaceCells(vec![CellChange {
                     position,
                     before: before.clone(),
@@ -541,9 +541,218 @@ mod tests {
             )
             .unwrap();
         assert_eq!(project.cell(position), Some(after.clone()));
-        assert!(history.undo(&mut project).unwrap());
+        let (project, history, changed) = history.undo(project).unwrap();
+        assert!(changed);
         assert_eq!(project.cell(position), Some(before.clone()));
-        assert!(history.redo(&mut project).unwrap());
+        let (project, _, changed) = history.redo(project).unwrap();
+        assert!(changed);
         assert_eq!(project.cell(position), Some(after));
+    }
+
+    #[test]
+    fn validation_reports_every_schema_boundary() {
+        assert!(AtomicTileId::new(" ").is_err());
+        let (_, known) = fixture();
+        let invalid = [
+            {
+                let (mut project, _) = fixture();
+                project.format_version = "old".into();
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.id = MapProjectId(" ".into());
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.tile_size = TilePixelSize::new(0, 16);
+                project
+            },
+            MapProject::blank(MapProjectId::new("empty").unwrap(), 0, 1, None),
+            {
+                let (mut project, _) = fixture();
+                project.visual_cells.pop();
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.collision_cells.pop();
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.event_cells.pop();
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.player_spawn = TilePosition::new(99, 99);
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.materials.push(project.materials[0].clone());
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.materials[0].id = CompositeTileId(" ".into());
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.materials[0].layers.clear();
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                project.materials[0].layers[0] = AtomicTileId(" ".into());
+                project
+            },
+            {
+                let (mut project, _) = fixture();
+                let spawn = project.cell_index(project.player_spawn).unwrap();
+                project.collision_cells[spawn] = Collision::Blocked;
+                project
+            },
+        ];
+        let expected = [
+            "unsupported map format",
+            "MapProjectId must not be empty",
+            "tile size must be non-zero",
+            "map width and height must be non-zero",
+            "map layer visual_cells",
+            "map layer collision_cells",
+            "map layer event_cells",
+            "spawn",
+            "defined more than once",
+            "CompositeTileId must not be empty",
+            "has no layers",
+            "AtomicTileId must not be empty",
+            "is blocked",
+        ];
+        for (project, message) in invalid.into_iter().zip(expected) {
+            assert!(
+                project
+                    .validate(&known)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(message)
+            );
+        }
+        assert!(MapProject::from_json("not json", &known).is_err());
+    }
+
+    #[test]
+    fn material_commands_are_reversible_values() {
+        let (project, _) = fixture();
+        let history = EditHistory::default();
+        let extra = CompositeTile::new(
+            CompositeTileId::new("extra").unwrap(),
+            vec![id("tile-0000")],
+        );
+        let (project, history) = history
+            .execute(project, MapEditCommand::CreateMaterial(extra.clone()))
+            .unwrap();
+        assert!(history.is_dirty());
+        assert_eq!(project.material(&extra.id), Some(&extra));
+        let (project, history, changed) = history.undo(project).unwrap();
+        assert!(changed);
+        assert!(project.material(&extra.id).is_none());
+        let (project, history, changed) = history.redo(project).unwrap();
+        assert!(changed);
+        assert_eq!(project.material(&extra.id), Some(&extra));
+
+        let replacement = CompositeTile::new(extra.id.clone(), vec![id("tile-0001")]);
+        let (project, history) = history
+            .execute(
+                project,
+                MapEditCommand::ReplaceMaterial {
+                    before: extra.clone(),
+                    after: replacement.clone(),
+                },
+            )
+            .unwrap();
+        assert_eq!(project.material(&extra.id), Some(&replacement));
+        let (project, history, _) = history.undo(project).unwrap();
+        assert_eq!(project.material(&extra.id), Some(&extra));
+
+        let (project, history) = history
+            .execute(project, MapEditCommand::RemoveMaterial(extra.clone()))
+            .unwrap();
+        assert!(project.material(&extra.id).is_none());
+        let (project, _, _) = history.undo(project).unwrap();
+        assert_eq!(project.material(&extra.id), Some(&extra));
+    }
+
+    #[test]
+    fn failed_and_empty_history_transitions_are_explicit() {
+        let (project, _) = fixture();
+        let (project, history, changed) = EditHistory::default().undo(project).unwrap();
+        assert!(!changed);
+        assert!(!history.is_dirty());
+        let (project, _, changed) = history.redo(project).unwrap();
+        assert!(!changed);
+
+        let outside = MapEditCommand::ReplaceCells(vec![CellChange {
+            position: TilePosition::new(99, 99),
+            before: MapCell::new(None, Collision::Walkable, None),
+            after: MapCell::new(None, Collision::Blocked, None),
+        }]);
+        assert!(EditHistory::default().execute(project, outside).is_err());
+
+        let (project, _) = fixture();
+        let used = project.materials[0].clone();
+        assert!(
+            EditHistory::default()
+                .execute(
+                    project.clone(),
+                    MapEditCommand::CreateMaterial(used.clone())
+                )
+                .is_err()
+        );
+        assert!(
+            EditHistory::default()
+                .execute(project, MapEditCommand::RemoveMaterial(used))
+                .is_err()
+        );
+
+        let (project, _) = fixture();
+        let missing = CompositeTile::new(
+            CompositeTileId::new("missing").unwrap(),
+            vec![id("tile-0000")],
+        );
+        assert!(
+            EditHistory::default()
+                .execute(
+                    project,
+                    MapEditCommand::ReplaceMaterial {
+                        before: missing.clone(),
+                        after: missing,
+                    },
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn every_map_error_has_actionable_text() {
+        let material = CompositeTileId::new("material").unwrap();
+        let tile = id("tile");
+        let errors = [
+            MapError::CellOutOfBounds(TilePosition::new(1, 2)),
+            MapError::SpawnOutOfBounds(TilePosition::new(1, 2)),
+            MapError::SpawnBlocked(TilePosition::new(1, 2)),
+            MapError::DuplicateMaterial(material.clone()),
+            MapError::UnknownMaterial(material.clone()),
+            MapError::EmptyMaterial(material.clone()),
+            MapError::UnknownAtomicTile(tile),
+            MapError::MaterialInUse(material),
+            MapError::Json("bad".into()),
+        ];
+        for error in errors {
+            assert!(!error.to_string().is_empty());
+        }
     }
 }

@@ -4,36 +4,36 @@
 
 use std::{collections::BTreeMap, error::Error, fmt};
 
+use game_assets::AssetKey;
+use game_view::{LayerKind, ViewCell, ViewImage, ViewLayer};
 use map_project::{AtomicTileId, MapProject};
-use punctum_gpu::{GpuCell, GpuImage, PixelOffset, ResourceId, Rgba8, Viewport};
+use punctum_gpu::{PixelOffset, Rgba8, Viewport};
 use punctum_grid::{GridPos, GridRect, GridSize, Surface, SurfaceError};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AtomicTileResource {
+pub struct AtomicTileAsset {
     pub id: AtomicTileId,
-    pub resource: ResourceId,
+    pub asset: AssetKey,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AtomicTileCatalog {
-    tiles: BTreeMap<AtomicTileId, ResourceId>,
+    tiles: BTreeMap<AtomicTileId, AssetKey>,
 }
 
 impl AtomicTileCatalog {
-    pub fn new(
-        tiles: impl IntoIterator<Item = AtomicTileResource>,
-    ) -> Result<Self, MapRenderError> {
+    pub fn new(tiles: impl IntoIterator<Item = AtomicTileAsset>) -> Result<Self, MapRenderError> {
         let mut resources = BTreeMap::new();
         for tile in tiles {
-            if resources.insert(tile.id.clone(), tile.resource).is_some() {
+            if resources.insert(tile.id.clone(), tile.asset).is_some() {
                 return Err(MapRenderError::DuplicateAtomicTile(tile.id));
             }
         }
         Ok(Self { tiles: resources })
     }
 
-    pub fn resource(&self, id: &AtomicTileId) -> Option<ResourceId> {
-        self.tiles.get(id).copied()
+    pub fn asset(&self, id: &AtomicTileId) -> Option<&AssetKey> {
+        self.tiles.get(id)
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &AtomicTileId> {
@@ -94,18 +94,21 @@ impl MapGridLayout {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapScenePlan {
-    base: Surface<GpuCell>,
-    tile_images: Vec<GpuImage>,
+    layer: ViewLayer,
     viewport: Viewport,
 }
 
 impl MapScenePlan {
-    pub fn base(&self) -> &Surface<GpuCell> {
-        &self.base
+    pub fn layer(&self) -> &ViewLayer {
+        &self.layer
     }
 
-    pub fn tile_images(&self) -> &[GpuImage] {
-        &self.tile_images
+    pub fn tile_images(&self) -> &[ViewImage] {
+        &self.layer.images
+    }
+
+    pub fn into_layer(self) -> ViewLayer {
+        self.layer
     }
 
     pub const fn viewport(&self) -> Viewport {
@@ -122,15 +125,16 @@ pub fn project_map(input: MapRenderInput<'_>) -> Result<MapScenePlan, MapRenderE
     {
         return Err(MapRenderError::LayoutOverflow);
     }
-    let base = Surface::filled(input.layout.surface_size, GpuCell::Empty)
+    let base = Surface::filled(input.layout.surface_size, ViewCell::Empty)
         .map_err(MapRenderError::Surface)?;
     let mut tile_images = Vec::new();
     if input.layout.tile_span.cols > input.layout.surface_size.cols
         || input.layout.tile_span.rows > input.layout.surface_size.rows
     {
         return Ok(MapScenePlan {
-            base,
-            tile_images,
+            layer: ViewLayer::new(LayerKind::Map)
+                .with_surface(base)
+                .with_images(tile_images),
             viewport: input.viewport,
         });
     }
@@ -156,14 +160,14 @@ pub fn project_map(input: MapRenderInput<'_>) -> Result<MapScenePlan, MapRenderE
                 .material(material_id)
                 .ok_or_else(|| MapRenderError::UnknownMaterial(material_id.clone()))?;
             for atomic_id in &material.layers {
-                let resource = input
+                let asset = input
                     .catalog
-                    .resource(atomic_id)
+                    .asset(atomic_id)
                     .ok_or_else(|| MapRenderError::UnknownAtomicTile(atomic_id.clone()))?;
                 tile_images.push(
-                    GpuImage::new(
+                    ViewImage::new(
                         GridRect::new(image_origin, input.layout.tile_span),
-                        resource,
+                        asset.clone(),
                         Rgba8::new(255, 255, 255, 255),
                         0,
                     )
@@ -174,8 +178,9 @@ pub fn project_map(input: MapRenderInput<'_>) -> Result<MapScenePlan, MapRenderE
     }
 
     Ok(MapScenePlan {
-        base,
-        tile_images,
+        layer: ViewLayer::new(LayerKind::Map)
+            .with_surface(base)
+            .with_images(tile_images),
         viewport: input.viewport,
     })
 }
@@ -300,10 +305,15 @@ impl Error for MapRenderError {
 
 #[cfg(test)]
 mod tests {
+    use game_assets::AssetKey;
     use map_project::{AtomicTileId, CompositeTile, CompositeTileId, MapProject, MapProjectId};
-    use punctum_gpu::{PixelOffset, PixelSize, ResourceId, Viewport};
+    use punctum_gpu::{PixelOffset, PixelSize, Viewport};
 
     use super::*;
+
+    fn asset(name: &str) -> AssetKey {
+        AssetKey::new(format!("test/{name}")).unwrap()
+    }
 
     #[test]
     fn expands_every_composite_layer_in_stable_cell_order() {
@@ -315,13 +325,13 @@ mod tests {
         );
         let project = MapProject::blank(MapProjectId::new("map").unwrap(), 2, 1, Some(material));
         let catalog = AtomicTileCatalog::new([
-            AtomicTileResource {
+            AtomicTileAsset {
                 id: first,
-                resource: ResourceId(10),
+                asset: asset("first"),
             },
-            AtomicTileResource {
+            AtomicTileAsset {
                 id: second,
-                resource: ResourceId(11),
+                asset: asset("second"),
             },
         ])
         .unwrap();
@@ -342,20 +352,20 @@ mod tests {
         })
         .unwrap();
 
-        let resources = scene
+        let assets = scene
             .tile_images()
             .iter()
-            .map(|image| image.resource)
+            .map(|image| image.asset.clone())
             .collect::<Vec<_>>();
         assert_eq!(
-            resources,
+            assets,
             [
-                ResourceId(10),
-                ResourceId(11),
-                ResourceId(10),
-                ResourceId(10),
-                ResourceId(11),
-                ResourceId(10)
+                asset("first"),
+                asset("second"),
+                asset("first"),
+                asset("first"),
+                asset("second"),
+                asset("first")
             ]
         );
     }
@@ -372,9 +382,9 @@ mod tests {
                 vec![tile.clone()],
             )),
         );
-        let catalog = AtomicTileCatalog::new([AtomicTileResource {
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
             id: tile,
-            resource: ResourceId(1),
+            asset: asset("tile"),
         }])
         .unwrap();
         let viewport = Viewport::new(
@@ -409,9 +419,9 @@ mod tests {
                 vec![tile.clone()],
             )),
         );
-        let catalog = AtomicTileCatalog::new([AtomicTileResource {
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
             id: tile,
-            resource: ResourceId(1),
+            asset: asset("tile"),
         }])
         .unwrap();
         let viewport = Viewport::new(
@@ -457,9 +467,9 @@ mod tests {
                 vec![tile.clone()],
             )),
         );
-        let catalog = AtomicTileCatalog::new([AtomicTileResource {
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
             id: tile,
-            resource: ResourceId(1),
+            asset: asset("tile"),
         }])
         .unwrap();
         let viewport = Viewport::new(
@@ -484,5 +494,150 @@ mod tests {
         project.event_cells[0] = Some(map_project::MapEventKind::Encounter);
         let after = render(&project);
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn catalog_and_planner_failures_are_explicit() {
+        let tile = AtomicTileId::new("tile").unwrap();
+        let duplicate = AtomicTileCatalog::new([
+            AtomicTileAsset {
+                id: tile.clone(),
+                asset: asset("one"),
+            },
+            AtomicTileAsset {
+                id: tile.clone(),
+                asset: asset("two"),
+            },
+        ]);
+        assert!(matches!(
+            duplicate,
+            Err(MapRenderError::DuplicateAtomicTile(_))
+        ));
+
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
+            id: tile.clone(),
+            asset: asset("tile"),
+        }])
+        .unwrap();
+        assert_eq!(catalog.len(), 1);
+        assert!(!catalog.is_empty());
+        assert_eq!(catalog.ids().next(), Some(&tile));
+        assert_eq!(catalog.asset(&tile), Some(&asset("tile")));
+
+        let project = MapProject::blank(MapProjectId::new("map").unwrap(), 1, 1, None);
+        let viewport = Viewport::new(
+            PixelSize::new(16, 16),
+            PixelOffset::new(0, 0),
+            PixelSize::new(16, 16),
+        )
+        .unwrap();
+        let render = |layout| {
+            project_map(MapRenderInput {
+                project: &project,
+                catalog: &catalog,
+                camera: MapCamera::default(),
+                pixel_offset: PixelOffset::new(0, 0),
+                viewport,
+                layout,
+            })
+        };
+        assert!(matches!(
+            render(MapGridLayout::new(GridSize::new(1, 1), GridSize::new(0, 1))),
+            Err(MapRenderError::EmptyTileSpan)
+        ));
+        assert!(matches!(
+            render(MapGridLayout::new(
+                GridSize::new(i32::MAX as u32 + 1, 1),
+                GridSize::new(1, 1)
+            )),
+            Err(MapRenderError::LayoutOverflow)
+        ));
+        let empty = render(MapGridLayout::new(GridSize::new(1, 1), GridSize::new(2, 2))).unwrap();
+        assert!(empty.tile_images().is_empty());
+        assert_eq!(empty.layer().kind, LayerKind::Map);
+        assert_eq!(empty.clone().into_layer(), empty.layer().clone());
+        let shifted = project_map(MapRenderInput {
+            project: &project,
+            catalog: &catalog,
+            camera: MapCamera::default(),
+            pixel_offset: PixelOffset::new(1_000, 0),
+            viewport,
+            layout: MapGridLayout::new(GridSize::new(1, 1), GridSize::new(1, 1)),
+        })
+        .unwrap();
+        assert!(shifted.tile_images().is_empty());
+
+        for error in [
+            MapRenderError::DuplicateAtomicTile(tile.clone()),
+            MapRenderError::UnknownAtomicTile(tile.clone()),
+            MapRenderError::UnknownMaterial(CompositeTileId::new("missing").unwrap()),
+            MapRenderError::EmptyTileSpan,
+            MapRenderError::LayoutOverflow,
+            MapRenderError::Surface(SurfaceError::CapacityOverflow {
+                size: GridSize::new(u32::MAX, u32::MAX),
+            }),
+        ] {
+            assert!(!error.to_string().is_empty());
+            assert_eq!(
+                error.source().is_some(),
+                matches!(error, MapRenderError::Surface(_))
+            );
+        }
+    }
+
+    #[test]
+    fn missing_material_asset_and_offscreen_cells_take_distinct_paths() {
+        let tile = AtomicTileId::new("tile").unwrap();
+        let missing = AtomicTileId::new("missing").unwrap();
+        let material_id = CompositeTileId::new("base").unwrap();
+        let mut project = MapProject::blank(
+            MapProjectId::new("map").unwrap(),
+            2,
+            1,
+            Some(CompositeTile::new(
+                material_id.clone(),
+                vec![missing.clone()],
+            )),
+        );
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
+            id: tile,
+            asset: asset("tile"),
+        }])
+        .unwrap();
+        let viewport = Viewport::new(
+            PixelSize::new(16, 16),
+            PixelOffset::new(0, 0),
+            PixelSize::new(16, 16),
+        )
+        .unwrap();
+        let render = |project: &MapProject, camera| {
+            project_map(MapRenderInput {
+                project,
+                catalog: &catalog,
+                camera,
+                pixel_offset: PixelOffset::new(0, 0),
+                viewport,
+                layout: MapGridLayout::new(GridSize::new(1, 1), GridSize::new(1, 1)),
+            })
+        };
+        assert!(matches!(
+            render(&project, MapCamera::default()),
+            Err(MapRenderError::UnknownAtomicTile(id)) if id == missing
+        ));
+
+        project.materials.clear();
+        assert!(matches!(
+            render(&project, MapCamera::default()),
+            Err(MapRenderError::UnknownMaterial(id)) if id == material_id
+        ));
+        for cell in &mut project.visual_cells {
+            cell.material = None;
+        }
+        assert!(
+            render(&project, MapCamera::new(1, 0))
+                .unwrap()
+                .tile_images()
+                .is_empty()
+        );
     }
 }

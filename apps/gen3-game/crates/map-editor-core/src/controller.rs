@@ -13,7 +13,7 @@ pub enum PointerButton {
     Secondary,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct EditorController {
     pub hover: Option<TilePosition>,
     cursor: Option<GridPos>,
@@ -23,67 +23,87 @@ pub struct EditorController {
 
 impl EditorController {
     pub fn move_cursor(
-        &mut self,
+        mut self,
         x: f64,
         y: f64,
         viewport: Viewport,
         model: &EditorModel,
-    ) -> Option<EditorIntent> {
+    ) -> (Self, Option<EditorIntent>) {
         self.cursor = grid_position(x, y, viewport);
         if model.show_help {
             self.hover = None;
-            return None;
+            return (self, None);
         }
         self.hover = self
             .cursor
             .and_then(|position| map_position(position, model));
-        let position = self.hover?;
-        let button = self.pressed?;
+        let Some(position) = self.hover else {
+            return (self, None);
+        };
+        let Some(button) = self.pressed else {
+            return (self, None);
+        };
         if self.last_painted == Some(position) {
-            return None;
+            return (self, None);
         }
         self.last_painted = Some(position);
-        Some(EditorIntent::Paint {
-            position,
-            erase: button == PointerButton::Secondary,
-        })
+        (
+            self,
+            Some(EditorIntent::Paint {
+                position,
+                erase: button == PointerButton::Secondary,
+            }),
+        )
     }
 
-    pub fn press(&mut self, button: PointerButton, model: &EditorModel) -> Option<EditorIntent> {
-        let grid = self.cursor?;
+    pub fn press(
+        mut self,
+        button: PointerButton,
+        model: &EditorModel,
+    ) -> (Self, Option<EditorIntent>) {
+        let Some(grid) = self.cursor else {
+            return (self, None);
+        };
         if model.show_help {
             let ui = layout::workbench();
-            return (button == PointerButton::Primary && ui.help.contains(grid))
+            let intent = (button == PointerButton::Primary && ui.help.contains(grid))
                 .then_some(EditorIntent::ToggleHelp);
+            return (self, intent);
         }
         if let Some(position) = map_position(grid, model) {
             self.pressed = Some(button);
             self.last_painted = Some(position);
-            return Some(EditorIntent::Paint {
-                position,
-                erase: button == PointerButton::Secondary,
-            });
+            return (
+                self,
+                Some(EditorIntent::Paint {
+                    position,
+                    erase: button == PointerButton::Secondary,
+                }),
+            );
         }
         if button == PointerButton::Secondary {
-            return None;
+            return (self, None);
         }
         self.pressed = None;
         self.last_painted = None;
-        click_intent(grid, model)
+        let intent = click_intent(grid, model);
+        (self, intent)
     }
 
-    pub fn release(&mut self, button: PointerButton) {
+    pub fn release(mut self, button: PointerButton) -> Self {
         if self.pressed == Some(button) {
             self.pressed = None;
             self.last_painted = None;
         }
+        self
     }
 
-    pub fn leave(&mut self) {
+    pub fn leave(mut self) -> Self {
         self.hover = None;
         self.cursor = None;
         self.pressed = None;
         self.last_painted = None;
+        self
     }
 }
 
@@ -217,7 +237,7 @@ mod tests {
 
     #[test]
     fn canvas_and_palette_clicks_produce_intents_without_mutating_the_model() {
-        let model = model();
+        let state = model();
         let viewport = Viewport::new(
             PixelSize::new(1920, 1040),
             PixelOffset::new(0, 0),
@@ -225,23 +245,24 @@ mod tests {
         )
         .unwrap();
         let mut controller = EditorController::default();
-        controller.move_cursor(80.0, 120.0, viewport, &model);
+        (controller, _) = controller.move_cursor(80.0, 120.0, viewport, &state);
+        let (next, intent) = controller.press(PointerButton::Primary, &state);
+        controller = next;
         assert!(matches!(
-            controller.press(PointerButton::Primary, &model),
+            intent,
             Some(EditorIntent::Paint {
                 position: TilePosition(1, 1),
                 ..
             })
         ));
-        controller.release(PointerButton::Primary);
-        controller.move_cursor(50.5 * 40.0, 2.5 * 40.0, viewport, &model);
+        controller = controller.release(PointerButton::Primary);
+        (controller, _) = controller.move_cursor(50.5 * 40.0, 2.5 * 40.0, viewport, &state);
+        let (next, intent) = controller.press(PointerButton::Primary, &state);
+        controller = next;
+        assert_eq!(intent, Some(EditorIntent::SelectAtomic(0)));
+        let (_, intent) = controller.move_cursor(40.0, 40.0, viewport, &state);
         assert_eq!(
-            controller.press(PointerButton::Primary, &model),
-            Some(EditorIntent::SelectAtomic(0))
-        );
-        assert_eq!(
-            controller.move_cursor(40.0, 40.0, viewport, &model),
-            None,
+            intent, None,
             "dragging from a UI control must not paint the canvas"
         );
     }
@@ -262,21 +283,114 @@ mod tests {
         )
         .unwrap();
         let mut controller = EditorController::default();
-        controller.move_cursor(41.5 * 40.0, 33.5 * 40.0, viewport, &model);
-        assert_eq!(
-            controller.press(PointerButton::Primary, &model),
-            Some(EditorIntent::SelectMaterial(5))
-        );
+        (controller, _) = controller.move_cursor(41.5 * 40.0, 33.5 * 40.0, viewport, &model);
+        let (_, intent) = controller.press(PointerButton::Primary, &model);
+        assert_eq!(intent, Some(EditorIntent::SelectMaterial(5)));
     }
 
     #[test]
     fn delete_material_button_produces_delete_intent() {
-        let model = model();
+        let state = model();
         let button = layout::workbench().delete_material;
 
         assert_eq!(
-            click_intent(button.origin, &model),
+            click_intent(button.origin, &state),
             Some(EditorIntent::DeleteMaterial)
         );
+    }
+
+    #[test]
+    fn every_workbench_control_maps_to_one_intent() {
+        let state = model();
+        let ui = layout::workbench();
+        let cases = [
+            (ui.previous_assets, EditorIntent::SelectAtomic(0)),
+            (ui.next_assets, EditorIntent::SelectAtomic(15)),
+            (ui.previous_materials, EditorIntent::SelectMaterial(0)),
+            (ui.next_materials, EditorIntent::SelectMaterial(0)),
+            (ui.add_layer, EditorIntent::AddLayer),
+            (ui.remove_layer, EditorIntent::RemoveLayer),
+            (ui.delete_material, EditorIntent::DeleteMaterial),
+            (ui.save, EditorIntent::Save),
+            (ui.undo, EditorIntent::Undo),
+            (ui.redo, EditorIntent::Redo),
+            (ui.help, EditorIntent::ToggleHelp),
+            (ui.visual, EditorIntent::SelectTool(EditorTool::Visual)),
+            (
+                ui.walkable,
+                EditorIntent::SelectTool(EditorTool::Collision(Collision::Walkable)),
+            ),
+            (
+                ui.blocked,
+                EditorIntent::SelectTool(EditorTool::Collision(Collision::Blocked)),
+            ),
+            (
+                ui.encounter,
+                EditorIntent::SelectTool(EditorTool::Event(Some(MapEventKind::Encounter))),
+            ),
+            (
+                ui.clear_event,
+                EditorIntent::SelectTool(EditorTool::Event(None)),
+            ),
+        ];
+        for (rect, expected) in cases {
+            assert_eq!(click_intent(rect.origin, &state), Some(expected));
+        }
+        assert_eq!(click_intent(GridPos::new(63, 37), &state), None);
+
+        let mut empty = model();
+        empty.atomic_ids.clear();
+        empty.project.materials.clear();
+        assert_eq!(click_intent(ui.asset_slots[0].origin, &empty), None);
+        assert_eq!(click_intent(ui.material_slots[0].origin, &empty), None);
+    }
+
+    #[test]
+    fn pointer_reducer_covers_drag_help_release_and_leave() {
+        let viewport = Viewport::new(
+            PixelSize::new(1920, 1040),
+            PixelOffset::new(0, 0),
+            PixelSize::new(40, 40),
+        )
+        .unwrap();
+        let state = model();
+        let (controller, intent) =
+            EditorController::default().press(PointerButton::Primary, &state);
+        assert_eq!(intent, None);
+        let (controller, intent) = controller.move_cursor(-1.0, -1.0, viewport, &state);
+        assert_eq!(intent, None);
+        let (controller, _) = controller.move_cursor(80.0, 120.0, viewport, &state);
+        let (controller, intent) = controller.press(PointerButton::Secondary, &state);
+        assert!(matches!(
+            intent,
+            Some(EditorIntent::Paint { erase: true, .. })
+        ));
+        let (controller, intent) = controller.move_cursor(80.0, 120.0, viewport, &state);
+        assert_eq!(intent, None);
+        let (controller, intent) = controller.move_cursor(160.0, 120.0, viewport, &state);
+        assert!(matches!(
+            intent,
+            Some(EditorIntent::Paint { erase: true, .. })
+        ));
+        let controller = controller.release(PointerButton::Primary);
+        let controller = controller.release(PointerButton::Secondary);
+        assert_eq!(controller.clone().leave().hover, None);
+
+        let mut help = model();
+        help.show_help = true;
+        let help_button = layout::workbench().help.origin;
+        let x = f64::from(help_button.col * 40 + 1);
+        let y = f64::from(help_button.row * 40 + 1);
+        let (controller, intent) = EditorController::default().move_cursor(x, y, viewport, &help);
+        assert_eq!(intent, None);
+        let (controller, intent) = controller.press(PointerButton::Secondary, &help);
+        assert_eq!(intent, None);
+        let (_, intent) = controller.press(PointerButton::Primary, &help);
+        assert_eq!(intent, Some(EditorIntent::ToggleHelp));
+
+        let (controller, _) =
+            EditorController::default().move_cursor(60.0 * 40.0, 10.0 * 40.0, viewport, &state);
+        let (_, intent) = controller.press(PointerButton::Secondary, &state);
+        assert_eq!(intent, None);
     }
 }

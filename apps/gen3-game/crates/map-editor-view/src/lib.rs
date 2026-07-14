@@ -1,17 +1,16 @@
+//! Pure map editor workbench projection.
+
+#![forbid(unsafe_code)]
+
 use std::{error::Error, fmt};
 
+use game_assets::AssetKey;
+use game_view::{GameView, LayerKind, TextLabel, TextRole, ViewCell, ViewImage, ViewLayer};
+use map_editor_core::{EditorModel, EditorTool, layout};
 use map_project::{Collision, MapEventKind, TilePosition};
 use map_render::{AtomicTileCatalog, MapCamera, MapGridLayout, MapRenderInput, project_map};
-use punctum_gpu::{GpuCell, GpuImage, PixelOffset, PixelSize, ResourceId, Rgba8, Viewport};
+use punctum_gpu::{PixelOffset, PixelSize, Rgba8, Viewport};
 use punctum_grid::{GridPos, GridRect, GridSize, Surface, SurfaceError};
-
-use crate::{
-    layout,
-    model::{EditorModel, EditorTool},
-    text::EditorLabel,
-};
-
-pub const OVERLAY_RESOURCE: ResourceId = ResourceId(u32::MAX);
 
 const UI_BG: Rgba8 = Rgba8::new(22, 25, 29, 255);
 const PANEL: Rgba8 = Rgba8::new(31, 35, 41, 255);
@@ -21,19 +20,12 @@ const BORDER: Rgba8 = Rgba8::new(70, 78, 88, 255);
 const TEXT: Rgba8 = Rgba8::new(238, 241, 236, 255);
 const MUTED: Rgba8 = Rgba8::new(163, 173, 176, 255);
 
-pub struct EditorFrame {
-    pub surface: Surface<GpuCell>,
-    pub images: Vec<GpuImage>,
-    pub labels: Vec<EditorLabel>,
-    pub viewport: Viewport,
-}
-
 pub fn project(
     model: &EditorModel,
     catalog: &AtomicTileCatalog,
     hover: Option<TilePosition>,
     target_size: PixelSize,
-) -> Result<EditorFrame, EditorViewError> {
+) -> Result<(GameView, Viewport), EditorViewError> {
     let viewport = editor_viewport(target_size);
     let scene = project_map(MapRenderInput {
         project: &model.project,
@@ -47,9 +39,11 @@ pub fn project(
         ),
     })
     .map_err(|error| EditorViewError::Map(error.to_string()))?;
-    let mut surface = scene.base().clone();
+    let map = scene.into_layer();
+    let mut surface = Surface::filled(GridSize::new(layout::COLS, layout::ROWS), ViewCell::Empty)
+        .map_err(EditorViewError::Surface)?;
     project_chrome(&mut surface, model).map_err(EditorViewError::Surface)?;
-    let mut images = scene.tile_images().to_vec();
+    let mut images = Vec::new();
     project_assets(&mut images, model, catalog);
     project_materials(&mut images, model, catalog);
     project_semantics(&mut images, model);
@@ -60,29 +54,40 @@ pub fn project(
                 i32::from(position.y()) * layout::MAP_TILE_SPAN as i32,
             ),
             GridSize::new(layout::MAP_TILE_SPAN, layout::MAP_TILE_SPAN),
-            OVERLAY_RESOURCE,
+            white_asset(),
             Rgba8::new(255, 220, 78, 90),
             8,
         ));
     }
-    let mut labels = project_labels(model, hover);
-    if model.show_help {
+    let labels = project_labels(model, hover);
+    let help = if model.show_help {
         let ui = layout::workbench();
-        images.push(image(
-            ui.help_panel.origin,
-            ui.help_panel.size,
-            OVERLAY_RESOURCE,
-            Rgba8::new(24, 28, 33, 248),
-            100,
-        ));
-        labels.extend(project_help_labels(ui.help_panel));
+        Some(
+            ViewLayer::new(LayerKind::Console)
+                .with_images(vec![image(
+                    ui.help_panel.origin,
+                    ui.help_panel.size,
+                    white_asset(),
+                    Rgba8::new(24, 28, 33, 248),
+                    100,
+                )])
+                .with_labels(project_help_labels(ui.help_panel)),
+        )
+    } else {
+        None
+    };
+    let mut layers = vec![
+        map,
+        ViewLayer::new(LayerKind::Character),
+        ViewLayer::new(LayerKind::Hud)
+            .with_surface(surface)
+            .with_images(images)
+            .with_labels(labels),
+    ];
+    if let Some(help) = help {
+        layers.push(help);
     }
-    Ok(EditorFrame {
-        surface,
-        images,
-        labels,
-        viewport,
-    })
+    Ok((GameView::new(layers), viewport))
 }
 
 pub fn editor_viewport(target_size: PixelSize) -> Viewport {
@@ -102,7 +107,10 @@ pub fn editor_viewport(target_size: PixelSize) -> Viewport {
     .expect("editor viewport cell size is positive")
 }
 
-fn project_chrome(surface: &mut Surface<GpuCell>, model: &EditorModel) -> Result<(), SurfaceError> {
+fn project_chrome(
+    surface: &mut Surface<ViewCell>,
+    model: &EditorModel,
+) -> Result<(), SurfaceError> {
     let ui = layout::workbench();
     surface.fill(sprite(UI_BG));
     fill(surface, ui.right_panel, PANEL)?;
@@ -154,7 +162,7 @@ fn project_chrome(surface: &mut Surface<GpuCell>, model: &EditorModel) -> Result
     Ok(())
 }
 
-fn project_assets(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &AtomicTileCatalog) {
+fn project_assets(images: &mut Vec<ViewImage>, model: &EditorModel, catalog: &AtomicTileCatalog) {
     let ui = layout::workbench();
     let page_start = (model.selected_atomic / layout::ASSET_PAGE_SIZE) * layout::ASSET_PAGE_SIZE;
     for (index, id) in model
@@ -165,11 +173,11 @@ fn project_assets(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &Ato
         .take(layout::ASSET_PAGE_SIZE)
     {
         let position = ui.asset_slots[index - page_start].origin;
-        if let Some(resource) = catalog.resource(id) {
+        if let Some(asset) = catalog.asset(id) {
             images.push(image(
                 position,
                 GridSize::new(2, 2),
-                resource,
+                asset.clone(),
                 Rgba8::new(255, 255, 255, 255),
                 3,
             ));
@@ -178,7 +186,7 @@ fn project_assets(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &Ato
             images.push(image(
                 position,
                 GridSize::new(2, 2),
-                OVERLAY_RESOURCE,
+                white_asset(),
                 Rgba8::new(55, 205, 181, 72),
                 4,
             ));
@@ -186,7 +194,11 @@ fn project_assets(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &Ato
     }
 }
 
-fn project_materials(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &AtomicTileCatalog) {
+fn project_materials(
+    images: &mut Vec<ViewImage>,
+    model: &EditorModel,
+    catalog: &AtomicTileCatalog,
+) {
     let ui = layout::workbench();
     let page_start =
         (model.selected_material / layout::MATERIAL_PAGE_SIZE) * layout::MATERIAL_PAGE_SIZE;
@@ -200,11 +212,11 @@ fn project_materials(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &
     {
         let position = ui.material_slots[index - page_start].origin;
         for layer in &material.layers {
-            if let Some(resource) = catalog.resource(layer) {
+            if let Some(asset) = catalog.asset(layer) {
                 images.push(image(
                     position,
                     GridSize::new(3, 3),
-                    resource,
+                    asset.clone(),
                     Rgba8::new(255, 255, 255, 255),
                     3,
                 ));
@@ -214,7 +226,7 @@ fn project_materials(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &
             images.push(image(
                 position,
                 GridSize::new(3, 3),
-                OVERLAY_RESOURCE,
+                white_asset(),
                 Rgba8::new(55, 205, 181, 72),
                 4,
             ));
@@ -222,7 +234,7 @@ fn project_materials(images: &mut Vec<GpuImage>, model: &EditorModel, catalog: &
     }
 }
 
-fn project_semantics(images: &mut Vec<GpuImage>, model: &EditorModel) {
+fn project_semantics(images: &mut Vec<ViewImage>, model: &EditorModel) {
     for row in 0..model.project.height {
         for col in 0..model.project.width {
             let index = usize::from(row) * usize::from(model.project.width) + usize::from(col);
@@ -243,7 +255,7 @@ fn project_semantics(images: &mut Vec<GpuImage>, model: &EditorModel) {
                     i32::from(row) * layout::MAP_TILE_SPAN as i32,
                 ),
                 GridSize::new(layout::MAP_TILE_SPAN, layout::MAP_TILE_SPAN),
-                OVERLAY_RESOURCE,
+                white_asset(),
                 tint,
                 7,
             ));
@@ -251,7 +263,7 @@ fn project_semantics(images: &mut Vec<GpuImage>, model: &EditorModel) {
     }
 }
 
-fn project_labels(model: &EditorModel, hover: Option<TilePosition>) -> Vec<EditorLabel> {
+fn project_labels(model: &EditorModel, hover: Option<TilePosition>) -> Vec<TextLabel> {
     let ui = layout::workbench();
     let asset_page = model.selected_atomic / layout::ASSET_PAGE_SIZE;
     let asset_pages = model.atomic_ids.len().div_ceil(layout::ASSET_PAGE_SIZE);
@@ -365,7 +377,7 @@ fn project_labels(model: &EditorModel, hover: Option<TilePosition>) -> Vec<Edito
     labels
 }
 
-fn project_help_labels(panel: GridRect) -> Vec<EditorLabel> {
+fn project_help_labels(panel: GridRect) -> Vec<TextLabel> {
     let col = panel.origin.col as u32 + 2;
     let width = panel.size.cols.saturating_sub(4);
     let row = panel.origin.row as u32;
@@ -444,7 +456,7 @@ fn project_help_labels(panel: GridRect) -> Vec<EditorLabel> {
     ]
 }
 
-fn label_rect(rect: GridRect, content: &str, color: Rgba8) -> EditorLabel {
+fn label_rect(rect: GridRect, content: &str, color: Rgba8) -> TextLabel {
     label(
         rect.origin.col as u32,
         rect.origin.row as u32,
@@ -454,8 +466,9 @@ fn label_rect(rect: GridRect, content: &str, color: Rgba8) -> EditorLabel {
     )
 }
 
-fn label(col: u32, row: u32, width: u32, content: &str, color: Rgba8) -> EditorLabel {
-    EditorLabel {
+fn label(col: u32, row: u32, width: u32, content: &str, color: Rgba8) -> TextLabel {
+    TextLabel {
+        role: TextRole::Editor,
         col,
         row,
         width,
@@ -468,22 +481,23 @@ fn label(col: u32, row: u32, width: u32, content: &str, color: Rgba8) -> EditorL
 fn image(
     position: GridPos,
     size: GridSize,
-    resource: ResourceId,
+    asset: AssetKey,
     tint: Rgba8,
     z_index: i32,
-) -> GpuImage {
-    GpuImage::new(GridRect::new(position, size), resource, tint, z_index)
+) -> ViewImage {
+    ViewImage::new(GridRect::new(position, size), asset, tint, z_index as u16)
 }
 
-fn sprite(color: Rgba8) -> GpuCell {
-    GpuCell::Sprite {
-        resource: OVERLAY_RESOURCE,
-        tint: color,
-    }
+const fn sprite(color: Rgba8) -> ViewCell {
+    ViewCell::Fill(color)
 }
 
-fn fill(surface: &mut Surface<GpuCell>, rect: GridRect, color: Rgba8) -> Result<(), SurfaceError> {
+fn fill(surface: &mut Surface<ViewCell>, rect: GridRect, color: Rgba8) -> Result<(), SurfaceError> {
     surface.fill_rect(rect, sprite(color))
+}
+
+fn white_asset() -> AssetKey {
+    AssetKey::new("solid/white").expect("the white asset key is valid")
 }
 
 #[derive(Debug)]
@@ -505,8 +519,9 @@ impl Error for EditorViewError {}
 
 #[cfg(test)]
 mod tests {
+    use game_assets::AssetKey;
     use map_project::{AtomicTileId, CompositeTile, CompositeTileId, MapProject, MapProjectId};
-    use map_render::AtomicTileResource;
+    use map_render::AtomicTileAsset;
 
     use super::*;
 
@@ -525,25 +540,126 @@ mod tests {
             ),
             vec![tile.clone()],
         );
-        let catalog = AtomicTileCatalog::new([AtomicTileResource {
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
             id: tile,
-            resource: ResourceId(1),
+            asset: AssetKey::new("map/tile/tile-0001").unwrap(),
         }])
         .unwrap();
-        let frame = project(&model, &catalog, None, PixelSize::new(1280, 720)).unwrap();
-        assert_eq!(frame.surface.size(), GridSize::new(64, 38));
-        assert!(frame.labels.iter().any(|label| label.content == "原子素材"));
+        let (view, _) = project(&model, &catalog, None, PixelSize::new(1280, 720)).unwrap();
+        assert_eq!(
+            view.layers()[2].surface.as_ref().unwrap().size(),
+            GridSize::new(64, 38)
+        );
+        assert!(view.labels().any(|label| label.content == "原子素材"));
         assert!(
-            frame
-                .labels
-                .iter()
+            view.labels()
                 .any(|label| label.content.starts_with("组合素材"))
         );
+        assert!(view.labels().any(|label| label.content == "删除当前组合"));
+    }
+
+    #[test]
+    fn help_is_an_explicit_layer_and_does_not_steal_hud_labels() {
+        let tile = AtomicTileId::new("tile-0001").unwrap();
+        let mut model = EditorModel::new(
+            MapProject::blank(
+                MapProjectId::new("map").unwrap(),
+                16,
+                10,
+                Some(CompositeTile::new(
+                    CompositeTileId::new("material-0000").unwrap(),
+                    vec![tile.clone()],
+                )),
+            ),
+            vec![tile.clone()],
+        );
+        model.show_help = true;
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
+            id: tile,
+            asset: AssetKey::new("map/tile/tile-0001").unwrap(),
+        }])
+        .unwrap();
+
+        let (view, _) = project(
+            &model,
+            &catalog,
+            Some(TilePosition::new(1, 2)),
+            PixelSize::new(1280, 720),
+        )
+        .unwrap();
+
+        assert_eq!(view.layers().len(), 4);
+        assert_eq!(view.layers()[3].kind, LayerKind::Console);
+        assert_eq!(view.layers()[3].labels.len(), 11);
         assert!(
-            frame
+            view.layers()[2]
                 .labels
                 .iter()
-                .any(|label| label.content == "删除当前组合")
+                .any(|label| label.content == "就绪 | 1, 2")
+        );
+    }
+
+    #[test]
+    fn projects_every_tool_page_and_error_state() {
+        let tile = AtomicTileId::new("tile-0001").unwrap();
+        let mut model = EditorModel::new(
+            MapProject::blank(
+                MapProjectId::new("map").unwrap(),
+                16,
+                10,
+                Some(CompositeTile::new(
+                    CompositeTileId::new("material-0000").unwrap(),
+                    vec![tile.clone()],
+                )),
+            ),
+            (0..25)
+                .map(|index| AtomicTileId::new(format!("tile-{index:04}")).unwrap())
+                .collect(),
+        );
+        let catalog = AtomicTileCatalog::new([AtomicTileAsset {
+            id: tile.clone(),
+            asset: AssetKey::new("map/tile/tile-0001").unwrap(),
+        }])
+        .unwrap();
+        model.project.collision_cells[1] = Collision::Blocked;
+        model.project.event_cells[0] = Some(MapEventKind::Encounter);
+        model.selected_atomic = 24;
+        for index in 1..9 {
+            model.project.materials.push(CompositeTile::new(
+                CompositeTileId::new(format!("material-{index:04}")).unwrap(),
+                vec![tile.clone()],
+            ));
+        }
+        model.selected_material = 8;
+        model.status = "错误：fixture".into();
+
+        for tool in [
+            EditorTool::Collision(Collision::Walkable),
+            EditorTool::Collision(Collision::Blocked),
+            EditorTool::Event(Some(MapEventKind::Encounter)),
+            EditorTool::Event(None),
+        ] {
+            model.tool = tool;
+            let (view, _) = project(&model, &catalog, None, PixelSize::new(1, 1)).unwrap();
+            assert_eq!(view.layers().len(), 3);
+            assert!(
+                view.layers()[2]
+                    .images
+                    .iter()
+                    .any(|image| image.z_index == 7)
+            );
+            assert!(view.labels().any(|label| label.content == "错误：fixture"));
+        }
+
+        let missing = AtomicTileCatalog::new([]).unwrap();
+        let error = project(&model, &missing, None, PixelSize::new(1280, 720)).unwrap_err();
+        assert!(error.to_string().starts_with("map projection failed:"));
+        let surface_error =
+            Surface::<ViewCell>::from_cells(GridSize::new(1, 1), vec![]).unwrap_err();
+        assert!(
+            EditorViewError::Surface(surface_error)
+                .to_string()
+                .starts_with("workbench projection failed:")
         );
     }
 }

@@ -158,16 +158,25 @@ pub fn scene_from_observation(observation: &BattleObservation) -> BattleScene {
 }
 
 pub fn reduce_transition(transition: &BattleTransition) -> Result<Vec<PlaybackStep>, ReplayError> {
-    let mut reducer = BattleSceneReducer {
-        scene: scene_from_observation(transition.before()),
-    };
+    reduce_events(
+        scene_from_observation(transition.before()),
+        transition.events(),
+        scene_from_observation(transition.after()),
+    )
+}
+
+fn reduce_events(
+    scene: BattleScene,
+    events: &[BattleEvent],
+    expected: BattleScene,
+) -> Result<Vec<PlaybackStep>, ReplayError> {
+    let mut reducer = BattleSceneReducer { scene };
     let mut steps = Vec::new();
-    for event in transition.events() {
+    for event in events {
         if let Some(step) = reducer.apply(event)? {
             steps.push(step);
         }
     }
-    let expected = scene_from_observation(transition.after());
     if reducer.scene != expected {
         return Err(ReplayError::FinalSceneMismatch {
             reduced: Box::new(reducer.scene),
@@ -349,5 +358,75 @@ const fn condition(current_hp: u32) -> CombatantCondition {
         CombatantCondition::Fainted
     } else {
         CombatantCondition::Able
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn combatant(id: &str, hp: u32) -> CombatantScene {
+        CombatantScene {
+            id: PokemonId::new(id).unwrap(),
+            name: id.into(),
+            level: 50,
+            primary_type: PokemonType::Normal,
+            secondary_type: None,
+            current_hp: hp,
+            max_hp: 100,
+            condition: condition(hp),
+        }
+    }
+
+    fn scene() -> BattleScene {
+        BattleScene {
+            own: combatant("own", 100),
+            opponent: combatant("opponent", 100),
+        }
+    }
+
+    #[test]
+    fn reducer_rejects_inactive_targets_fainting_with_hp_and_final_mismatch() {
+        let mut reducer = BattleSceneReducer { scene: scene() };
+        let inactive = reducer
+            .apply(&BattleEvent::MoveUsed {
+                participant: Participant::Own,
+                pokemon: PokemonId::new("bench").unwrap(),
+                used_move: UsedMove::Struggle,
+            })
+            .unwrap_err();
+        assert!(matches!(
+            inactive,
+            ReplayError::EventTargetsInactivePokemon { .. }
+        ));
+
+        let fainted = reducer
+            .apply(&BattleEvent::Fainted {
+                participant: Participant::Opponent,
+                pokemon: PokemonId::new("opponent").unwrap(),
+            })
+            .unwrap_err();
+        assert!(matches!(fainted, ReplayError::FaintedWithHp { .. }));
+
+        let critical = reducer
+            .apply(&BattleEvent::Critical {
+                participant: Participant::Opponent,
+                target: Participant::Own,
+                pokemon: PokemonId::new("own").unwrap(),
+            })
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            critical.cue(),
+            BattleCue::Critical {
+                participant: Participant::Own
+            }
+        ));
+
+        let mut expected = scene();
+        expected.own.current_hp = 99;
+        let mismatch = reduce_events(scene(), &[], expected).unwrap_err();
+        assert!(matches!(mismatch, ReplayError::FinalSceneMismatch { .. }));
+        assert_eq!(reducer.scene.own.condition(), CombatantCondition::Able);
     }
 }

@@ -797,7 +797,13 @@ fn transition_keeps_one_perspective_for_before_events_and_after() {
 #[test]
 fn checkpoint_cannot_be_used_with_another_application() {
     let (first, first_one, _) = application();
-    let checkpoint = first.checkpoint(&first_one);
+    let mut checkpoint = first.checkpoint(&first_one);
+    checkpoint.event_offset = usize::MAX;
+    assert_eq!(
+        first.transition_since(checkpoint.clone()),
+        Err(TransitionError::EventLogRewound)
+    );
+
     let (second, _, _) = application();
 
     assert_eq!(

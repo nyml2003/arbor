@@ -1,11 +1,10 @@
 use battle_application::{
     Action, BattleApplication, BattleError, BattleObservation, BattlePerspective, BattleTransition,
-    TransitionError,
 };
 
 pub trait OpponentPolicy {
     fn choose_action(
-        &mut self,
+        &self,
         observation: &BattleObservation,
         legal_actions: &[Action],
     ) -> Option<Action>;
@@ -38,18 +37,27 @@ impl<P: OpponentPolicy> BattleCoordinator<P> {
     }
 
     pub fn resolve_player_action(
-        &mut self,
+        mut self,
         action: Action,
-    ) -> Result<BattleTransition, CoordinatorError> {
+    ) -> (Self, Result<BattleTransition, CoordinatorError>) {
         let checkpoint = self.application.checkpoint(&self.player);
-        let outcome = self.application.submit(&self.player, action)?;
+        let outcome = match self.application.submit(&self.player, action) {
+            Ok(outcome) => outcome,
+            Err(error) => return (self, Err(error.into())),
+        };
         if outcome.is_waiting_for_opponent() {
-            self.submit_opponent()?;
+            if let Err(error) = self.submit_opponent() {
+                return (self, Err(error));
+            }
         }
-        self.resolve_opponent_only_replacements()?;
-        self.application
+        if let Err(error) = self.resolve_opponent_only_replacements() {
+            return (self, Err(error));
+        }
+        let transition = self
+            .application
             .transition_since(checkpoint)
-            .map_err(Into::into)
+            .expect("a coordinator checkpoint belongs to its application and event log");
+        (self, Ok(transition))
     }
 
     fn resolve_opponent_only_replacements(&mut self) -> Result<(), CoordinatorError> {
@@ -80,18 +88,11 @@ impl<P: OpponentPolicy> BattleCoordinator<P> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CoordinatorError {
     Battle(BattleError),
-    Transition(TransitionError),
     OpponentActionUnavailable,
 }
 
 impl From<BattleError> for CoordinatorError {
     fn from(error: BattleError) -> Self {
         Self::Battle(error)
-    }
-}
-
-impl From<TransitionError> for CoordinatorError {
-    fn from(error: TransitionError) -> Self {
-        Self::Transition(error)
     }
 }

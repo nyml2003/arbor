@@ -404,6 +404,12 @@ mod tests {
         .unwrap()
     }
 
+    fn invalid(mut change: impl FnMut(&mut serde_json::Value)) -> DataLoadError {
+        let mut value: serde_json::Value = serde_json::from_slice(&fixture()).unwrap();
+        change(&mut value);
+        CurrentDataSet::from_json(&serde_json::to_vec(&value).unwrap()).unwrap_err()
+    }
+
     #[test]
     fn loads_and_queries_sorted_records() {
         let data = CurrentDataSet::from_json(&fixture()).unwrap();
@@ -430,6 +436,39 @@ mod tests {
             CurrentDataSet::from_json(&bytes),
             Err(DataLoadError::UnsupportedSchema(_))
         ));
+    }
+
+    #[test]
+    fn rejects_every_cross_record_and_metadata_violation() {
+        let errors = [
+            invalid(|value| {
+                let pokemon = value["pokemon"][0].clone();
+                value["pokemon"] = serde_json::json!([pokemon.clone(), pokemon]);
+            }),
+            invalid(|value| value["metadata"]["version_group"] = "".into()),
+            invalid(|value| value["pokemon"][0]["types"] = serde_json::json!([])),
+            invalid(|value| value["pokemon"][0]["types"] = serde_json::json!([1, 4, 12])),
+            invalid(|value| value["pokemon"][0]["types"] = serde_json::json!([4, 4])),
+            invalid(|value| value["pokemon"][0]["types"] = serde_json::json!([999])),
+            invalid(|value| value["pokemon"][0]["learnset"][0]["move_id"] = 999.into()),
+            invalid(|value| {
+                let entry = value["pokemon"][0]["learnset"][0].clone();
+                value["pokemon"][0]["learnset"] = serde_json::json!([entry.clone(), entry]);
+            }),
+            invalid(|value| value["moves"][0]["move_type"] = 999.into()),
+            invalid(|value| value["moves"][0]["accuracy"] = 0.into()),
+        ];
+        for error in errors {
+            assert!(matches!(error, DataLoadError::InvalidRecord(_)));
+            assert!(!error.to_string().is_empty());
+        }
+
+        for error in [
+            DataLoadError::MalformedData("bad json".into()),
+            DataLoadError::UnsupportedSchema("v9".into()),
+        ] {
+            assert!(!error.to_string().is_empty());
+        }
     }
 
     #[test]

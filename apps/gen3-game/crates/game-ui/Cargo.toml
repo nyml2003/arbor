@@ -6,9 +6,11 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+battle-application = { workspace = true }
+battle-ramus-adapter = { path = "../battle-ramus-adapter" }
 battle-session = { workspace = true }
-game-assets = { path = "../game-assets" }
-map-render = { workspace = true }
+game-session = { workspace = true }
+nucleo-matcher = "0.3.1"
 punctum-gpu = { workspace = true }
 punctum-grid = { workspace = true }
 punctum-input = { workspace = true }
@@ -18,4 +20,4 @@ world-application = { path = "../world-application" }
 path = "src/lib.rs"
 
 [dev-dependencies]
-battle-application = { workspace = true }
+game-data = { path = "../game-data" }

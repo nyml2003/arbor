@@ -9,6 +9,23 @@ use punctum_gpu::{GpuAtlas, GpuAtlasError, GpuResource, PixelRect, PixelSize, Re
 
 const MAX_ATLAS_DIMENSION: u32 = 8_192;
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AssetKey(String);
+
+impl AssetKey {
+    pub fn new(value: impl Into<String>) -> Result<Self, AssetError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            return Err(AssetError::EmptyAssetKey);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodedImage {
     size: PixelSize,
@@ -21,6 +38,19 @@ impl DecodedImage {
             size: PixelSize::new(1, 1),
             rgba8: color.to_array().to_vec(),
         }
+    }
+
+    pub fn from_rgba8(size: PixelSize, rgba8: Vec<u8>) -> Result<Self, AssetError> {
+        let expected = usize::try_from(u64::from(size.width) * u64::from(size.height) * 4)
+            .map_err(|_| AssetError::PixelLengthOverflow { size })?;
+        if rgba8.len() != expected {
+            return Err(AssetError::PixelLengthMismatch {
+                size,
+                expected,
+                actual: rgba8.len(),
+            });
+        }
+        Ok(Self { size, rgba8 })
     }
 
     pub const fn size(&self) -> PixelSize {
@@ -91,9 +121,6 @@ fn build_atlas_with_limit(
     }
     let size = PixelSize::new(width, height);
     let byte_len = u64::from(width) * u64::from(height) * 4;
-    if byte_len > u64::from(u32::MAX) {
-        return Err(AssetError::AtlasDimensionsOverflow);
-    }
     let byte_len = usize::try_from(byte_len).map_err(|_| AssetError::AtlasDimensionsOverflow)?;
     let mut rgba8 = vec![0; byte_len];
     let mut resources = Vec::with_capacity(images.len());
@@ -118,9 +145,20 @@ fn build_atlas_with_limit(
 
 #[derive(Debug)]
 pub enum AssetError {
+    EmptyAssetKey,
     InvalidPng(String),
     EmptyImageSet,
-    EmptyImage { id: ResourceId },
+    EmptyImage {
+        id: ResourceId,
+    },
+    PixelLengthOverflow {
+        size: PixelSize,
+    },
+    PixelLengthMismatch {
+        size: PixelSize,
+        expected: usize,
+        actual: usize,
+    },
     AtlasDimensionsOverflow,
     InvalidAtlas(GpuAtlasError),
 }
@@ -128,9 +166,21 @@ pub enum AssetError {
 impl fmt::Display for AssetError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EmptyAssetKey => formatter.write_str("asset key must not be empty"),
             Self::InvalidPng(error) => write!(formatter, "invalid PNG: {error}"),
             Self::EmptyImageSet => formatter.write_str("an atlas requires at least one image"),
             Self::EmptyImage { id } => write!(formatter, "image {id:?} is empty"),
+            Self::PixelLengthOverflow { size } => {
+                write!(formatter, "RGBA8 byte length overflows for image {size:?}")
+            }
+            Self::PixelLengthMismatch {
+                size,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "image {size:?} requires {expected} RGBA8 bytes, received {actual}"
+            ),
             Self::AtlasDimensionsOverflow => formatter.write_str("atlas dimensions overflow"),
             Self::InvalidAtlas(error) => write!(formatter, "invalid GPU atlas: {error}"),
         }
@@ -148,10 +198,93 @@ impl Error for AssetError {
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error as _;
+
     use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
     use punctum_gpu::{PixelRect, PixelSize, ResourceId, Rgba8};
 
     use super::{DecodedImage, build_atlas, build_atlas_with_limit, decode_png};
+
+    #[test]
+    fn stable_asset_keys_and_all_error_variants_are_observable() {
+        let key = super::AssetKey::new("battle/player").unwrap();
+        assert_eq!(key.as_str(), "battle/player");
+        assert!(matches!(
+            super::AssetKey::new("  "),
+            Err(super::AssetError::EmptyAssetKey)
+        ));
+
+        let empty = DecodedImage {
+            size: PixelSize::new(0, 0),
+            rgba8: Vec::new(),
+        };
+        let wide = DecodedImage {
+            size: PixelSize::new(2, 1),
+            rgba8: Vec::new(),
+        };
+        let tall = DecodedImage {
+            size: PixelSize::new(1, 5_000),
+            rgba8: Vec::new(),
+        };
+        assert!(matches!(
+            build_atlas(&[]),
+            Err(super::AssetError::EmptyImageSet)
+        ));
+        assert!(matches!(
+            build_atlas_with_limit(&[(ResourceId(1), &wide)], 0),
+            Err(super::AssetError::AtlasDimensionsOverflow)
+        ));
+        assert!(matches!(
+            build_atlas(&[(ResourceId(1), &empty)]),
+            Err(super::AssetError::EmptyImage { .. })
+        ));
+        assert!(matches!(
+            build_atlas_with_limit(&[(ResourceId(1), &wide)], 1),
+            Err(super::AssetError::AtlasDimensionsOverflow)
+        ));
+        assert!(matches!(
+            build_atlas_with_limit(&[(ResourceId(1), &tall), (ResourceId(2), &tall)], 1),
+            Err(super::AssetError::AtlasDimensionsOverflow)
+        ));
+        let pixel = DecodedImage::solid(Rgba8::new(255, 255, 255, 255));
+        assert!(matches!(
+            build_atlas(&[(ResourceId(1), &pixel), (ResourceId(1), &pixel)]),
+            Err(super::AssetError::InvalidAtlas(
+                punctum_gpu::GpuAtlasError::DuplicateResource { .. }
+            ))
+        ));
+        assert!(matches!(
+            DecodedImage::from_rgba8(PixelSize::new(2, 2), vec![0; 3]),
+            Err(super::AssetError::PixelLengthMismatch { .. })
+        ));
+
+        let invalid_atlas =
+            super::AssetError::InvalidAtlas(punctum_gpu::GpuAtlasError::EmptyAtlas {
+                size: PixelSize::new(0, 0),
+            });
+        for error in [
+            super::AssetError::EmptyAssetKey,
+            super::AssetError::InvalidPng("bad".into()),
+            super::AssetError::EmptyImageSet,
+            super::AssetError::EmptyImage { id: ResourceId(1) },
+            super::AssetError::PixelLengthOverflow {
+                size: PixelSize::new(u32::MAX, u32::MAX),
+            },
+            super::AssetError::PixelLengthMismatch {
+                size: PixelSize::new(1, 1),
+                expected: 4,
+                actual: 0,
+            },
+            super::AssetError::AtlasDimensionsOverflow,
+            invalid_atlas,
+        ] {
+            assert!(!error.to_string().is_empty());
+            assert_eq!(
+                error.source().is_some(),
+                matches!(error, super::AssetError::InvalidAtlas(_))
+            );
+        }
+    }
 
     #[test]
     fn decodes_png_pixels_as_rgba8() {

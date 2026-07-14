@@ -10,7 +10,7 @@ struct FirstMovePolicy;
 
 impl OpponentPolicy for FirstMovePolicy {
     fn choose_action(
-        &mut self,
+        &self,
         _observation: &BattleObservation,
         legal_actions: &[Action],
     ) -> Option<Action> {
@@ -19,6 +19,33 @@ impl OpponentPolicy for FirstMovePolicy {
             .copied()
             .find(|action| matches!(action, Action::UseMove(_)))
             .or_else(|| legal_actions.first().copied())
+    }
+}
+
+struct NoActionPolicy;
+
+impl OpponentPolicy for NoActionPolicy {
+    fn choose_action(
+        &self,
+        _observation: &BattleObservation,
+        _legal_actions: &[Action],
+    ) -> Option<Action> {
+        None
+    }
+}
+
+struct MoveOnlyPolicy;
+
+impl OpponentPolicy for MoveOnlyPolicy {
+    fn choose_action(
+        &self,
+        _observation: &BattleObservation,
+        legal_actions: &[Action],
+    ) -> Option<Action> {
+        legal_actions
+            .iter()
+            .copied()
+            .find(|action| matches!(action, Action::UseMove(_)))
     }
 }
 
@@ -71,10 +98,80 @@ fn session(player: Team, opponent: Team, seed: u64) -> BattleSession<FirstMovePo
     BattleSession::new(BattleCoordinator::new(application, FirstMovePolicy))
 }
 
-fn drain(session: &mut BattleSession<FirstMovePolicy>) {
+fn submit(
+    session: BattleSession<FirstMovePolicy>,
+    action: Action,
+) -> BattleSession<FirstMovePolicy> {
+    let (session, result) = session.submit(action);
+    result.unwrap();
+    session
+}
+
+fn advance(session: BattleSession<FirstMovePolicy>) -> (BattleSession<FirstMovePolicy>, bool) {
+    session.advance()
+}
+
+fn drain(mut session: BattleSession<FirstMovePolicy>) -> BattleSession<FirstMovePolicy> {
     while session.has_pending_playback() {
-        assert!(session.advance());
+        let (next, advanced) = advance(session);
+        session = next;
+        assert!(advanced);
     }
+    session
+}
+
+#[test]
+fn input_and_policy_failures_leave_explicit_session_states() {
+    let player = team("player", pokemon("player-lead", 100, 50, 50, 50, 40), 100);
+    let opponent = team(
+        "opponent",
+        pokemon("opponent-lead", 100, 50, 50, 50, 40),
+        100,
+    );
+    let initial = session(player.clone(), opponent.clone(), 1);
+    let (initial, advanced) = initial.advance();
+    assert!(!advanced);
+    let before = initial.snapshot();
+    let (initial, rejected) = initial.submit(Action::Switch(TeamSlot::new(0).unwrap()));
+    assert!(matches!(
+        rejected,
+        Err(SessionError::ActionNotOffered { .. })
+    ));
+    assert_eq!(initial.snapshot(), before);
+
+    let application = BattleApplication::new(player.clone(), opponent.clone(), 1).unwrap();
+    let coordinator = BattleCoordinator::new(application, NoActionPolicy);
+    let locked = BattleSession::new(coordinator);
+    let action = locked.legal_actions()[0];
+    let (_locked, result) = locked.submit(action);
+    assert_eq!(result, Err(SessionError::OpponentActionUnavailable));
+
+    let application = BattleApplication::new(player, opponent, 1).unwrap();
+    let coordinator = BattleCoordinator::new(application, FirstMovePolicy);
+    let invalid = Action::Switch(TeamSlot::new(0).unwrap());
+    let (_coordinator, result) = coordinator.resolve_player_action(invalid);
+    assert!(matches!(
+        result,
+        Err(coordinator::CoordinatorError::Battle(_))
+    ));
+}
+
+#[test]
+fn opponent_only_replacement_requires_a_policy_action() {
+    let player = team("player", pokemon("killer", 100, 500, 50, 100, 500), 100);
+    let opponent = team("opponent", pokemon("victim", 10, 10, 10, 1, 1), 100);
+    let application = BattleApplication::new(player, opponent, 3).unwrap();
+    let coordinator = BattleCoordinator::new(application, MoveOnlyPolicy);
+    let action = coordinator
+        .player_legal_actions()
+        .into_iter()
+        .find(|action| matches!(action, Action::UseMove(_)))
+        .unwrap();
+    let (_coordinator, result) = coordinator.resolve_player_action(action);
+    assert_eq!(
+        result,
+        Err(coordinator::CoordinatorError::OpponentActionUnavailable)
+    );
 }
 
 #[test]
@@ -88,7 +185,7 @@ fn active_switch_uses_entry_hp_until_the_damage_event() {
     let mut session = session(player, opponent, 4);
     let switch = Action::Switch(TeamSlot::new(1).unwrap());
 
-    session.submit(switch).unwrap();
+    session = submit(session, switch);
     assert_eq!(
         session.snapshot().scene().own().id().as_str(),
         "player-lead"
@@ -97,7 +194,7 @@ fn active_switch_uses_entry_hp_until_the_damage_event() {
     let mut saw_switch = false;
     let mut saw_damage = false;
     while session.has_pending_playback() {
-        session.advance();
+        (session, _) = advance(session);
         let snapshot = session.snapshot();
         match snapshot.cue() {
             Some(BattleCue::Switched {
@@ -136,11 +233,11 @@ fn knocked_out_opponent_remains_visible_until_its_switch_event() {
         .find(|action| matches!(action, Action::UseMove(_)))
         .unwrap();
 
-    session.submit(action).unwrap();
+    session = submit(session, action);
     let mut saw_faint = false;
     let mut saw_switch = false;
     while session.has_pending_playback() {
-        session.advance();
+        (session, _) = advance(session);
         let snapshot = session.snapshot();
         match snapshot.cue() {
             Some(BattleCue::Fainted {
@@ -180,14 +277,14 @@ fn forced_replacement_prompt_opens_only_after_faint_playback() {
         .find(|action| matches!(action, Action::UseMove(_)))
         .unwrap();
 
-    session.submit(action).unwrap();
+    session = submit(session, action);
     let mut saw_faint = false;
     while session.has_pending_playback() {
         assert!(matches!(
             session.snapshot().interaction(),
             BattleInteraction::PlaybackLocked
         ));
-        session.advance();
+        (session, _) = advance(session);
         saw_faint |= matches!(
             session.snapshot().cue(),
             Some(BattleCue::Fainted {
@@ -200,6 +297,12 @@ fn forced_replacement_prompt_opens_only_after_faint_playback() {
         session.snapshot().interaction(),
         BattleInteraction::ChooseReplacement(_)
     ));
+    let snapshot = session.snapshot();
+    let BattleInteraction::ChooseReplacement(prompt) = snapshot.interaction() else {
+        panic!("the player should be choosing a replacement");
+    };
+    assert_eq!(prompt.observation().viewer(), battle_application::Side::One);
+    assert!(!prompt.legal_actions().is_empty());
 }
 
 #[test]
@@ -212,10 +315,12 @@ fn playback_rejects_new_input() {
     );
     let mut session = session(player, opponent, 2);
     let action = session.legal_actions()[0];
-    session.submit(action).unwrap();
+    session = submit(session, action);
 
-    assert_eq!(session.submit(action), Err(SessionError::InputLocked));
-    drain(&mut session);
+    let (next, result) = session.submit(action);
+    session = next;
+    assert_eq!(result, Err(SessionError::InputLocked));
+    session = drain(session);
     assert!(matches!(
         session.phase(),
         BattleSessionPhase::AwaitingAction(_)

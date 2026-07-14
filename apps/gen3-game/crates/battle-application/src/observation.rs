@@ -656,10 +656,9 @@ fn observe_used_move(
                         .iter()
                         .find(|battle_move| battle_move.id() == id)
                 })
-                .map_or_else(
-                    || id.as_str().to_owned(),
-                    |battle_move| battle_move.name().to_owned(),
-                );
+                .expect("a move-used event references a move owned by that combatant")
+                .name()
+                .to_owned();
             UsedMove::Move {
                 id: id.clone(),
                 name,

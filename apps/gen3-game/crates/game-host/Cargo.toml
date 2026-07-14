@@ -7,23 +7,22 @@ rust-version.workspace = true
 
 [dependencies]
 battle-application = { path = "../battle-application" }
-battle-ramus-adapter = { path = "../battle-ramus-adapter" }
 battle-session = { workspace = true }
+game-asset-plan = { path = "../game-asset-plan" }
 game-assets = { path = "../game-assets" }
 game-data = { path = "../game-data" }
+game-fs-assets = { path = "../game-fs-assets" }
+game-native-target = { path = "../game-native-target" }
+game-scene-view = { path = "../game-scene-view" }
+game-session = { workspace = true }
 game-ui = { path = "../game-ui" }
+game-view = { path = "../game-view" }
+map-assets = { path = "../map-assets" }
 map-project = { workspace = true }
 map-render = { workspace = true }
-glyphon = "0.12.0"
 nucleo-matcher = "0.3.1"
-pollster = "0.4.0"
 punctum-gpu = { workspace = true }
 punctum-grid = { workspace = true }
 punctum-input = { workspace = true }
-punctum-wgpu = { path = "../../../punctum/crates/punctum-wgpu" }
-wgpu = "30.0.0"
 winit = "0.30.13"
 world-application = { path = "../world-application" }
-
-[lib]
-path = "src/lib.rs"

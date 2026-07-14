@@ -364,8 +364,7 @@ impl Battle {
                     }
                 }
                 Action::Struggle => IllegalActionReason::StruggleNotRequired,
-                Action::Switch(_) => self.switch_error(side, action),
-                Action::Run => IllegalActionReason::WrongPhase,
+                Action::Switch(_) | Action::Run => self.switch_error(side, action),
             }
         };
         Err(BattleError::ActionNotLegal {

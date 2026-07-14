@@ -48,6 +48,7 @@ impl WorldObservation {
     }
 }
 
+#[derive(Clone)]
 pub struct WorldApplication {
     world: World,
 }
@@ -110,8 +111,9 @@ impl WorldApplication {
         self.world.player()
     }
 
-    pub fn submit(&mut self, command: WorldCommand) -> WorldOutcome {
-        self.world.submit(command)
+    pub fn transition(&self, command: WorldCommand) -> (Self, WorldOutcome) {
+        let (world, outcome) = self.world.transition(command);
+        (Self::new(world), outcome)
     }
 }
 
@@ -130,22 +132,20 @@ mod tests {
         let opening = application.observe();
 
         assert_eq!(opening.player(), Position::new(3, 6));
+        assert_eq!(opening.width(), 16);
+        assert_eq!(opening.height(), 10);
         assert_eq!(opening.tile(opening.player()), Some(Tile::Ground));
-        assert!(
-            !application
-                .submit(WorldCommand::Move(Direction::Right))
-                .starts_battle()
-        );
-        assert!(
-            !application
-                .submit(WorldCommand::Move(Direction::Right))
-                .starts_battle()
-        );
-        assert!(
-            application
-                .submit(WorldCommand::Move(Direction::Right))
-                .starts_battle()
-        );
+        assert_eq!(opening.tile(Position::new(99, 99)), None);
+        assert_eq!(opening.facing(), Direction::Down);
+        assert_eq!(application.player(), opening.player());
+        let (next, outcome) = application.transition(WorldCommand::Move(Direction::Right));
+        application = next;
+        assert!(!outcome.starts_battle());
+        let (next, outcome) = application.transition(WorldCommand::Move(Direction::Right));
+        application = next;
+        assert!(!outcome.starts_battle());
+        let (_, outcome) = application.transition(WorldCommand::Move(Direction::Right));
+        assert!(outcome.starts_battle());
     }
 
     #[test]
@@ -162,10 +162,11 @@ mod tests {
         project.player_spawn = TilePosition::new(0, 0);
         project.event_cells[1] = Some(MapEventKind::Encounter);
         project.collision_cells[2] = Collision::Blocked;
-        let mut world = WorldApplication::from_map_project(&project).unwrap();
+        let world = WorldApplication::from_map_project(&project).unwrap();
         assert!(
             world
-                .submit(WorldCommand::Move(Direction::Right))
+                .transition(WorldCommand::Move(Direction::Right))
+                .1
                 .starts_battle()
         );
     }

@@ -349,6 +349,14 @@ mod tests {
             calculate_gen3_stats(BULBASAUR, 0, TrainingValues::perfect_untrained()),
             Err(StatProjectionError::InvalidLevel { value: 0 })
         );
+        assert_eq!(
+            calculate_gen3_stats(
+                StatBlock::new(0, 49, 49, 65, 65, 45),
+                50,
+                TrainingValues::perfect_untrained()
+            ),
+            Err(StatProjectionError::ZeroBaseStat { stat: StatName::Hp })
+        );
         assert!(calculate_gen3_stats(BULBASAUR, 100, TrainingValues::perfect_untrained()).is_ok());
     }
 

@@ -1,32 +1,26 @@
-mod console;
 mod map;
-mod movement;
 mod sprites;
-mod text;
 
 use std::{
     error::Error,
+    mem,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use console::{ConsoleIntent, ConsoleOutcome, ConsoleState, GameConsole};
-use game_host::{DemoGame, GameScene};
-use game_ui::{
-    CANVAS_HEIGHT, CANVAS_WIDTH, CommandConsoleView, WorldAnimation, overlay_command_console,
+use game_data::CurrentDataSet;
+use game_native_target::{
+    FramePlan, NativeAssets, NativeTarget, PresentOutcome, TextScale, WinitCommittedTextSnapshot,
+    WinitKeyEventSnapshot, normalize_committed_text, normalize_key_event,
 };
+use game_scene_view::{SceneViewInput, game_viewport, project_scene};
+use game_session::{GameCommand, GameError, GameEvents, GameSession};
+use game_ui::{GameConsole, PresentationAction, PresentationState, PresentationUpdate};
 use map::load_map;
 use map_project::MapProject;
-use map_render::{AtomicTileCatalog, MapCamera, MapGridLayout, MapRenderInput, project_map};
-use movement::{Gait, PressedDirections, RUN_STOP_DURATION, WORLD_TICK_INTERVAL, WorldMotion};
-use punctum_gpu::{GpuAtlas, GpuClip, PixelOffset, PixelSize, Rgba8, Viewport, plan_composite};
-use punctum_input::{KeyEvent, KeyPhase, LogicalKey, NamedKey, PhysicalKeyCode, TextEvent};
-use punctum_wgpu::{
-    GpuRuntime, PresentOutcome, WinitCommittedTextSnapshot, WinitKeyEventSnapshot,
-    normalize_committed_text, normalize_key_event,
-};
-use sprites::load_battle_atlas;
-use text::BattleTextRenderer;
+use map_render::AtomicTileCatalog;
+use punctum_gpu::{PixelSize, Rgba8};
+use sprites::load_game_assets;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -35,40 +29,22 @@ use winit::{
     keyboard::ModifiersState,
     window::{Window, WindowId},
 };
-use world_application::{Direction, WorldEvent};
 
 const CLEAR_COLOR: Rgba8 = Rgba8::new(14, 18, 24, 255);
-const BATTLE_FRAME_INTERVAL: Duration = Duration::from_millis(300);
-const TURN_HOLD_DURATION: Duration = Duration::from_millis(90);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum HostMode {
-    Gameplay,
-    Console,
-}
+const GAME_TEXT_SCALE: TextScale = TextScale::new(3, 5, 10, 28);
 
 struct CreatureGameApp {
-    mode: HostMode,
-    game: DemoGame,
+    game: Option<GameSession>,
+    presentation: PresentationState,
     map_project: MapProject,
     map_catalog: AtomicTileCatalog,
     console: GameConsole,
-    console_state: ConsoleState,
-    atlas: GpuAtlas,
-    text_renderer: BattleTextRenderer,
-    ime_preedit: String,
-    ime_composing: bool,
+    assets: NativeAssets,
     modifiers: ModifiersState,
-    next_playback: Option<Instant>,
-    sprite_frame: usize,
-    next_sprite_frame: Option<Instant>,
-    pressed_directions: PressedDirections,
-    world_motion: Option<WorldMotion>,
-    next_world_tick: Option<Instant>,
-    turn_hold_ends: Option<Instant>,
-    run_stop_ends: Option<Instant>,
+    last_real_instant: Instant,
+    next_wakeup: Option<Instant>,
     window: Option<Arc<Window>>,
-    runtime: Option<GpuRuntime<'static>>,
+    runtime: Option<NativeTarget<'static>>,
 }
 
 impl CreatureGameApp {
@@ -76,35 +52,36 @@ impl CreatureGameApp {
         let loaded_map = load_map()?;
         let world = world_application::WorldApplication::from_map_project(&loaded_map.project)
             .map_err(|error| std::io::Error::other(format!("map world: {error:?}")))?;
-        let game = DemoGame::new_random_with_world(world)
+        let game = GameSession::new(CurrentDataSet::embedded()?, world, random_roster_seed())
             .map_err(|error| std::io::Error::other(format!("demo game: {error:?}")))?;
         let sprite_manifest = game
             .sprite_manifest()
             .map_err(|error| std::io::Error::other(format!("demo sprite manifest: {error:?}")))?;
-        let atlas = load_battle_atlas(&sprite_manifest, &loaded_map.images)?;
+        let assets = load_game_assets(&sprite_manifest, loaded_map.images)?;
         Ok(Self {
-            mode: HostMode::Gameplay,
-            game,
+            game: Some(game),
+            presentation: PresentationState::default(),
             map_project: loaded_map.project,
             map_catalog: loaded_map.catalog,
-            console: GameConsole::new(),
-            console_state: ConsoleState::default(),
-            atlas,
-            text_renderer: BattleTextRenderer::new(),
-            ime_preedit: String::new(),
-            ime_composing: false,
+            console: GameConsole::default(),
+            assets,
             modifiers: ModifiersState::empty(),
-            next_playback: None,
-            sprite_frame: 0,
-            next_sprite_frame: None,
-            pressed_directions: PressedDirections::default(),
-            world_motion: None,
-            next_world_tick: None,
-            turn_hold_ends: None,
-            run_stop_ends: None,
+            last_real_instant: Instant::now(),
+            next_wakeup: None,
             window: None,
             runtime: None,
         })
+    }
+
+    fn game(&self) -> &GameSession {
+        self.game.as_ref().expect("the host owns one game session")
+    }
+
+    fn submit_game(&mut self, command: GameCommand) -> Result<GameEvents, GameError> {
+        let game = self.game.take().expect("the host owns one game session");
+        let (game, result) = game.transition(command);
+        self.game = Some(game);
+        result
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<(), Box<dyn Error>> {
@@ -116,14 +93,7 @@ impl CreatureGameApp {
             )?,
         );
         let size = pixel_size(window.inner_size());
-        let instance = wgpu::Instance::default();
-        let runtime = pollster::block_on(GpuRuntime::new(
-            &instance,
-            window.clone(),
-            size,
-            &self.atlas,
-            CLEAR_COLOR,
-        ))?;
+        let runtime = NativeTarget::new(window.clone(), size, &self.assets, CLEAR_COLOR)?;
         window.set_ime_allowed(false);
         window.request_redraw();
         self.window = Some(window);
@@ -132,57 +102,38 @@ impl CreatureGameApp {
     }
 
     fn redraw(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(surface_size) = self.runtime.as_ref().map(GpuRuntime::surface_size) else {
+        self.advance_presentation(Instant::now());
+        let Some(surface_size) = self.runtime.as_ref().map(NativeTarget::surface_size) else {
             return;
         };
-        let viewport = battle_viewport(surface_size);
-        let (world_animation, sprite_frame, world_pixel_offset) =
-            self.presentation(Instant::now(), viewport.cell_size);
-        let world_scene = self.game.scene() == GameScene::World;
-        let player_pixel_offset = if world_scene {
-            PixelOffset::new(0, 0)
-        } else {
-            world_pixel_offset
+        let viewport = game_viewport(surface_size);
+        let game_snapshot = self.game().snapshot();
+        let state = mem::take(&mut self.presentation);
+        let (state, presentation) = state.snapshot(&game_snapshot, viewport.cell_size);
+        self.presentation = state;
+        let console = self
+            .presentation
+            .is_console_open()
+            .then(|| self.presentation.console_view());
+        let view = match project_scene(SceneViewInput {
+            game: &game_snapshot,
+            presentation,
+            console: console.as_ref(),
+            map_project: &self.map_project,
+            map_catalog: &self.map_catalog,
+            viewport,
+        }) {
+            Ok(projected) => projected.view,
+            Err(error) => {
+                eprintln!("game scene projection failed: {error}");
+                event_loop.exit();
+                return;
+            }
         };
-        let mut view =
-            self.game
-                .view_with_presentation(sprite_frame, world_animation, player_pixel_offset);
-        if world_scene {
-            let camera = world_camera(self.game.world_position());
-            let scene = match project_map(MapRenderInput {
-                project: &self.map_project,
-                catalog: &self.map_catalog,
-                camera,
-                pixel_offset: invert_pixel_offset(world_pixel_offset),
-                viewport,
-                layout: MapGridLayout::new(
-                    punctum_grid::GridSize::new(CANVAS_WIDTH, CANVAS_HEIGHT),
-                    punctum_grid::GridSize::new(2, 2),
-                ),
-            }) {
-                Ok(scene) => scene,
-                Err(error) => {
-                    eprintln!("map projection failed: {error}");
-                    event_loop.exit();
-                    return;
-                }
-            };
-            view.replace_world_background(&scene, camera);
-        }
-        if self.mode == HostMode::Console {
-            overlay_command_console(&mut view, &self.console_view());
-        }
         let (Some(window), Some(runtime)) = (&self.window, &mut self.runtime) else {
             return;
         };
-        let plan = match plan_composite(
-            view.surface(),
-            view.images(),
-            &self.atlas,
-            u32::MAX,
-            viewport,
-            GpuClip::Surface,
-        ) {
+        let plan = match FramePlan::from_game_view(&view, &self.assets, viewport, GAME_TEXT_SCALE) {
             Ok(plan) => plan,
             Err(error) => {
                 eprintln!("game GPU planning failed: {error}");
@@ -190,26 +141,7 @@ impl CreatureGameApp {
                 return;
             }
         };
-        let labels = view.labels();
-        let renderer = &mut self.text_renderer;
-        let mut text_result = Ok(());
-        let result = if labels.is_empty() {
-            runtime.present_plan(&plan)
-        } else {
-            runtime.present_plan_with_overlay(
-                &plan,
-                |device, queue, target, encoder, format, size| {
-                    text_result = renderer.encode(
-                        labels, viewport, device, queue, target, encoder, format, size,
-                    );
-                },
-            )
-        };
-        if let Err(error) = text_result {
-            eprintln!("game text rendering failed: {error}");
-            event_loop.exit();
-            return;
-        }
+        let result = runtime.present(&plan);
         match result {
             Ok(PresentOutcome::Reconfigured | PresentOutcome::SurfaceLost) => {
                 runtime.resize(runtime.surface_size());
@@ -237,6 +169,7 @@ impl CreatureGameApp {
     }
 
     fn handle_key(&mut self, event: winit::event::KeyEvent) {
+        self.advance_presentation(Instant::now());
         let text = match normalize_committed_text(WinitCommittedTextSnapshot::new(
             event.text.map(|text| text.to_string()),
         )) {
@@ -253,166 +186,97 @@ impl CreatureGameApp {
             event.state,
             event.repeat,
         ));
-        if self.mode == HostMode::Console && self.ime_composing && !is_console_toggle(&key) {
-            return;
-        }
-        if is_console_toggle(&key) {
-            if key.phase == KeyPhase::Press {
-                self.toggle_console();
-            }
-            return;
-        }
-        if self.mode == HostMode::Console {
-            self.handle_console_input(&key, text.as_ref());
-            return;
-        }
-        if self.game.scene() == GameScene::World
-            && let Some(direction) = direction_for_key(&key)
-        {
-            self.handle_world_direction(direction, key.phase, Instant::now());
-            return;
-        }
-        match self.game.handle_key(&key) {
-            Ok(true) => {
-                let now = Instant::now();
-                self.sync_battle_sprite_timer(now);
-                if self.game.has_pending_playback() {
-                    self.next_playback = Some(now + Duration::from_millis(600));
-                }
-                self.request_redraw();
-            }
-            Ok(false) => {}
-            Err(error) => eprintln!("game command rejected: {error:?}"),
-        }
+        let snapshot = self.game().snapshot();
+        let entries = self.console.entries(&self.game().legal_player_actions());
+        let presentation = mem::take(&mut self.presentation);
+        let (presentation, update) = presentation.handle_key(
+            &key,
+            text.as_ref(),
+            self.modifiers.shift_key(),
+            &snapshot,
+            entries,
+        );
+        self.presentation = presentation;
+        self.apply_presentation_update(update);
     }
 
-    fn toggle_console(&mut self) {
-        match self.mode {
-            HostMode::Gameplay => {
-                let legal_actions = self.game.legal_player_actions();
-                let outcome = self
-                    .console
-                    .handle(&mut self.console_state, ConsoleIntent::Open(legal_actions));
-                debug_assert_eq!(outcome, ConsoleOutcome::Updated);
-                self.mode = HostMode::Console;
-            }
-            HostMode::Console => {
-                let outcome = self
-                    .console
-                    .handle(&mut self.console_state, ConsoleIntent::Close);
-                debug_assert_eq!(outcome, ConsoleOutcome::Closed);
-                self.mode = HostMode::Gameplay;
-            }
+    fn apply_presentation_update(&mut self, update: PresentationUpdate) {
+        if let Some(action) = update.action {
+            self.dispatch_presentation_action(action);
         }
-        self.sync_ime_allowed();
-        self.request_redraw();
-    }
-
-    fn handle_console_input(&mut self, key: &KeyEvent, text: Option<&TextEvent>) {
-        let intent = console_intent_for_key(key).or_else(|| {
-            (key.phase != KeyPhase::Release)
-                .then(|| text.map(|text| ConsoleIntent::InsertText(text.text().to_owned())))
-                .flatten()
-        });
-        let Some(intent) = intent else {
-            return;
-        };
-        match self.console.handle(&mut self.console_state, intent) {
-            ConsoleOutcome::ActionQueued => self.commit_console_action(),
-            ConsoleOutcome::Closed => {
-                self.mode = HostMode::Gameplay;
-                self.sync_ime_allowed();
-                self.request_redraw();
-            }
-            ConsoleOutcome::Updated | ConsoleOutcome::NoSelection | ConsoleOutcome::Failed => {
-                self.request_redraw();
-            }
-            ConsoleOutcome::Ignored => {}
+        if update.ime_changed {
+            self.sync_ime_allowed();
         }
-    }
-
-    fn commit_console_action(&mut self) {
-        let Some(action) = self.console.take_queued_action() else {
-            self.console
-                .execution_failed(&mut self.console_state, "Ramus 没有生成战斗 action");
+        if update.redraw {
             self.request_redraw();
-            return;
-        };
-        match self.game.submit_player_action(action) {
-            Ok(()) => {
-                self.console.execution_succeeded(&mut self.console_state);
-                self.mode = HostMode::Gameplay;
-                let now = Instant::now();
-                self.sync_battle_sprite_timer(now);
-                self.next_playback = self
-                    .game
-                    .has_pending_playback()
-                    .then_some(now + Duration::from_millis(600));
-                self.sync_ime_allowed();
+        }
+    }
+
+    fn dispatch_presentation_action(&mut self, action: PresentationAction) {
+        match action {
+            PresentationAction::Submit(command) => match self.submit_game(command) {
+                Ok(events) => {
+                    self.presentation =
+                        mem::take(&mut self.presentation).observe_game_events(&events)
+                }
+                Err(error) => {
+                    self.presentation = mem::take(&mut self.presentation).reject_action();
+                    eprintln!("game command rejected: {error:?}");
+                }
+            },
+            PresentationAction::ExecuteConsole(invocation) => {
+                let result = self.console.execute(&invocation).and_then(|action| {
+                    self.submit_game(GameCommand::SubmitBattleAction(action))
+                        .map_err(|error| format!("战斗 action 被拒绝: {error:?}"))
+                });
+                match result {
+                    Ok(events) => {
+                        self.presentation =
+                            mem::take(&mut self.presentation).observe_game_events(&events);
+                        let presentation = mem::take(&mut self.presentation);
+                        let (presentation, update) = presentation.console_execution_succeeded();
+                        self.presentation = presentation;
+                        if update.ime_changed {
+                            self.sync_ime_allowed();
+                        }
+                    }
+                    Err(error) => {
+                        let presentation = mem::take(&mut self.presentation);
+                        (self.presentation, _) = presentation.console_execution_failed(error);
+                    }
+                }
             }
-            Err(error) => self.console.execution_failed(
-                &mut self.console_state,
-                format!("战斗 action 被拒绝: {error:?}"),
-            ),
         }
         self.request_redraw();
+    }
+
+    fn advance_presentation(&mut self, now: Instant) {
+        let elapsed = now.saturating_duration_since(self.last_real_instant);
+        self.last_real_instant = now;
+        let snapshot = self.game().snapshot();
+        let presentation = mem::take(&mut self.presentation);
+        let (presentation, update) = presentation.advance(elapsed, &snapshot);
+        self.presentation = presentation;
+        self.apply_presentation_update(update);
     }
 
     fn handle_ime_event(&mut self, event: Ime) {
-        match event {
-            Ime::Enabled => {}
-            Ime::Preedit(text, _) => {
-                self.ime_composing = !text.is_empty();
-                self.ime_preedit = text;
-                self.request_redraw();
-            }
-            Ime::Commit(text) => {
-                self.ime_composing = false;
-                self.ime_preedit.clear();
-                if text.is_empty() || self.mode != HostMode::Console {
-                    self.request_redraw();
-                    return;
-                }
-                let text = TextEvent::new(text).expect("non-empty IME commit is valid");
-                if self.console.handle(
-                    &mut self.console_state,
-                    ConsoleIntent::InsertText(text.text().to_owned()),
-                ) == ConsoleOutcome::Updated
-                {
-                    self.request_redraw();
-                }
-            }
-            Ime::Disabled => {
-                self.ime_composing = false;
-                self.ime_preedit.clear();
-                self.request_redraw();
-            }
-        }
+        self.advance_presentation(Instant::now());
+        let presentation = mem::take(&mut self.presentation);
+        let (presentation, update) = match event {
+            Ime::Enabled => (presentation, PresentationUpdate::default()),
+            Ime::Preedit(text, _) => presentation.handle_preedit(text),
+            Ime::Commit(text) => presentation.handle_commit(text),
+            Ime::Disabled => presentation.handle_ime_disabled(),
+        };
+        self.presentation = presentation;
+        self.apply_presentation_update(update);
     }
 
-    fn sync_ime_allowed(&mut self) {
-        let allowed = self.mode == HostMode::Console;
-        if !allowed {
-            self.ime_composing = false;
-            self.ime_preedit.clear();
-        }
+    fn sync_ime_allowed(&self) {
+        let allowed = self.presentation.is_console_open();
         if let Some(window) = &self.window {
             window.set_ime_allowed(allowed);
-        }
-    }
-
-    fn console_view(&self) -> CommandConsoleView {
-        CommandConsoleView {
-            query: self.console_state.query().to_owned(),
-            preedit: self.ime_preedit.clone(),
-            items: self
-                .console_state
-                .items()
-                .iter()
-                .map(|item| item.invocation.clone())
-                .collect(),
-            selected_index: self.console_state.selected_index(),
-            diagnostic: self.console_state.diagnostic().map(str::to_owned),
         }
     }
 
@@ -420,116 +284,6 @@ impl CreatureGameApp {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
-    }
-
-    fn handle_world_direction(&mut self, direction: Direction, phase: KeyPhase, now: Instant) {
-        match phase {
-            KeyPhase::Press => {
-                self.pressed_directions.press(direction);
-                self.run_stop_ends = None;
-                self.settle_if_direction_changed(now);
-                self.try_start_world_step(now);
-            }
-            KeyPhase::Repeat => {}
-            KeyPhase::Release => {
-                self.pressed_directions.release(direction);
-                if self.pressed_directions.active().is_none() {
-                    self.turn_hold_ends = None;
-                }
-                self.settle_if_direction_changed(now);
-                if self.world_motion.is_none() {
-                    self.try_start_world_step(now);
-                    self.request_redraw();
-                }
-            }
-        }
-    }
-
-    fn settle_if_direction_changed(&mut self, now: Instant) {
-        if let Some(motion) = &mut self.world_motion
-            && self.pressed_directions.active() != Some(motion.direction())
-        {
-            motion.settle(now);
-        }
-    }
-
-    fn try_start_world_step(&mut self, now: Instant) {
-        if self.game.scene() != GameScene::World || self.world_motion.is_some() {
-            return;
-        }
-        let Some(direction) = self.pressed_directions.active() else {
-            return;
-        };
-        let gait = if self.modifiers.shift_key() {
-            Gait::Run
-        } else {
-            Gait::Walk
-        };
-        match self.game.step_world(direction) {
-            Ok(WorldEvent::Turned { .. }) => {
-                self.turn_hold_ends = Some(now + TURN_HOLD_DURATION);
-                self.request_redraw();
-            }
-            Ok(WorldEvent::Moved { .. }) => {
-                self.turn_hold_ends = None;
-                self.world_motion = Some(WorldMotion::new(direction, gait, now));
-                self.next_world_tick = Some(now);
-                self.run_stop_ends = None;
-                self.request_redraw();
-            }
-            Ok(WorldEvent::Blocked { .. }) => self.request_redraw(),
-            Ok(WorldEvent::EncounterTriggered { .. }) => {
-                self.clear_world_input();
-                self.sync_battle_sprite_timer(now);
-                self.request_redraw();
-            }
-            Err(error) => eprintln!("world movement rejected: {error:?}"),
-        }
-    }
-
-    fn clear_world_input(&mut self) {
-        self.pressed_directions.clear();
-        self.world_motion = None;
-        self.next_world_tick = None;
-        self.turn_hold_ends = None;
-        self.run_stop_ends = None;
-    }
-
-    fn sync_battle_sprite_timer(&mut self, now: Instant) {
-        if self.game.scene() == GameScene::Battle {
-            self.next_sprite_frame
-                .get_or_insert(now + BATTLE_FRAME_INTERVAL);
-        } else {
-            self.sprite_frame = 0;
-            self.next_sprite_frame = None;
-        }
-    }
-
-    fn presentation(
-        &self,
-        now: Instant,
-        cell_size: PixelSize,
-    ) -> (WorldAnimation, usize, PixelOffset) {
-        if self.game.scene() == GameScene::Battle {
-            return (
-                WorldAnimation::Stand,
-                self.sprite_frame,
-                PixelOffset::new(0, 0),
-            );
-        }
-        if let Some(motion) = self.world_motion {
-            return (
-                motion.gait().animation(),
-                motion.sprite_frame(now),
-                motion.pixel_offset(now, cell_size),
-            );
-        }
-        let animation = if self.run_stop_ends.is_some() {
-            WorldAnimation::RunStopping
-        } else {
-            WorldAnimation::Stand
-        };
-        (animation, 0, PixelOffset::new(0, 0))
     }
 }
 
@@ -562,14 +316,11 @@ impl ApplicationHandler for CreatureGameApp {
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::Focused(false) => {
-                self.pressed_directions.clear();
-                self.turn_hold_ends = None;
-                if let Some(motion) = &mut self.world_motion {
-                    motion.settle(Instant::now());
-                } else {
-                    self.run_stop_ends = None;
-                    self.request_redraw();
-                }
+                self.advance_presentation(Instant::now());
+                let presentation = mem::take(&mut self.presentation);
+                let (presentation, update) = presentation.focus_lost();
+                self.presentation = presentation;
+                self.apply_presentation_update(update);
             }
             WindowEvent::KeyboardInput { event, .. } => self.handle_key(event),
             WindowEvent::Ime(event) => self.handle_ime_event(event),
@@ -579,58 +330,14 @@ impl ApplicationHandler for CreatureGameApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if self.mode == HostMode::Console {
-            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-            return;
-        }
         let now = Instant::now();
-        if self.next_playback.is_some_and(|deadline| now >= deadline) {
-            self.game.advance_playback();
-            self.request_redraw();
-            self.next_playback = self
-                .game
-                .has_pending_playback()
-                .then_some(now + Duration::from_millis(600));
-        }
-        if self
-            .next_sprite_frame
-            .is_some_and(|deadline| now >= deadline)
-        {
-            self.sprite_frame = next_sprite_frame(self.sprite_frame);
-            self.next_sprite_frame = Some(now + BATTLE_FRAME_INTERVAL);
-            self.request_redraw();
-        }
-        if self.turn_hold_ends.is_some_and(|deadline| now >= deadline) {
-            self.turn_hold_ends = None;
-            self.try_start_world_step(now);
-        }
-        if self
-            .world_motion
-            .is_some_and(|motion| motion.is_complete(now))
-        {
-            let gait = self.world_motion.take().map(WorldMotion::gait);
-            self.next_world_tick = None;
-            if self.pressed_directions.active().is_some() {
-                self.try_start_world_step(now);
-            } else {
-                self.run_stop_ends = (gait == Some(Gait::Run)).then_some(now + RUN_STOP_DURATION);
-                self.request_redraw();
-            }
-        } else if self.next_world_tick.is_some_and(|deadline| now >= deadline) {
-            self.next_world_tick = Some(now + WORLD_TICK_INTERVAL);
-            self.request_redraw();
-        }
-        if self.run_stop_ends.is_some_and(|deadline| now >= deadline) {
-            self.run_stop_ends = None;
-            self.request_redraw();
-        }
-        if let Some(deadline) = earliest_deadline(&[
-            self.next_playback,
-            self.next_sprite_frame,
-            self.next_world_tick,
-            self.turn_hold_ends,
-            self.run_stop_ends,
-        ]) {
+        self.advance_presentation(now);
+        let snapshot = self.game().snapshot();
+        self.next_wakeup = self
+            .presentation
+            .next_delay(&snapshot)
+            .map(|delay| now + delay);
+        if let Some(deadline) = self.next_wakeup {
             event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(deadline));
         } else {
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
@@ -638,80 +345,15 @@ impl ApplicationHandler for CreatureGameApp {
     }
 }
 
-fn direction_for_key(key: &KeyEvent) -> Option<Direction> {
-    match key.logical {
-        LogicalKey::Named(NamedKey::ArrowUp) => Some(Direction::Up),
-        LogicalKey::Named(NamedKey::ArrowDown) => Some(Direction::Down),
-        LogicalKey::Named(NamedKey::ArrowLeft) => Some(Direction::Left),
-        LogicalKey::Named(NamedKey::ArrowRight) => Some(Direction::Right),
-        _ => None,
-    }
-}
-
-fn is_console_toggle(key: &KeyEvent) -> bool {
-    key.modifiers.control
-        && (key.physical == Some(PhysicalKeyCode::KeyP)
-            || matches!(&key.logical, LogicalKey::Character(character) if character.eq_ignore_ascii_case("p")))
-}
-
-fn console_intent_for_key(key: &KeyEvent) -> Option<ConsoleIntent> {
-    if key.phase == KeyPhase::Release {
-        return None;
-    }
-    match key.logical {
-        LogicalKey::Named(NamedKey::ArrowUp) => Some(ConsoleIntent::Previous),
-        LogicalKey::Named(NamedKey::ArrowDown) => Some(ConsoleIntent::Next),
-        LogicalKey::Named(NamedKey::Backspace) => Some(ConsoleIntent::Backspace),
-        LogicalKey::Named(NamedKey::Enter) if key.phase == KeyPhase::Press => {
-            Some(ConsoleIntent::Execute)
-        }
-        LogicalKey::Named(NamedKey::Escape) if key.phase == KeyPhase::Press => {
-            Some(ConsoleIntent::Close)
-        }
-        _ => None,
-    }
-}
-
-const fn next_sprite_frame(current: usize) -> usize {
-    current.wrapping_add(1)
-}
-
-fn earliest_deadline(deadlines: &[Option<Instant>]) -> Option<Instant> {
-    deadlines.iter().flatten().min().copied()
-}
-
-fn battle_viewport(target_size: PixelSize) -> Viewport {
-    let cell_size = (target_size.width / CANVAS_WIDTH)
-        .min(target_size.height / CANVAS_HEIGHT)
-        .max(1);
-    let width = i64::from(CANVAS_WIDTH) * i64::from(cell_size);
-    let height = i64::from(CANVAS_HEIGHT) * i64::from(cell_size);
-    Viewport::new(
-        target_size,
-        PixelOffset::new(
-            ((i64::from(target_size.width) - width) / 2) as i32,
-            ((i64::from(target_size.height) - height) / 2) as i32,
-        ),
-        PixelSize::new(cell_size, cell_size),
-    )
-    .expect("the battle viewport always has a positive integer cell size")
+fn random_roster_seed() -> u64 {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    (elapsed.as_nanos() as u64) ^ u64::from(std::process::id()).rotate_left(17)
 }
 
 fn pixel_size(size: PhysicalSize<u32>) -> PixelSize {
     PixelSize::new(size.width, size.height)
-}
-
-fn world_camera(player: world_application::Position) -> MapCamera {
-    const VIEW_COLS: u16 = 16;
-    const VIEW_ROWS: u16 = 12;
-    MapCamera::new(
-        i32::from(player.x()) - i32::from(VIEW_COLS / 2),
-        i32::from(player.y()) - i32::from(VIEW_ROWS / 2),
-    )
-}
-
-const fn invert_pixel_offset(offset: PixelOffset) -> PixelOffset {
-    PixelOffset::new(-offset.x, -offset.y)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -723,87 +365,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use punctum_gpu::{PixelOffset, PixelSize};
-    use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
-
-    use std::time::{Duration, Instant};
-
-    use super::{
-        ConsoleIntent, CreatureGameApp, MapCamera, battle_viewport, console_intent_for_key,
-        earliest_deadline, invert_pixel_offset, is_console_toggle, next_sprite_frame, world_camera,
-    };
-    use world_application::Position;
-
-    fn key(logical: LogicalKey, physical: PhysicalKeyCode, modifiers: Modifiers) -> KeyEvent {
-        KeyEvent {
-            physical: Some(physical),
-            logical,
-            modifiers,
-            phase: KeyPhase::Press,
-        }
-    }
-
-    #[test]
-    fn battle_viewport_uses_integer_scaling_and_centers_the_canvas() {
-        let viewport = battle_viewport(PixelSize::new(960, 720));
-        assert_eq!(viewport.cell_size, PixelSize::new(30, 30));
-        assert_eq!(viewport.origin, PixelOffset::new(0, 0));
-
-        let wide = battle_viewport(PixelSize::new(1000, 720));
-        assert_eq!(wide.cell_size, PixelSize::new(30, 30));
-        assert_eq!(wide.origin, PixelOffset::new(20, 0));
-    }
-
-    #[test]
-    fn world_camera_keeps_the_player_centered_even_near_map_edges() {
-        assert_eq!(world_camera(Position::new(3, 6)), MapCamera::new(-5, 0));
-        assert_eq!(world_camera(Position::new(20, 14)), MapCamera::new(12, 8));
-        assert_eq!(
-            invert_pixel_offset(PixelOffset::new(-60, 30)),
-            PixelOffset::new(60, -30)
-        );
-    }
+    use super::CreatureGameApp;
 
     #[test]
     fn complete_game_atlas_fits_wgpu_texture_limits() {
         let app = CreatureGameApp::new().unwrap();
-        let size = app.atlas.size();
+        let size = app.assets.atlas_size();
         assert!(size.width <= 8_192, "atlas width was {}", size.width);
         assert!(size.height <= 8_192, "atlas height was {}", size.height);
-    }
-
-    #[test]
-    fn sprite_frames_wrap_and_deadlines_share_one_event_loop_wait() {
-        assert_eq!(next_sprite_frame(0), 1);
-        assert_eq!(next_sprite_frame(1), 2);
-
-        let now = Instant::now();
-        let early = now + Duration::from_millis(100);
-        let late = now + Duration::from_millis(300);
-        assert_eq!(
-            earliest_deadline(&[Some(late), Some(early), None]),
-            Some(early)
-        );
-        assert_eq!(earliest_deadline(&[None, Some(late), None]), Some(late));
-    }
-
-    #[test]
-    fn console_toggle_and_navigation_use_canonical_input_events() {
-        let toggle = key(
-            LogicalKey::Character("p".into()),
-            PhysicalKeyCode::KeyP,
-            Modifiers {
-                control: true,
-                ..Modifiers::default()
-            },
-        );
-        assert!(is_console_toggle(&toggle));
-
-        let down = key(
-            LogicalKey::Named(NamedKey::ArrowDown),
-            PhysicalKeyCode::ArrowDown,
-            Modifiers::default(),
-        );
-        assert_eq!(console_intent_for_key(&down), Some(ConsoleIntent::Next));
     }
 }

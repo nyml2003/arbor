@@ -4,7 +4,7 @@ use battle_application::{
 };
 
 use crate::{
-    BattleCoordinator, BattleCue, BattleScene, OpponentPolicy, PlaybackStep, ReplayError,
+    BattleCoordinator, BattleCue, BattleScene, OpponentPolicy, PlaybackStep,
     coordinator::CoordinatorError, reduce_transition, scene_from_observation,
 };
 
@@ -143,34 +143,40 @@ impl<P: OpponentPolicy> BattleSession<P> {
         }
     }
 
-    pub fn submit(&mut self, action: Action) -> Result<(), SessionError> {
+    pub fn submit(mut self, action: Action) -> (Self, Result<(), SessionError>) {
         let legal_actions = self.legal_actions();
         if legal_actions.is_empty() {
-            return Err(SessionError::InputLocked);
+            return (self, Err(SessionError::InputLocked));
         }
         if !legal_actions.contains(&action) {
-            return Err(SessionError::ActionNotOffered { action });
+            return (self, Err(SessionError::ActionNotOffered { action }));
         }
-        let transition = self.coordinator.resolve_player_action(action)?;
-        let playback = reduce_transition(&transition)?;
+        let (coordinator, transition) = self.coordinator.resolve_player_action(action);
+        self.coordinator = coordinator;
+        let transition = match transition {
+            Ok(transition) => transition,
+            Err(error) => return (self, Err(error.into())),
+        };
+        let playback = reduce_transition(&transition)
+            .expect("a coordinator transition reduces to its published final observation");
         self.scene = scene_from_observation(transition.before());
         self.phase = BattleSessionPhase::Playing;
         self.playback = playback;
         self.playback_cursor = 0;
         self.pending_after = Some(transition.after().clone());
         self.cue = None;
-        Ok(())
+        (self, Ok(()))
     }
 
-    pub fn advance(&mut self) -> bool {
+    pub fn advance(mut self) -> (Self, bool) {
         if !matches!(self.phase, BattleSessionPhase::Playing) {
-            return false;
+            return (self, false);
         }
         if let Some(step) = self.playback.get(self.playback_cursor) {
             self.scene = step.scene().clone();
             self.cue = Some(step.cue().clone());
             self.playback_cursor += 1;
-            return true;
+            return (self, true);
         }
         let after = self
             .pending_after
@@ -181,7 +187,7 @@ impl<P: OpponentPolicy> BattleSession<P> {
         self.playback.clear();
         self.playback_cursor = 0;
         self.cue = None;
-        true
+        (self, true)
     }
 
     pub fn has_pending_playback(&self) -> bool {
@@ -245,23 +251,55 @@ pub enum SessionError {
     InputLocked,
     ActionNotOffered { action: Action },
     Battle(BattleError),
-    Transition(battle_application::TransitionError),
     OpponentActionUnavailable,
-    Replay(ReplayError),
 }
 
 impl From<CoordinatorError> for SessionError {
     fn from(error: CoordinatorError) -> Self {
         match error {
             CoordinatorError::Battle(error) => Self::Battle(error),
-            CoordinatorError::Transition(error) => Self::Transition(error),
             CoordinatorError::OpponentActionUnavailable => Self::OpponentActionUnavailable,
         }
     }
 }
 
-impl From<ReplayError> for SessionError {
-    fn from(error: ReplayError) -> Self {
-        Self::Replay(error)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use battle_application::Side;
+
+    #[test]
+    fn outcome_and_error_mappings_cover_every_semantic_variant() {
+        assert_eq!(
+            observed_outcome(BattleOutcome::Draw, Side::One),
+            ObservedBattleOutcome::Draw
+        );
+        assert_eq!(
+            observed_outcome(BattleOutcome::Winner(Side::One), Side::One),
+            ObservedBattleOutcome::Winner(Participant::Own)
+        );
+        assert_eq!(
+            observed_outcome(BattleOutcome::Escaped(Side::Two), Side::One),
+            ObservedBattleOutcome::Escaped(Participant::Opponent)
+        );
+        assert_eq!(
+            FinishedPrompt {
+                outcome: ObservedBattleOutcome::Draw,
+            }
+            .outcome(),
+            ObservedBattleOutcome::Draw
+        );
+
+        let battle = BattleError::BattleAlreadyFinished {
+            outcome: BattleOutcome::Draw,
+        };
+        assert!(matches!(
+            SessionError::from(CoordinatorError::Battle(battle)),
+            SessionError::Battle(_)
+        ));
+        assert_eq!(
+            SessionError::from(CoordinatorError::OpponentActionUnavailable),
+            SessionError::OpponentActionUnavailable
+        );
     }
 }

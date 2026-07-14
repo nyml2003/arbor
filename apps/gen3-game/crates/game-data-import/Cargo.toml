@@ -6,9 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-csv = "1.4.0"
 game-data = { path = "../game-data" }
-serde = { version = "1.0.228", features = ["derive"] }
+game-data-import-core = { path = "../game-data-import-core" }
 serde_json = "1.0.149"
 
 [lib]

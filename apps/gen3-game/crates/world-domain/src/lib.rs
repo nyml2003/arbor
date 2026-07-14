@@ -164,47 +164,63 @@ impl World {
         self.facing
     }
 
-    pub fn submit(&mut self, command: WorldCommand) -> WorldOutcome {
+    pub fn transition(&self, command: WorldCommand) -> (Self, WorldOutcome) {
+        let mut next = self.clone();
         let direction = match command {
             WorldCommand::Face(direction) => {
-                let from = self.facing;
-                self.facing = direction;
-                return WorldOutcome {
-                    event: WorldEvent::Turned {
-                        from,
-                        to: direction,
+                let from = next.facing;
+                next.facing = direction;
+                return (
+                    next,
+                    WorldOutcome {
+                        event: WorldEvent::Turned {
+                            from,
+                            to: direction,
+                        },
                     },
-                };
+                );
             }
             WorldCommand::Move(direction) => direction,
         };
-        self.facing = direction;
-        let Some(target) = self.player.neighbor(direction) else {
-            return WorldOutcome {
-                event: WorldEvent::Blocked { at: self.player },
-            };
+        next.facing = direction;
+        let Some(target) = next.player.neighbor(direction) else {
+            return (
+                next.clone(),
+                WorldOutcome {
+                    event: WorldEvent::Blocked { at: next.player },
+                },
+            );
         };
-        let Some(target_tile) = self.map.tile(target) else {
-            return WorldOutcome {
-                event: WorldEvent::Blocked { at: target },
-            };
+        let Some(target_tile) = next.map.tile(target) else {
+            return (
+                next,
+                WorldOutcome {
+                    event: WorldEvent::Blocked { at: target },
+                },
+            );
         };
         if !target_tile.is_walkable() {
-            return WorldOutcome {
-                event: WorldEvent::Blocked { at: target },
-            };
+            return (
+                next,
+                WorldOutcome {
+                    event: WorldEvent::Blocked { at: target },
+                },
+            );
         }
 
-        let from = self.player;
-        let entered_grass = self.map.tile(from) != Some(Tile::Grass) && target_tile == Tile::Grass;
-        self.player = target;
-        WorldOutcome {
-            event: if entered_grass {
-                WorldEvent::EncounterTriggered { at: target }
-            } else {
-                WorldEvent::Moved { from, to: target }
+        let from = next.player;
+        let entered_grass = next.map.tile(from) != Some(Tile::Grass) && target_tile == Tile::Grass;
+        next.player = target;
+        (
+            next,
+            WorldOutcome {
+                event: if entered_grass {
+                    WorldEvent::EncounterTriggered { at: target }
+                } else {
+                    WorldEvent::Moved { from, to: target }
+                },
             },
-        }
+        )
     }
 }
 
@@ -245,8 +261,7 @@ mod tests {
 
     #[test]
     fn blocked_move_only_changes_facing() {
-        let mut world = world();
-        let outcome = world.submit(WorldCommand::Move(Direction::Up));
+        let (world, outcome) = world().transition(WorldCommand::Move(Direction::Up));
 
         assert_eq!(world.player(), Position::new(1, 1));
         assert_eq!(world.facing(), Direction::Up);
@@ -260,8 +275,7 @@ mod tests {
 
     #[test]
     fn face_changes_direction_without_changing_position() {
-        let mut world = world();
-        let outcome = world.submit(WorldCommand::Face(Direction::Left));
+        let (world, outcome) = world().transition(WorldCommand::Face(Direction::Left));
 
         assert_eq!(world.player(), Position::new(1, 1));
         assert_eq!(world.facing(), Direction::Left);
@@ -276,8 +290,7 @@ mod tests {
 
     #[test]
     fn entering_grass_moves_the_player_and_triggers_an_encounter() {
-        let mut world = world();
-        let outcome = world.submit(WorldCommand::Move(Direction::Right));
+        let (world, outcome) = world().transition(WorldCommand::Move(Direction::Right));
 
         assert_eq!(world.player(), Position::new(2, 1));
         assert!(outcome.starts_battle());
@@ -286,5 +299,53 @@ mod tests {
     #[test]
     fn invalid_tile_count_is_rejected() {
         assert!(TileMap::new(2, 2, vec![Tile::Ground]).is_err());
+    }
+
+    #[test]
+    fn map_and_spawn_boundaries_are_explicit() {
+        assert_eq!(TileMap::new(0, 1, vec![]), Err(super::WorldError::EmptyMap));
+        let map = TileMap::new(1, 1, vec![Tile::Ground]).unwrap();
+        assert_eq!(map.tile(Position::new(1, 0)), None);
+        assert_eq!(
+            World::new(map.clone(), Position::new(1, 0), Direction::Down),
+            Err(super::WorldError::PlayerOutOfBounds(Position::new(1, 0)))
+        );
+        let blocked = TileMap::new(1, 1, vec![Tile::Wall]).unwrap();
+        assert_eq!(
+            World::new(blocked, Position::new(0, 0), Direction::Down),
+            Err(super::WorldError::PlayerOnBlockedTile(Position::new(0, 0)))
+        );
+
+        let world = World::new(map, Position::new(0, 0), Direction::Down).unwrap();
+        let (world, underflow) = world.transition(WorldCommand::Move(Direction::Left));
+        assert_eq!(
+            underflow.event(),
+            WorldEvent::Blocked {
+                at: Position::new(0, 0)
+            }
+        );
+        let (_, outside) = world.transition(WorldCommand::Move(Direction::Right));
+        assert_eq!(
+            outside.event(),
+            WorldEvent::Blocked {
+                at: Position::new(1, 0)
+            }
+        );
+    }
+
+    #[test]
+    fn ordinary_moves_cover_both_remaining_directions() {
+        let map = TileMap::new(2, 2, vec![Tile::Ground; 4]).unwrap();
+        let world = World::new(map, Position::new(0, 0), Direction::Down).unwrap();
+        let (world, down) = world.transition(WorldCommand::Move(Direction::Down));
+        assert_eq!(
+            down.event(),
+            WorldEvent::Moved {
+                from: Position::new(0, 0),
+                to: Position::new(0, 1)
+            }
+        );
+        let (_, right) = world.transition(WorldCommand::Move(Direction::Right));
+        assert!(matches!(right.event(), WorldEvent::Moved { .. }));
     }
 }

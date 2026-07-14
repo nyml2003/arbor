@@ -1,3 +1,5 @@
+//! Deterministic roster construction from explicitly supplied game data and seed.
+
 use std::collections::BTreeSet;
 
 use battle_application::{
@@ -16,11 +18,6 @@ const LAST_EMERALD_POKEMON: u32 = 386;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RosterError {
     NotEnoughEligiblePokemon {
-        required: usize,
-        actual: usize,
-    },
-    NotEnoughEligibleMoves {
-        pokemon: PokemonFormId,
         required: usize,
         actual: usize,
     },
@@ -141,13 +138,6 @@ fn random_members(data: &CurrentDataSet, seed: u64) -> Result<Vec<RosterMember>,
         .map(|mut pokemon| {
             rng.shuffle(&mut pokemon.move_ids);
             pokemon.move_ids.truncate(MAX_MOVES);
-            if pokemon.move_ids.len() != MAX_MOVES {
-                return Err(RosterError::NotEnoughEligibleMoves {
-                    pokemon: pokemon.pokemon_form_id,
-                    required: MAX_MOVES,
-                    actual: pokemon.move_ids.len(),
-                });
-            }
             Ok(RosterMember {
                 pokemon_form_id: pokemon.pokemon_form_id,
                 level: DEMO_LEVEL,
@@ -365,10 +355,86 @@ impl RosterRng {
 mod tests {
     use std::collections::BTreeSet;
 
-    use battle_application::{MoveCategory, StatBlock, TrainingValues, calculate_gen3_stats};
-    use game_data::{CurrentDataSet, DamageClass};
+    use battle_application::{
+        MoveCategory, StatBlock, StatProjectionError, TrainingValues, ValidationError,
+        calculate_gen3_stats,
+    };
+    use game_data::{
+        BaseStats, CurrentDataSet, DamageClass, DataSetMetadata, LearnsetEntry, LocalizedName,
+        MoveId as DataMoveId, MoveLearnMethod, MoveRecord, PokemonFormId, PokemonRecord, SpeciesId,
+        TypeId, TypeRecord,
+    };
 
-    use super::{MAX_MOVES, ROSTER_SIZE, demo_teams, random_members};
+    use super::*;
+
+    fn minimal_data(
+        type_name: &str,
+        power: Option<u16>,
+        pp: Option<u8>,
+        learnable: bool,
+    ) -> CurrentDataSet {
+        CurrentDataSet::new(
+            DataSetMetadata {
+                schema_version: "current-data-set-v2".into(),
+                source_repository: "test".into(),
+                source_commit: "test".into(),
+                generator_version: "test".into(),
+                locale: "en".into(),
+                version_group: "emerald".into(),
+            },
+            vec![PokemonRecord {
+                id: PokemonFormId(1),
+                species_id: SpeciesId(1),
+                identifier: "one".into(),
+                is_default: true,
+                base_stats: BaseStats {
+                    hp: 45,
+                    attack: 49,
+                    defense: 49,
+                    special_attack: 65,
+                    special_defense: 65,
+                    speed: 45,
+                },
+                types: vec![TypeId(1)],
+                display_name: LocalizedName {
+                    localized: "One".into(),
+                    english: "One".into(),
+                },
+                learnset: learnable
+                    .then(|| LearnsetEntry {
+                        move_id: DataMoveId(1),
+                        method: MoveLearnMethod::LevelUp,
+                        level: Some(1),
+                        order: Some(1),
+                    })
+                    .into_iter()
+                    .collect(),
+            }],
+            vec![MoveRecord {
+                id: DataMoveId(1),
+                identifier: "move".into(),
+                display_name: LocalizedName {
+                    localized: "Move".into(),
+                    english: "Move".into(),
+                },
+                move_type: TypeId(1),
+                power,
+                accuracy: None,
+                pp,
+                priority: 0,
+                damage_class: DamageClass::Status,
+            }],
+            vec![TypeRecord {
+                id: TypeId(1),
+                identifier: type_name.into(),
+                display_name: LocalizedName {
+                    localized: type_name.into(),
+                    english: type_name.into(),
+                },
+            }],
+        )
+        .unwrap()
+    }
 
     #[test]
     fn seeded_roster_has_twelve_unique_pokemon_with_four_unique_learnset_moves() {
@@ -464,5 +530,76 @@ mod tests {
                 assert_eq!(battle_move.category(), expected);
             }
         }
+    }
+
+    #[test]
+    fn roster_failures_and_private_mappings_are_explicit() {
+        let data = minimal_data("normal", Some(1), Some(1), true);
+        assert!(matches!(
+            random_members(&data, 1),
+            Err(RosterError::NotEnoughEligiblePokemon { .. })
+        ));
+        assert!(matches!(
+            build_pokemon(
+                &data,
+                "test",
+                &RosterMember {
+                    pokemon_form_id: PokemonFormId(999),
+                    level: 50,
+                    move_ids: vec![],
+                    training: TrainingValues::perfect_untrained(),
+                }
+            ),
+            Err(RosterError::MissingPokemon(PokemonFormId(999)))
+        ));
+
+        let not_learnable = minimal_data("normal", Some(1), Some(1), false);
+        assert!(matches!(
+            build_pokemon(
+                &not_learnable,
+                "test",
+                &RosterMember {
+                    pokemon_form_id: PokemonFormId(1),
+                    level: 50,
+                    move_ids: vec![DataMoveId(1)],
+                    training: TrainingValues::perfect_untrained(),
+                }
+            ),
+            Err(RosterError::MoveNotLearnable { .. })
+        ));
+        assert!(matches!(
+            battle_move(&data, DataMoveId(999)),
+            Err(RosterError::MissingMove(DataMoveId(999)))
+        ));
+        assert!(matches!(
+            battle_move(&minimal_data("normal", None, Some(1), true), DataMoveId(1)),
+            Err(RosterError::MissingMovePower(DataMoveId(1)))
+        ));
+        assert!(matches!(
+            battle_move(&minimal_data("normal", Some(1), None, true), DataMoveId(1)),
+            Err(RosterError::MissingMovePp(DataMoveId(1)))
+        ));
+        assert!(matches!(
+            battle_type(&data, TypeId(999)),
+            Err(RosterError::MissingType(TypeId(999)))
+        ));
+        assert!(matches!(
+            battle_type(&minimal_data("fairy", Some(1), Some(1), true), TypeId(1)),
+            Err(RosterError::UnsupportedType { .. })
+        ));
+        assert_eq!(
+            battle_move_category(DamageClass::Status),
+            MoveCategory::Status
+        );
+
+        assert!(matches!(
+            RosterError::from(ValidationError::EmptyPokemonId),
+            RosterError::InvalidBattleModel(_)
+        ));
+        assert!(matches!(
+            RosterError::from(StatProjectionError::InvalidLevel { value: 0 }),
+            RosterError::InvalidTraining(_)
+        ));
+        assert_ne!(RosterRng::new(0).next(), 0);
     }
 }

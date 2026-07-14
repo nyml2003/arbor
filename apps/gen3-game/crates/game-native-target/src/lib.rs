@@ -1,3 +1,7 @@
+//! Gen3's single native GPU submission boundary.
+
+#![forbid(unsafe_code)]
+
 use std::{error::Error, fmt};
 
 use glyphon::{
@@ -5,24 +9,90 @@ use glyphon::{
     Resolution, Shaping, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 use punctum_gpu::{PixelSize, Rgba8, Viewport as GridViewport};
+use punctum_wgpu::{GpuRuntime, GpuRuntimeError};
 
-pub struct EditorLabel {
-    pub col: u32,
-    pub row: u32,
-    pub width: u32,
-    pub height: u32,
-    pub content: String,
-    pub color: Rgba8,
+pub use game_native_plan::{
+    FramePlan, FramePlanError, NativeAssetError, NativeAssets, NativeTextBounds, NativeTextLabel,
+    TextScale, text_bounds,
+};
+pub use punctum_wgpu::{
+    PresentOutcome, WinitCommittedTextSnapshot, WinitKeyEventSnapshot, normalize_committed_text,
+    normalize_key_event,
+};
+
+pub struct NativeTarget<'window> {
+    runtime: GpuRuntime<'window>,
+    text: NativeTextRenderer,
 }
 
-pub struct EditorTextRenderer {
+impl<'window> NativeTarget<'window> {
+    pub fn new(
+        target: impl Into<wgpu::SurfaceTarget<'window>>,
+        surface_size: PixelSize,
+        assets: &NativeAssets,
+        clear_color: Rgba8,
+    ) -> Result<Self, NativeTargetError> {
+        let instance = wgpu::Instance::default();
+        let runtime = pollster::block_on(GpuRuntime::new(
+            &instance,
+            target,
+            surface_size,
+            assets.atlas(),
+            clear_color,
+        ))?;
+        Ok(Self {
+            runtime,
+            text: NativeTextRenderer::new(),
+        })
+    }
+
+    pub const fn surface_size(&self) -> PixelSize {
+        self.runtime.surface_size()
+    }
+
+    pub fn resize(&mut self, size: PixelSize) {
+        self.runtime.resize(size);
+    }
+
+    pub fn present(&mut self, frame: &FramePlan) -> Result<PresentOutcome, NativeTargetError> {
+        if frame.labels().is_empty() {
+            return self
+                .runtime
+                .present_plan(frame.gpu())
+                .map_err(NativeTargetError::Gpu);
+        }
+
+        let mut text_result = Ok(());
+        let text = &mut self.text;
+        let result = self.runtime.present_plan_with_overlay(
+            frame.gpu(),
+            |device, queue, target, encoder, format, surface_size| {
+                text_result = text.encode(
+                    frame.labels(),
+                    frame.viewport(),
+                    frame.text_scale(),
+                    device,
+                    queue,
+                    target,
+                    encoder,
+                    format,
+                    surface_size,
+                );
+            },
+        );
+        text_result?;
+        result.map_err(NativeTargetError::Gpu)
+    }
+}
+
+struct NativeTextRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
     gpu: Option<TextGpu>,
 }
 
-impl EditorTextRenderer {
-    pub fn new() -> Self {
+impl NativeTextRenderer {
+    fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
@@ -31,10 +101,11 @@ impl EditorTextRenderer {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn encode(
+    fn encode(
         &mut self,
-        labels: &[EditorLabel],
+        labels: &[NativeTextLabel],
         viewport: GridViewport,
+        text_scale: TextScale,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
@@ -51,6 +122,7 @@ impl EditorTextRenderer {
             .encode(
                 labels,
                 viewport,
+                text_scale,
                 device,
                 queue,
                 target,
@@ -87,8 +159,9 @@ impl TextGpu {
     #[allow(clippy::too_many_arguments)]
     fn encode(
         &mut self,
-        labels: &[EditorLabel],
+        labels: &[NativeTextLabel],
         grid_viewport: GridViewport,
+        text_scale: TextScale,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
@@ -104,14 +177,18 @@ impl TextGpu {
                 height: surface_size.height,
             },
         );
+
         let mut buffers = Vec::with_capacity(labels.len());
         let mut areas = Vec::with_capacity(labels.len());
         for label in labels {
-            let bounds = pixel_bounds(label, grid_viewport)?;
-            let font_size = (grid_viewport.cell_size.height * 11 / 20).clamp(11, 22) as f32;
+            let bounds = text_bounds(label, grid_viewport)
+                .map_err(|_| TextRenderError::CoordinateOverflow)?;
             let mut buffer = Buffer::new(
                 font_system,
-                Metrics::new(font_size, bounds.height().max(1) as f32),
+                Metrics::new(
+                    text_scale.font_size(grid_viewport.cell_size.height),
+                    bounds.height().max(1) as f32,
+                ),
             );
             buffer.set_size(
                 Some(bounds.width().max(1) as f32),
@@ -135,6 +212,7 @@ impl TextGpu {
                 ),
             ));
         }
+
         self.renderer.prepare(
             device,
             queue,
@@ -149,14 +227,20 @@ impl TextGpu {
                     left: bounds.left as f32,
                     top: bounds.top as f32,
                     scale: 1.0,
-                    bounds: *bounds,
+                    bounds: TextBounds {
+                        left: bounds.left,
+                        top: bounds.top,
+                        right: bounds.right,
+                        bottom: bounds.bottom,
+                    },
                     default_color: *color,
                     custom_glyphs: &[],
                 }),
             swash_cache,
         )?;
+
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("map editor text"),
+            label: Some("gen3 native text"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 depth_slice: None,
@@ -176,36 +260,39 @@ impl TextGpu {
     }
 }
 
-fn pixel_bounds(
-    label: &EditorLabel,
-    viewport: GridViewport,
-) -> Result<TextBounds, TextRenderError> {
-    let left =
-        i64::from(viewport.origin.x) + i64::from(label.col) * i64::from(viewport.cell_size.width);
-    let top =
-        i64::from(viewport.origin.y) + i64::from(label.row) * i64::from(viewport.cell_size.height);
-    let right = left + i64::from(label.width) * i64::from(viewport.cell_size.width);
-    let bottom = top + i64::from(label.height) * i64::from(viewport.cell_size.height);
-    Ok(TextBounds {
-        left: i32::try_from(left).map_err(|_| TextRenderError::CoordinateOverflow)?,
-        top: i32::try_from(top).map_err(|_| TextRenderError::CoordinateOverflow)?,
-        right: i32::try_from(right).map_err(|_| TextRenderError::CoordinateOverflow)?,
-        bottom: i32::try_from(bottom).map_err(|_| TextRenderError::CoordinateOverflow)?,
-    })
+#[derive(Debug)]
+pub enum NativeTargetError {
+    Gpu(GpuRuntimeError),
+    Text(TextRenderError),
 }
 
-trait TextBoundsSize {
-    fn width(self) -> i32;
-    fn height(self) -> i32;
-}
-
-impl TextBoundsSize for TextBounds {
-    fn width(self) -> i32 {
-        self.right.saturating_sub(self.left)
+impl fmt::Display for NativeTargetError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Gpu(error) => write!(formatter, "native GPU submission failed: {error}"),
+            Self::Text(error) => write!(formatter, "native text submission failed: {error}"),
+        }
     }
+}
 
-    fn height(self) -> i32 {
-        self.bottom.saturating_sub(self.top)
+impl Error for NativeTargetError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Gpu(error) => Some(error),
+            Self::Text(error) => Some(error),
+        }
+    }
+}
+
+impl From<GpuRuntimeError> for NativeTargetError {
+    fn from(error: GpuRuntimeError) -> Self {
+        Self::Gpu(error)
+    }
+}
+
+impl From<TextRenderError> for NativeTargetError {
+    fn from(error: TextRenderError) -> Self {
+        Self::Text(error)
     }
 }
 
@@ -219,9 +306,9 @@ pub enum TextRenderError {
 impl fmt::Display for TextRenderError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CoordinateOverflow => formatter.write_str("editor text coordinates overflowed"),
-            Self::Prepare(error) => write!(formatter, "failed to prepare editor text: {error}"),
-            Self::Render(error) => write!(formatter, "failed to render editor text: {error}"),
+            Self::CoordinateOverflow => formatter.write_str("native text coordinates overflowed"),
+            Self::Prepare(error) => write!(formatter, "failed to prepare native text: {error}"),
+            Self::Render(error) => write!(formatter, "failed to render native text: {error}"),
         }
     }
 }

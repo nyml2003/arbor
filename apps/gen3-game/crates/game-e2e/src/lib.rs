@@ -5,72 +5,76 @@
 #[cfg(test)]
 mod tests {
     use battle_application::Action;
-    use game_host::{DemoBattle, DemoGame, GameScene};
-    use punctum_input::{KeyEvent, KeyPhase, LogicalKey, Modifiers, NamedKey, PhysicalKeyCode};
+    use game_data::CurrentDataSet;
+    use game_session::{GameCommand, GameScene, GameSession};
     use world_application::{Direction, Position};
 
-    fn key(name: NamedKey) -> KeyEvent {
-        KeyEvent {
-            physical: Some(PhysicalKeyCode::Unidentified),
-            logical: LogicalKey::Named(name),
-            modifiers: Modifiers::default(),
-            phase: KeyPhase::Press,
+    fn submit(game: GameSession, command: GameCommand) -> GameSession {
+        let (game, result) = game.transition(command);
+        result.unwrap();
+        game
+    }
+
+    fn enter_battle(mut game: GameSession) -> GameSession {
+        for _ in 0..4 {
+            game = submit(game, GameCommand::StepWorld(Direction::Right));
         }
+        assert_eq!(game.snapshot().scene(), GameScene::Battle);
+        game
     }
 
     #[test]
-    fn keyboard_battle_slice_can_reach_a_deterministic_finish() {
-        let mut battle = DemoBattle::new().unwrap();
-        let opening = battle.observation();
+    fn command_battle_slice_can_reach_a_deterministic_finish() {
+        let mut game =
+            GameSession::new_demo(CurrentDataSet::embedded().unwrap(), 0xA2B3_C4D5).unwrap();
+        game = enter_battle(game);
+        let opening_turn = game.snapshot().battle().unwrap().observation().turn();
         let mut submitted_actions = 0_usize;
 
-        while !battle.is_finished() {
-            let actions = battle.legal_actions();
+        while !game.snapshot().battle().unwrap().is_finished() {
+            if game.has_pending_playback() {
+                game = submit(game, GameCommand::AdvanceBattlePlayback);
+                continue;
+            }
+            let actions = game.legal_player_actions();
             let action = actions
                 .iter()
                 .copied()
                 .find(|action| matches!(action, Action::UseMove(_)))
                 .or_else(|| actions.first().copied())
                 .expect("an unfinished battle always offers a legal player action");
-            battle.submit_player(action).unwrap();
-            while battle.has_pending_playback() {
-                battle.advance_playback();
-            }
+            game = submit(game, GameCommand::SubmitBattleAction(action));
             submitted_actions += 1;
             assert!(submitted_actions < 500, "the demo battle must converge");
         }
 
-        let finished = battle.observation();
-        assert!(finished.turn() > opening.turn());
+        let finished_turn = game.snapshot().battle().unwrap().observation().turn();
+        assert!(finished_turn > opening_turn);
         assert!(submitted_actions > 1);
-        assert!(battle.is_finished());
     }
 
     #[test]
-    fn keyboard_world_slice_enters_battle_and_returns_to_the_same_map_position() {
-        let mut game = DemoGame::new().unwrap();
-        let right = key(NamedKey::ArrowRight);
-        let left = key(NamedKey::ArrowLeft);
-        let enter = key(NamedKey::Enter);
+    fn world_slice_enters_battle_and_returns_to_the_same_map_position() {
+        let mut game =
+            GameSession::new_demo(CurrentDataSet::embedded().unwrap(), 0xA2B3_C4D5).unwrap();
 
-        game.handle_key(&right).unwrap();
-        assert_eq!(game.world_observation().player(), Position::new(3, 6));
-        assert_eq!(game.world_observation().facing(), Direction::Right);
+        game = submit(game, GameCommand::StepWorld(Direction::Right));
+        assert_eq!(game.snapshot().world().player(), Position::new(3, 6));
+        assert_eq!(game.snapshot().world().facing(), Direction::Right);
 
         for _ in 0..3 {
-            game.handle_key(&right).unwrap();
+            game = submit(game, GameCommand::StepWorld(Direction::Right));
         }
-        assert_eq!(game.scene(), GameScene::Battle);
-        assert_eq!(game.world_observation().player(), Position::new(6, 6));
+        assert_eq!(game.snapshot().scene(), GameScene::Battle);
+        assert_eq!(game.snapshot().world().player(), Position::new(6, 6));
 
-        game.handle_key(&left).unwrap();
-        game.handle_key(&enter).unwrap();
+        game = submit(game, GameCommand::SubmitBattleAction(Action::Run));
         while game.has_pending_playback() {
-            game.advance_playback();
+            game = submit(game, GameCommand::AdvanceBattlePlayback);
         }
-        game.handle_key(&enter).unwrap();
+        game = submit(game, GameCommand::LeaveFinishedBattle);
 
-        assert_eq!(game.scene(), GameScene::World);
-        assert_eq!(game.world_observation().player(), Position::new(6, 6));
+        assert_eq!(game.snapshot().scene(), GameScene::World);
+        assert_eq!(game.snapshot().world().player(), Position::new(6, 6));
     }
 }
